@@ -1,0 +1,15 @@
+{
+    "openai": {
+        "apiKey": "YOUR_OPENAI_API_KEY",
+        "baseUrl": "https://api.openai.com/v1/chat/completions",
+        "chatModel": "gpt-5.1",
+        "timeoutMs": 300000,
+        "maxRetries": 3
+    },
+    "gemini": {
+        "apiKey": "YOUR_GEMINI_API_KEY",
+        "textModel": "gemini-3-flash-preview",
+        "imageModel": "gemini-3-pro-image-preview",
+        "maxRetries": 3
+    }
+}

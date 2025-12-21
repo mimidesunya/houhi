@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+__init__.py
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Project specific
+output/*
+!output/.gitkeep
+copper_driver/
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Local config
+ai_config.json
