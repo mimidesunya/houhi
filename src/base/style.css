@@ -11,13 +11,15 @@
    趣旨: 日本の裁判所提出書類（A4縦）の標準的な体裁（明朝体、12pt、行間など）を再現
    ========================================= */
 body {
-    font-family: "MS Mincho", "Hiragino Mincho ProN", serif; /* 明朝体指定 */
-    font-size: 12pt;    /* 裁判所標準のフォントサイズ */
-    line-height: 19.4pt;   /* 行の高さを固定 (12pt * 1.618 [黄金比]) */
     color: #000;
     /* Copper PDFのデフォルト余白(12.7mm)を差し引いた値 */
     margin: 22.3mm 7.3mm 17.3mm 17.3mm; /* 上 右 下 左 */
     background-color: #fff;
+}
+* {
+    font-family: "MS Mincho", "Hiragino Mincho ProN", serif; /* 明朝体指定 */
+    font-size: 12pt;    /* 裁判所標準のフォントサイズ */
+    line-height: 19.4pt;   /* 行の高さを固定 (12pt * 1.618 [黄金比]) */
 }
 
 p {
@@ -32,42 +34,26 @@ p {
    趣旨: 事件番号、当事者表示、印紙額などの上部メタデータのレイアウト
    ========================================= */
 .header {
-    margin-bottom: 2em;
+    margin-bottom: 38.8pt;
 }
 
 .header p {
     text-indent: 0; /* ヘッダー内の段落は字下げしない */
 }
 
-.case-info {
-    margin-bottom: 1em;
+.case {
+    margin-bottom: 19.4pt;
 }
 
 /* 当事者欄コンテナ */
 .parties {
-    margin-bottom: 1em;
-}
-
-.party-row {
-    margin-bottom: 0;
+    margin-bottom: 19.4pt;
 }
 
 /* 訴訟物の価格・印紙額エリア */
-.stamp-info {
-    margin-top: 1em;
-    margin-bottom: 1em;
-}
-
-.info-label {
-    display: inline-block;
-    width: 8em; /* ラベル幅の固定 */
-}
-
-.info-value {
-    display: inline-block;
-    margin-left: 1.5em;
-    width: 8em;
-    text-align: right;
+.info {
+    margin-top: 19.4pt;
+    margin-bottom: 19.4pt;
 }
 
 /* =========================================
@@ -75,28 +61,30 @@ p {
    趣旨: "原告" "被控訴人" など文字数の異なる肩書を、指定幅で均等に割り付ける（Kintou-waritsuke）
    ========================================= */
 
-/* ラベル共通設定: 新旧ブラウザ対応の均等割付 */
-.label, .info-label {
+/* 共通レイアウト設定 */
+.label, .name, .val {
     display: inline-block;
+    width: 8em; /* デフォルト幅 */
+}
+
+/* 均等割付設定 */
+.label, .name {
     text-align: justify;
     text-justify: inter-ideograph; /* IE/Legacy */
     text-align-last: justify;      /* Modern Browsers */
     -moz-text-align-last: justify; /* Firefox */
 }
 
+/* 個別調整 */
 .label {
     margin-right: 1.5em;
 }
 
-/* 氏名欄の均等割付: 会社名などの見栄えを整える */
+.val {
+    text-align: right; /* 値は右寄せ */
+}
+
 .name {
-    display: inline-block;
-    width: 8em;
-    text-align: justify;
-    text-justify: inter-ideograph;
-    text-align-last: justify;
-    -moz-text-align-last: justify;
-    
     vertical-align: top;
 }
 
@@ -104,22 +92,23 @@ p {
    タイトル & 日付 & 宛先 & 提出者
    趣旨: 文書の表題まわりの配置（中央揃え、右寄せ日付、右寄せ配置の提出者欄）
    ========================================= */
-.doc-title {
+h1 {
     font-size: 12pt;
     text-align: center;
-    margin: 2em 0;
+    margin: 38.8pt 0;
     font-weight: normal; /* 公文書のため太字にしない */
     letter-spacing: 0.5em;
+    page-break-after: avoid;
 }
 
 .date {
     text-align: right; /* 日付は右寄せ */
-    margin-bottom: 1em;
+    margin-bottom: 19.4pt;
 }
 
-.destination {
+.dest {
     font-size: 12pt;
-    margin: 1em 0;
+    margin: 19.4pt 0;
     text-align: left; /* 宛先（裁判所名）は左寄せ */
 }
 
@@ -130,40 +119,34 @@ p {
 }
 
 /* 被控訴人（右寄せ）用のスタイル */
-.defendant-right {
+.def-r {
     display: block;
     text-align: right;
-    margin-top: 1em; /* 控訴人との間隔 */
+    margin-top: 19.4pt; /* 控訴人との間隔 */
 }
-.defendant-right .address-info {
+.def-r .addr {
     display: inline-block;
     text-align: left;
     min-width: 18em; /* 肩書(8em) + 余白(1.5em) + 氏名(8em) */
 }
-.defendant-right .party-row {
+.def-r .row {
     display: block;
     text-align: right;
 }
 
-.sender-row {
+.sender .row {
     display: block;
     text-align: right;
-}
-.sender .label,
-.parties .label {
-    width: 8em; /* 肩書幅調整 */
 }
 
 /* 住所情報 */
-.address-info {
-    margin-bottom: 0;
+.addr {
+    /* margin-bottom: 0; default */
 }
-.address-info p {
-    margin: 0;
-}
+/* .addr p { margin: 0; } default */
 
 /* 提出者（右寄せエリア）内の住所 */
-.sender .address-info {
+.sender .addr {
     display: inline-block;
     text-align: left;
     min-width: 18em; /* 肩書(8em) + 余白(1.5em) + 氏名(8em) */
@@ -173,8 +156,8 @@ p {
    前文 (Preamble)
    趣旨: 準備書面の冒頭（「原告は以下の通り主張する」等）のスタイル
    ========================================= */
-.preamble {
-    margin-bottom: 1em;
+.intro {
+    margin-bottom: 19.4pt;
 }
 
 /* =========================================
@@ -188,39 +171,50 @@ ol {
 }
 
 /* 階層ごとのインデント（左余白）制御 */
-ol.level-1 { padding-left: 0; }
-ol.level-1 > li > ol { margin-left: -1em; }
-ol.level-1 > li > ol > li > ol { margin-left: -1em; }
-ol.level-1 > li > ol > li > ol > li > ol { margin-left: -1em; }
-ol.level-1 > li > ol > li > ol > li > ol > li > ol { margin-left: -1em; }
+body > ol { padding-left: 0; }
+body > ol > li > ol { margin-left: -1em; }
+body > ol > li > ol > li > ol { margin-left: -1em; }
+body > ol > li > ol > li > ol > li > ol { margin-left: -1em; }
+body > ol > li > ol > li > ol > li > ol > li > ol { margin-left: -1em; }
 
-li { margin-top: 0.5em; }
-.heading-line { margin-bottom: 0; }
-.body-text { margin-top: 0; padding-left: 0; }
+h2, h3, h4, h5, h6 {
+    font-size: 12pt;
+    font-weight: normal;
+    margin: 0;
+}
+h2 + *,
+h3 + *,
+h4 + *,
+h5 + *,
+h6 + * {
+    page-break-before: avoid;
+}
 
 /* カウンターのリセット */
-ol.level-1 { counter-reset: cnt1; }
-ol.level-1 > li > ol { counter-reset: cnt2; }
-ol.level-1 > li > ol > li > ol { counter-reset: cnt3; }
-ol.level-1 > li > ol > li > ol > li > ol { counter-reset: cnt4; }
-ol.level-1 > li > ol > li > ol > li > ol > li > ol { counter-reset: cnt5; }
+body > ol { counter-reset: cnt1; }
+body > ol > li > ol { counter-reset: cnt2; }
+body > ol > li > ol > li > ol { counter-reset: cnt3; }
+body > ol > li > ol > li > ol > li > ol { counter-reset: cnt4; }
+body > ol > li > ol > li > ol > li > ol > li > ol { counter-reset: cnt5; }
 
 /* Level 1: "第N" */
-ol.level-1 > li:before {
+body > ol > li:before {
     counter-increment: cnt1;
     content: "第" counter(cnt1);
     display: inline-block; width: 2em;
 }
-ol.level-1 > li > .heading-line { display: inline; }
-ol.level-1 > li > ol { margin-top: 0.5em; }
+body > ol > li {
+    margin-top: 19.4pt;
+}
+body > ol > li > h2 { display: inline; }
 
 /* Level 2: "N" + 全角スペース (absoluteによる配置) */
-ol.level-1 > li > ol > li {
+body > ol > li > ol > li {
     text-indent: 1.5em;
     position: relative;
     padding-left: 1.5em; /* 番号の幅分インデント */
 }
-ol.level-1 > li > ol > li:before {
+body > ol > li > ol > li:before {
     counter-increment: cnt2;
     content: counter(cnt2) "　";
     position: absolute;
@@ -228,15 +222,14 @@ ol.level-1 > li > ol > li:before {
     top: 0;
     width: 1.5em;
 }
-ol.level-1 > li > ol > li > .heading-line { display: block; padding-left: 0; }
-ol.level-1 > li > ol > li > .body-text { padding-left: 0; }
+body > ol > li > ol > li > h3 { display: block; padding-left: 0; }
 
 /* Level 3: "(N)" + 半角スペース */
-ol.level-1 > li > ol > li > ol > li {
+body > ol > li > ol > li > ol > li {
     position: relative;
     padding-left: 2em;
 }
-ol.level-1 > li > ol > li > ol > li:before {
+body > ol > li > ol > li > ol > li:before {
     counter-increment: cnt3;
     content: "(" counter(cnt3) ") ";
     position: absolute;
@@ -244,15 +237,14 @@ ol.level-1 > li > ol > li > ol > li:before {
     top: 0;
     width: 2em;
 }
-ol.level-1 > li > ol > li > ol > li > .heading-line { display: block; padding-left: 0; }
-ol.level-1 > li > ol > li > ol > li > .body-text { padding-left: 0; }
+body > ol > li > ol > li > ol > li > h4 { display: block; padding-left: 0; }
 
 /* Level 4: "ア" (カタカナ) + 全角スペース */
-ol.level-1 > li > ol > li > ol > li > ol > li {
+body > ol > li > ol > li > ol > li > ol > li {
     position: relative;
     padding-left: 2em;
 }
-ol.level-1 > li > ol > li > ol > li > ol > li:before {
+body > ol > li > ol > li > ol > li > ol > li:before {
     counter-increment: cnt4;
     content: counter(cnt4, katakana) "　";
     position: absolute;
@@ -260,60 +252,80 @@ ol.level-1 > li > ol > li > ol > li > ol > li:before {
     top: 0;
     width: 2em;
 }
-ol.level-1 > li > ol > li > ol > li > ol > li > .heading-line { display: block; padding-left: 0; }
-ol.level-1 > li > ol > li > ol > li > ol > li > .body-text { padding-left: 0; }
+body > ol > li > ol > li > ol > li > ol > li > h5 { display: block; padding-left: 0; }
 
-/* Level 5: "a." (小文字アルファベット) + 半角スペース */
-ol.level-1 > li > ol > li > ol > li > ol > li > ol > li {
+/* Level 5: "（ア）" (全角括弧付きカタカナ) + 半角スペース */
+body > ol > li > ol > li > ol > li > ol > li > ol > li {
     position: relative;
-    padding-left: 1.5em;
+    padding-left: 3em;
 }
-ol.level-1 > li > ol > li > ol > li > ol > li > ol > li:before {
+body > ol > li > ol > li > ol > li > ol > li > ol > li:before {
     counter-increment: cnt5;
-    content: counter(cnt5, lower-alpha) ". ";
+    content: "（" counter(cnt5, katakana) "） ";
     position: absolute;
     left: 0;
     top: 0;
-    width: 1.5em;
+    width: 3em;
 }
-ol.level-1 > li > ol > li > ol > li > ol > li > ol > li > .heading-line { display: block; padding-left: 0; }
-ol.level-1 > li > ol > li > ol > li > ol > li > ol > li > .body-text { padding-left: 0; }
+body > ol > li > ol > li > ol > li > ol > li > ol > li > h6 { display: block; padding-left: 0; }
 
 /* float解除 (Clearfix) - absolute使用により不要になったが念のため残すか、削除しても良い */
 li:after { content: ""; display: table; clear: both; }
 
 /* =========================================
+   開始レベル指定 (Start Level Override)
+   趣旨: 別紙などで、第1階層（第N）を飛ばして第2階層（1, 2...）から始めたい場合に使用
+   ========================================= */
+ol.lvl2 {
+    counter-reset: cnt2;
+}
+ol.lvl2 > li {
+    text-indent: 1.5em;
+    position: relative;
+    padding-left: 1.5em;
+    margin-top: 0; /* 第1階層のマージンを打ち消し */
+}
+ol.lvl2 > li:before {
+    counter-increment: cnt2;
+    content: counter(cnt2) "　";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1.5em;
+    display: block;
+}
+
+/* =========================================
    附属書類 (Attachments)
    趣旨: 末尾の「附属書類」リストの整形（中央見出し、半角数字リスト、字間調整）
    ========================================= */
-.attachments {
-    margin-top: 4em;
+.att {
+    margin-top: 77.6pt;
     margin-left: 2em;
 }
 
-.attachments-title {
+.att-title {
     text-align: center;      
     letter-spacing: 0.5em;   
-    margin-bottom: 1em;
+    margin-bottom: 19.4pt;
 }
 
-.attachments-list {
+.att-list {
     list-style-type: decimal; /* 1. 2. 3. 形式 */
     padding-left: 2em;        
 }
 
-.attachments-list li {
-    margin-bottom: 0.5em;
+.att-list li {
     position: relative;
 }
 
 /* 書類名と通数のレイアウト（インラインブロックによる間隔制御） */
-.attach-name {
+.att-name {
     display: inline-block;
     margin-right: 3em; 
 }
 
-.attach-qty {
+.att-qty {
     position: absolute;
     left: 50%;
 }
@@ -322,6 +334,6 @@ li:after { content: ""; display: table; clear: both; }
    改ページ (Page Break)
    趣旨: 別紙などを新しいページから開始するための設定
    ========================================= */
-.page-break {
+.break {
     page-break-before: always;
 }

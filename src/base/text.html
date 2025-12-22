@@ -4,76 +4,70 @@
     <meta charset="UTF-8">
     <title>準備書面（サンプル）</title>
     <link rel="stylesheet" href="style.css">
-    
     <style>
-        /* 肩書（被告、原告など）の幅 */
-        /* 注意: style.cssのセレクタ詳細度（.parties .label等）に勝つため、詳細なセレクタを指定してください */
-        .parties .label, .sender .label {
-            width: 8em; /* 肩書の長さに応じて調整。style.cssの既定値を上書き */
-        }
-        /* 氏名（甲野太郎、乙山次郎など）の幅 */
-        .parties .name, .sender .name {
-            width: 8em; /* 氏名の長さに応じて調整。style.cssの既定値を上書き */
-        }
+        /* 必要に応じて幅を調整してください (1文字 = 1em) */
+        .parties .label, .sender .label { width: 8em; }
+        .parties .name, .sender .name { width: 8em; }
+        /* .header .addr, .sender .addr { min-width: 18em; } */
     </style>
 </head>
 <body>
 
 <div class="header">
-    <div class="case-info">
+    <div class="case">
         <span class="case-number">令和○年（ワ）第○○○号</span>
         <span class="case-name">損害賠償請求事件</span>
     </div>
     
     <div class="parties">
-        <div class="party-row">
+        <div class="row">
             <span class="label">被告</span>
             <span class="name">乙山　次郎</span>
         </div>
-        <div class="address-info">
+        <div class="addr">
             <p>〒100-0005</p>
             <p>東京都千代田区丸の内1-2-3</p>
             <p>丸の内サンプルビル 10F</p>
         </div>
 
-        <div class="party-row">
+        <div class="row">
             <span class="label">原告</span>
             <span class="name">甲野　太郎</span>
         </div>
     </div>
 </div>
 
-<h1 class="doc-title">準備書面</h1>
+<h1>準備書面</h1>
 
 <div class="header">
     <div class="date">令和○年○月○日</div>
     
-    <div class="destination">○○地方裁判所第○民事部 御中</div>
+    <div class="dest">○○地方裁判所第○民事部 御中</div>
     
     <div class="sender">
-        <div class="address-info">
+        <div class="addr">
             <p>〒100-0001</p>
             <p>東京都千代田区千代田1-1</p>
             <p>（送達場所）</p>
             <p>電話番号 03-1234-5678</p>
             <p>FAX番号 03-1234-5679</p>
         </div>
-        <div class="sender-row">
+        <div class="row">
             <span class="label">原告</span>
             <span class="name">甲野　太郎</span>
         </div>
-        <div class="sender-row">
+        <div class="row">
             <span class="label">上記代理人</span>
             <span class="name">丙川　三郎</span>
         </div>
 
-        <div class="defendant-right">
-            <div class="address-info">
+        <div class="def-r">
+            <div class="addr">
                 <p>〒100-0005</p>
                 <p>東京都千代田区丸の内1-2-3</p>
                 <p>丸の内サンプルビル 10F</p>
             </div>
-            <div class="party-row">
+            <div class="row">
                 <span class="label">被告</span>
                 <span class="name">乙山　次郎</span>
             </div>
@@ -81,55 +75,45 @@
     </div>
 </div>
 
-<div class="stamp-info">
-    <div class="info-row">
-        <span class="info-label">訴訟物の価格</span>
-        <span class="info-value">1,600,000円</span>
+<div class="info">
+    <div class="row">
+        <span class="label">訴訟物の価格</span>
+        <span class="val">1,600,000円</span>
     </div>
-    <div class="info-row">
-        <span class="info-label">貼用印紙額</span>
-        <span class="info-value">19,500円</span>
+    <div class="row">
+        <span class="label">貼用印紙額</span>
+        <span class="val">19,500円</span>
     </div>
 </div>
 
-<div class="preamble">
+<div class="intro">
     <p>原告は、前回期日における被告の主張に対し、以下の通り反論する。</p>
 </div>
 
-<ol class="level-1">
+<ol>
     <li>
-        <div class="heading-line">争点</div>
-        <div class="body-text">
-            <p>本件の争点は、以下の通りである。</p>
-        </div>
+        <h2>争点</h2>
+        <p>本件の争点は、以下の通りである。</p>
         
         <ol>
             <li>
-                <div class="heading-line">争点1（契約の成立）について</div>
-                <div class="body-text">
-                    <p>原告は、被告との間で本件売買契約が成立したと主張するが、被告はこれを否認する。</p>
-                </div>
+                <h3>争点1（契約の成立）について</h3>
+                <p>原告は、被告との間で本件売買契約が成立したと主張するが、被告はこれを否認する。</p>
                 
                 <ol>
                     <li>
-                        <div class="heading-line">原告の主張</div>
-                        <div class="body-text">
-                            <p>原告と被告は、令和○年○月○日、本件商品の売買について合意した。この合意は、口頭によるものであったが、契約の重要部分（目的物および代金）について確定的な意思の合致があった。</p>
-                        </div>
+                        <h4>原告の主張</h4>
+                        <p>原告と被告は、令和○年○月○日、本件商品の売買について合意した。この合意は、口頭によるものであったが、契約の重要部分（目的物および代金）について確定的な意思の合致があった。</p>
                         
                         <ol>
                             <li>
-                                <div class="heading-line">交渉の経緯</div>
-                                <div class="body-text">
-                                    <p>原告担当者と被告担当者は、同日、都内喫茶店にて面談し、詳細な条件を詰め、その場で握手を交わした。これは、商慣習上、契約成立の確定的意思表示とみなされるべきである。</p>
-                                </div>
+                                <h5>交渉の経緯</h5>
+                                <p>原告担当者と被告担当者は、同日、都内喫茶店にて面談し、詳細な条件を詰め、その場で握手を交わした。これは、商慣習上、契約成立の確定的意思表示とみなされるべきである。</p>
                                 
                                 <ol>
                                     <li>
-                                        <div class="heading-line">メールの証拠価値</div>
-                                        <div class="body-text">
-                                            <p>後日送信された「確認メール」（甲１号証）は、既に成立した契約内容を確認するためのものであり、新たな申込みではない。</p>
-                                        </div>
+                                        <h6>メールの証拠価値</h6>
+                                        <p>後日送信された「確認メール」（甲１号証）は、既に成立した契約内容を確認するためのものであり、新たな申込みではない。</p>
                                     </li>
                                 </ol>
                             </li>
@@ -141,35 +125,33 @@
     </li>
     
     <li>
-        <div class="heading-line">結語</div>
-        <div class="body-text">
-            <p>以上の通り、原告の請求は速やかに認容されるべきである。</p>
-        </div>
+        <h2>結語</h2>
+        <p>以上の通り、原告の請求は速やかに認容されるべきである。</p>
     </li>
 </ol>
 
-<div class="attachments">
-    <div class="attachments-title">附属書類</div>
-    <ol class="attachments-list">
+<div class="att">
+    <div class="att-title">附属書類</div>
+    <ol class="att-list">
         <li>
-            <span class="attach-name">準備書面副本</span>
-            <span class="attach-qty">１通</span>
+            <span class="att-name">準備書面副本</span>
+            <span class="att-qty">１通</span>
         </li>
         <li>
-            <span class="attach-name">証拠説明書</span>
-            <span class="attach-qty">１通</span>
+            <span class="att-name">証拠説明書</span>
+            <span class="att-qty">１通</span>
         </li>
     </ol>
 </div>
 
 <!-- 改ページ -->
-<div class="page-break"></div>
+<div class="break"></div>
 
-<h1 class="doc-title">別紙</h1>
-<div class="body-text">
-    <p>（物件目録など）</p>
-    <p>1　所在　東京都千代田区...</p>
-</div>
+<h1>別紙</h1>
+<p>（物件目録など）</p>
+<ol class="lvl2">
+    <li>所在　東京都千代田区...</li>
+</ol>
 
 </body>
 </html>

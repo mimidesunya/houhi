@@ -160,7 +160,14 @@ def main():
         html_to_convert = input_path
         resource_dir = os.path.dirname(input_path)
         base_name = os.path.splitext(os.path.basename(input_path))[0]
-        output_pdf_path = os.path.join(DEFAULT_OUTPUT_DIR, f"{base_name}.pdf")
+        
+        # 入力ファイルと同じディレクトリに出力（ただしデフォルトテンプレートの場合はoutputディレクトリ）
+        if os.path.dirname(input_path) == DEFAULT_TEMPLATE_DIR:
+            output_dir = DEFAULT_OUTPUT_DIR
+        else:
+            output_dir = os.path.dirname(input_path)
+            
+        output_pdf_path = os.path.join(output_dir, f"{base_name}.pdf")
     else:
         # AIによる生成
         config = load_config()
@@ -176,7 +183,8 @@ def main():
         timestamp = time.strftime("%Y%m%d-%H%M%S")
         
         # タイトルを抽出してファイル名に使用
-        title_match = re.search(r'<h1 class="doc-title">(.*?)</h1>', html_content)
+        # h1タグの中身を取得 (class属性があってもなくても対応)
+        title_match = re.search(r'<h1[^>]*>(.*?)</h1>', html_content)
         if title_match:
             title = title_match.group(1).strip()
             # ファイル名に使えない文字を除去
@@ -186,14 +194,20 @@ def main():
         else:
             base_filename = f"generated_{timestamp}"
 
+        # 出力先ディレクトリの決定
+        if input_source == "file" and input_path:
+            output_dir = os.path.dirname(input_path)
+        else:
+            output_dir = DEFAULT_OUTPUT_DIR
+
         html_filename = f"{base_filename}.html"
-        html_to_convert = os.path.join(DEFAULT_OUTPUT_DIR, html_filename)
+        html_to_convert = os.path.join(output_dir, html_filename)
         
         with open(html_to_convert, 'w', encoding='utf-8') as f:
             f.write(html_content)
         print(f"生成されたHTMLを保存しました: {html_to_convert}")
         
-        output_pdf_path = os.path.join(DEFAULT_OUTPUT_DIR, f"{base_filename}.pdf")
+        output_pdf_path = os.path.join(output_dir, f"{base_filename}.pdf")
         # リソースはテンプレートディレクトリを使用
         resource_dir = DEFAULT_TEMPLATE_DIR
 
