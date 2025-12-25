@@ -40,13 +40,13 @@ High-precision OCR engine converting Japanese PDF pages to clean Markdown.
 3. **Page Markers**:
    - **Start**: At the start of content, output `=-- Begin Page N {{StartStatus}} --=`.
      - N: Batch page index (1-{num_pages}).
-     - {{StartStatus}}: "(Continuation)" if the text at the very top of the page is a continuation of a paragraph from a previous (possibly unprovided) page, else empty.
+     - {{StartStatus}}: "(Continuation)" if the text at the very top of the page is a direct continuation of a paragraph from the previous page (cut off mid-sentence without a line break), else empty.
    - **End**: At the end of content, output `=-- End Printed Page X {{EndStatus}} --=`.
      - X: Printed page number. **CONVERT** Kanji (一, 二) or Roman (I, II) to Arabic (1, 2). If not found, use "N/A".
-     - {{EndStatus}}: "(Continuation)" if paragraph continues to next page, else empty.
+     - {{EndStatus}}: "(Continuation)" if the paragraph is cut off mid-sentence and continues to the next page without an explicit line break, else empty.
 4. **Transcription Rules**:
    - **No Indentation**: Standard Markdown paragraphs.
-   - **Numbers**: Convert ALL full-width numbers to half-width (e.g., "１" -> "1"). Also convert Kanji numerals used as counts or identifiers to Arabic numerals where appropriate for clarity, but keep them if they are part of a formal name.
+   - **Numbers**: Convert ALL full-width numbers to half-width (e.g., "１" -> "1"). 
    - **Corrections**: Fix obvious OCR errors (0 vs O). Keep original typos with `［ママ］`.
    - **Exclusions**: Omit printed page numbers from body.
    - **Margins**:
@@ -223,7 +223,7 @@ def run_batch_api_ocr(batch_tasks: list, generation_config: types.GenerateConten
             
             if not all(completed_jobs):
                 elapsed_sec = time.time() - start_time
-                print(f"[INFO] 処理中... {elapsed_sec:.0f}秒経過 (Batch APIは完了まで数分かかる場合があります)")
+                print(f"[INFO] 処理中... {elapsed_sec:.0f}秒経過")
                 time.sleep(10) # ポーリング間隔
             
         if pending_tasks:

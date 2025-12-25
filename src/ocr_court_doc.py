@@ -35,7 +35,7 @@ COURT_DOC_STYLE = """
 # STRUCTURE & HEADINGS
 1. **Decision: Heading or Paragraph?** (Apply this FIRST)
    - **Paragraph**: If the text following the number/marker is a long sentence (often ends with "。") or spans multiple lines, it is a **Paragraph**. Do NOT use `#`.
-   - **Paragraph**: If you see consecutive items of the same level (e.g., "1 ...", "2 ..." or "ア ...", "イ ..."), they are **Paragraphs**. Do NOT use `#`.
+   - **Paragraph**: If you see consecutive items of the same level (e.g., "1 ...", "2 ...", "ア ...", "イ ...", "a ...", "b ..."), they are **Paragraphs**. Do NOT use `#`.
    - **Heading**: Only if the text is short (a title), usually has no punctuation at the end, and is followed by body text on the next line.
 
 2. **Heading Hierarchy** (Apply ONLY if it is a Heading)
@@ -44,6 +44,8 @@ COURT_DOC_STYLE = """
    - "(1)", "(2)" ... -> H3 (`###`)
    - "ア", "イ" ... -> H4 (`####`)
    - "(ア)", "(イ)" ... -> H5 (`#####`)
+   - "a", "b" ... -> H6 (`######`)
+   - "(a)", "(b)" ... -> Bold (`**text**`)
 
 3. **Formatting Rules**
    - **No Numbering = No Heading**: Text like "事実及び理由" or "主文" must be **Bold** (`**text**`).

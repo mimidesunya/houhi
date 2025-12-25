@@ -188,6 +188,8 @@ body > ol > li > ol { margin-left: -1em; }
 body > ol > li > ol > li > ol { margin-left: -1em; }
 body > ol > li > ol > li > ol > li > ol { margin-left: -1em; }
 body > ol > li > ol > li > ol > li > ol > li > ol { margin-left: -1em; }
+body > ol > li > ol > li > ol > li > ol > li > ol > li > ol { margin-left: -1em; }
+body > ol > li > ol > li > ol > li > ol > li > ol > li > ol > li > ol { margin-left: -1em; }
 
 h2, h3, h4, h5, h6 {
     font-size: 12pt;
@@ -208,6 +210,8 @@ body > ol > li > ol { counter-reset: cnt2; }
 body > ol > li > ol > li > ol { counter-reset: cnt3; }
 body > ol > li > ol > li > ol > li > ol { counter-reset: cnt4; }
 body > ol > li > ol > li > ol > li > ol > li > ol { counter-reset: cnt5; }
+body > ol > li > ol > li > ol > li > ol > li > ol > li > ol { counter-reset: cnt6; }
+body > ol > li > ol > li > ol > li > ol > li > ol > li > ol > li > ol { counter-reset: cnt7; }
 
 /* Level 1: "第N" */
 body > ol > li:before {
@@ -249,37 +253,67 @@ body > ol > li > ol > li > ol > li:before {
     top: 0;
     width: 2em;
 }
-body > ol > li > ol > li > ol > li > h4 { display: block; padding-left: 0; }
+body > ol > li > ol > li > ol > li > h4 { display: inline; }
 
-/* Level 4: "ア" (カタカナ) + 全角スペース */
+/* Level 4: "ア" + 半角スペース */
 body > ol > li > ol > li > ol > li > ol > li {
     position: relative;
     padding-left: 2em;
 }
 body > ol > li > ol > li > ol > li > ol > li:before {
     counter-increment: cnt4;
-    content: counter(cnt4, katakana) "　";
+    content: counter(cnt4, katakana) " ";
     position: absolute;
     left: 0;
     top: 0;
     width: 2em;
 }
-body > ol > li > ol > li > ol > li > ol > li > h5 { display: block; padding-left: 0; }
+body > ol > li > ol > li > ol > li > ol > li > h5 { display: inline; }
 
-/* Level 5: "（ア）" (全角括弧付きカタカナ) + 半角スペース */
+/* Level 5: "(ア)" + 半角スペース */
 body > ol > li > ol > li > ol > li > ol > li > ol > li {
     position: relative;
-    padding-left: 3em;
+    padding-left: 2.5em;
 }
 body > ol > li > ol > li > ol > li > ol > li > ol > li:before {
     counter-increment: cnt5;
-    content: "（" counter(cnt5, katakana) "） ";
+    content: "(" counter(cnt5, katakana) ") ";
     position: absolute;
     left: 0;
     top: 0;
-    width: 3em;
+    width: 2.5em;
 }
-body > ol > li > ol > li > ol > li > ol > li > ol > li > h6 { display: block; padding-left: 0; }
+body > ol > li > ol > li > ol > li > ol > li > ol > li > h6 { display: inline; }
+
+/* Level 6: "a" + 半角スペース */
+body > ol > li > ol > li > ol > li > ol > li > ol > li > ol > li {
+    position: relative;
+    padding-left: 2em;
+}
+body > ol > li > ol > li > ol > li > ol > li > ol > li > ol > li:before {
+    counter-increment: cnt6;
+    content: counter(cnt6, lower-latin) " ";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 2em;
+}
+.lvl-6 { display: inline; }
+
+/* Level 7: "(a)" + 半角スペース */
+body > ol > li > ol > li > ol > li > ol > li > ol > li > ol > li > ol > li {
+    position: relative;
+    padding-left: 2.5em;
+}
+body > ol > li > ol > li > ol > li > ol > li > ol > li > ol > li > ol > li:before {
+    counter-increment: cnt7;
+    content: "(" counter(cnt7, lower-latin) ") ";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 2.5em;
+}
+.lvl-7 { display: inline; }
 
 /* float解除 (Clearfix) - absolute使用により不要になったが念のため残すか、削除しても良い */
 li:after { content: ""; display: table; clear: both; }
