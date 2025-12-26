@@ -1,0 +1,15 @@
+{
+  "name": "saiban",
+  "version": "1.0.0",
+  "description": "Court document generation system",
+  "main": "src/preview_template.js",
+  "scripts": {
+    "preview": "node src/preview_template.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "clipboardy": "^2.3.0",
+    "copper-cti": "file:copper_drivers/cti.nodejs",
+    "pdf-lib": "^1.17.1"
+  }
+}

@@ -11,5 +11,10 @@
         "textModel": "gemini-3-flash-preview",
         "imageModel": "gemini-3-pro-image-preview",
         "maxRetries": 3
+    },
+    "copper": {
+        "serverUri": "ctip://cti.li/",
+        "user": "user",
+        "password": "kappa"
     }
 }

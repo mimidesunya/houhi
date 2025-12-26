@@ -4,10 +4,5 @@ cd ..
 
 set "TARGET_FILE=%~1"
 
-REM .venvが存在するか確認し、あれば使用する。なければグローバルなpythonを使用する
-if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" "src\generate_court_doc.py" "%TARGET_FILE%"
-) else (
-    python3 "src\generate_court_doc.py" "%TARGET_FILE%"
-)
+node src\convert_to_pdf.js "%TARGET_FILE%"
 
