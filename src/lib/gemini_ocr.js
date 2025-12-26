@@ -1,8 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { PDFDocument } = require('pdf-lib');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { getApiKey } = require('./gemini_client.js');
+const GeminiBatchProcessor = require('./gemini_batch');
 
 const MODEL_ID = "gemini-3-flash-preview"; 
 
@@ -37,28 +36,26 @@ ${numPages} pages of a Japanese document.
 `;
 }
 
-async function runOcr(pdfBytes, numPages, contextInstruction = "") {
-    const apiKey = getApiKey();
-    if (!apiKey) throw new Error("API Key not found");
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: MODEL_ID });
-
+function createOcrRequest(pdfBytes, numPages, contextInstruction = "") {
     const prompt = getOcrPrompt(numPages, contextInstruction);
     const base64Data = pdfBytes.toString('base64');
 
-    const result = await model.generateContent([
-        {
-            inlineData: {
-                data: base64Data,
-                mimeType: "application/pdf"
+    return {
+        contents: [
+            {
+                role: "user",
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: "application/pdf",
+                            data: base64Data
+                        }
+                    },
+                    { text: prompt }
+                ]
             }
-        },
-        { text: prompt }
-    ]);
-
-    const response = await result.response;
-    return response.text();
+        ]
+    };
 }
 
 async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, contextInstruction = "") {
@@ -69,16 +66,17 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
     const actualEndPage = endPage || totalPages;
     console.log(`[INFO] Processing ${pdfPath} (Pages ${startPage} to ${actualEndPage} of ${totalPages})`);
 
-    let allMarkdown = "";
     const pageIndices = [];
     for (let i = startPage; i <= actualEndPage; i++) {
         pageIndices.push(i);
     }
 
-    // バッチ処理
+    // 1. Prepare all requests
+    const requests = [];
+    
     for (let i = 0; i < pageIndices.length; i += batchSize) {
         const batch = pageIndices.slice(i, i + batchSize);
-        console.log(`[INFO] Processing batch: pages ${batch.join(', ')}`);
+        // console.log(`[INFO] Preparing batch: pages ${batch.join(', ')}`);
 
         const newDoc = await PDFDocument.create();
         for (const pNum of batch) {
@@ -87,18 +85,55 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
         }
 
         const batchPdfBytes = await newDoc.save();
-        
-        try {
-            const markdown = await runOcr(Buffer.from(batchPdfBytes), batch.length, contextInstruction);
-            allMarkdown += markdown + "\n\n";
-        } catch (err) {
-            console.error(`[ERROR] Batch failed: ${err}`);
+        requests.push(createOcrRequest(Buffer.from(batchPdfBytes), batch.length, contextInstruction));
+    }
+
+    // 2. Run Batch(es)
+    const batchProcessor = new GeminiBatchProcessor();
+    let allMarkdown = "";
+
+    let currentBatchRequests = [];
+    let currentBatchSize = 0;
+    const MAX_BATCH_SIZE = 19 * 1024 * 1024; // 19MB
+
+    const batchResults = [];
+
+    for (const req of requests) {
+        const reqSize = JSON.stringify(req).length;
+        if (currentBatchSize + reqSize > MAX_BATCH_SIZE) {
+            if (currentBatchRequests.length > 0) {
+                console.log(`[INFO] Sending batch job with ${currentBatchRequests.length} requests...`);
+                const results = await batchProcessor.runInlineBatch(currentBatchRequests, MODEL_ID);
+                batchResults.push(...results);
+                currentBatchRequests = [];
+                currentBatchSize = 0;
+            }
+        }
+        currentBatchRequests.push(req);
+        currentBatchSize += reqSize;
+    }
+
+    if (currentBatchRequests.length > 0) {
+        console.log(`[INFO] Sending final batch job with ${currentBatchRequests.length} requests...`);
+        const results = await batchProcessor.runInlineBatch(currentBatchRequests, MODEL_ID);
+        batchResults.push(...results);
+    }
+
+    // 3. Process results
+    for (const result of batchResults) {
+        if (result.error) {
+            console.error(`[ERROR] Batch item failed: ${JSON.stringify(result.error)}`);
+            allMarkdown += "\n\n[ERROR: OCR Failed for this section]\n\n";
+        } else if (result.response && result.response.candidates && result.response.candidates[0].content.parts) {
+             const text = result.response.candidates[0].content.parts.map(p => p.text).join('');
+             allMarkdown += text + "\n\n";
         }
     }
 
     const outputPath = pdfPath.replace(/\.pdf$/i, "_paged.md");
     fs.writeFileSync(outputPath, allMarkdown, 'utf-8');
     console.log(`[SUCCESS] Saved to ${outputPath}`);
+    return outputPath;
 }
 
 module.exports = {

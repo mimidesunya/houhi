@@ -6,7 +6,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { pdfToText, getOcrPrompt } = require('./lib/pdf_to_markdown.js');
+const { pdfToText, getOcrPrompt } = require('./lib/gemini_ocr.js');
 
 const COURT_DOC_STYLE = `
 # CONTEXT: Japanese Court Document
