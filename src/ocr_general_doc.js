@@ -17,7 +17,7 @@ const GENERAL_DOC_STYLE = `
 
 async function main() {
     const args = process.argv.slice(2);
-    let inputPath = "";
+    const inputPaths = [];
     let batchSize = 4;
     let startPage = 1;
     let endPage = null;
@@ -28,7 +28,7 @@ async function main() {
         else if (args[i] === "--start_page") startPage = parseInt(args[++i]);
         else if (args[i] === "--end_page") endPage = parseInt(args[++i]);
         else if (args[i] === "--show_prompt") showPrompt = true;
-        else if (!inputPath) inputPath = args[i];
+        else inputPaths.push(args[i]);
     }
 
     if (showPrompt) {
@@ -38,35 +38,42 @@ async function main() {
         return;
     }
 
-    if (!inputPath) {
-        console.error("Usage: node ocr_general_doc.js <input_path> [--batch_size <n>] [--start_page <n>] [--end_page <n>]");
+    if (inputPaths.length === 0) {
+        console.log("-------------------------------------------------------");
+        console.log(" PDFファイルまたはフォルダをドロップしてください。");
+        console.log(" Usage: node ocr_general_doc.js <input_path...> [--batch_size <n>]");
+        console.log("-------------------------------------------------------");
         return;
     }
 
-    const absPath = path.resolve(inputPath);
-    if (!fs.existsSync(absPath)) {
-        console.error(`[ERROR] Path not found: ${absPath}`);
-        return;
-    }
+    for (const inputPath of inputPaths) {
+        const absPath = path.resolve(inputPath);
+        if (!fs.existsSync(absPath)) {
+            console.error(`[ERROR] Path not found: ${absPath}`);
+            continue;
+        }
 
-    if (fs.statSync(absPath).isDirectory()) {
-        const files = fs.readdirSync(absPath)
-            .filter(f => f.toLowerCase().endsWith(".pdf"))
-            .sort();
+        if (fs.statSync(absPath).isDirectory()) {
+            const files = fs.readdirSync(absPath)
+                .filter(f => f.toLowerCase().endsWith(".pdf"))
+                .sort();
+                
+            if (files.length === 0) {
+                console.warn(`[WARN] No PDF files found in directory: ${absPath}`);
+                continue;
+            }
             
-        if (files.length === 0) {
-            console.warn(`[WARN] No PDF files found in directory: ${absPath}`);
-            return;
+            console.log(`[INFO] Found ${files.length} PDF files in ${absPath}`);
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const filePath = path.join(absPath, file);
+                console.log(`\n[PROCESS] (${i + 1}/${files.length}) Starting: ${file}`);
+                await pdfToText(filePath, batchSize, startPage, endPage, GENERAL_DOC_STYLE);
+            }
+        } else {
+            console.log(`\n[PROCESS] Starting: ${path.basename(absPath)}`);
+            await pdfToText(absPath, batchSize, startPage, endPage, GENERAL_DOC_STYLE);
         }
-        
-        console.log(`[INFO] Found ${files.length} PDF files in ${absPath}`);
-        for (const file of files) {
-            const filePath = path.join(absPath, file);
-            console.log(`\n[PROCESS] Starting: ${file}`);
-            await pdfToText(filePath, batchSize, startPage, endPage, GENERAL_DOC_STYLE);
-        }
-    } else {
-        await pdfToText(absPath, batchSize, startPage, endPage, GENERAL_DOC_STYLE);
     }
 }
 

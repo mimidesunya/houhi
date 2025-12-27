@@ -78,65 +78,7 @@ async function generateMarkdownWithGemini(text, config) {
     }
 }
 
-async function main() {
-    let inputText = "";
-    let inputPath = "";
-
-    const args = process.argv.slice(2);
-
-    // 1. 入力ソースの決定
-    if (args.length > 0 && args[0].trim()) {
-        inputPath = path.resolve(args[0]);
-        
-        if (!fs.existsSync(inputPath)) {
-            console.error(`エラー: 入力ファイル ${inputPath} が見つかりません。`);
-            return;
-        }
-
-        try {
-            inputText = fs.readFileSync(inputPath, 'utf-8');
-            console.log(`テキストファイルを読み込みました: ${inputPath}`);
-        } catch (err) {
-            console.error(`ファイル読み込みエラー: ${err}`);
-            return;
-        }
-    } else {
-        // 引数がない場合、インタラクティブモード
-        console.log("-------------------------------------------------------");
-        console.log(" ファイルが指定されていません。");
-        console.log(" クリップボードモードで実行します。");
-        console.log("-------------------------------------------------------");
-        console.log("");
-        console.log(" 1. 変換したいテキストをコピーしてください。");
-        console.log(" 2. 準備ができたら Enter キーを押してください。");
-        console.log("");
-
-        const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout
-        });
-
-        await new Promise(resolve => rl.question('', resolve));
-        rl.close();
-
-        try {
-            const clipboardContent = clipboardy.readSync();
-            if (clipboardContent) {
-                inputText = clipboardContent;
-                console.log("クリップボードからテキストを取得しました。");
-            } else {
-                console.error("クリップボードが空です。");
-                return;
-            }
-        } catch (err) {
-            console.error(`クリップボード取得エラー: ${err}`);
-            return;
-        }
-    }
-
-    const config = loadConfig();
-    if (!config) return;
-
+async function processText(inputText, inputPath, config) {
     const markdownContent = await generateMarkdownWithGemini(inputText, config);
     if (!markdownContent) {
         console.error("Markdown生成に失敗しました。");
@@ -161,6 +103,62 @@ async function main() {
 
     fs.writeFileSync(outputMdPath, markdownContent, 'utf-8');
     console.log(`Markdownを保存しました: ${outputMdPath}`);
+}
+
+async function main() {
+    const args = process.argv.slice(2);
+    const config = loadConfig();
+    if (!config) return;
+
+    // 1. 入力ソースの決定
+    if (args.length > 0) {
+        for (const arg of args) {
+            const inputPath = path.resolve(arg);
+            
+            if (!fs.existsSync(inputPath)) {
+                console.error(`エラー: 入力ファイル ${inputPath} が見つかりません。`);
+                continue;
+            }
+
+            try {
+                const inputText = fs.readFileSync(inputPath, 'utf-8');
+                console.log(`\n[PROCESS] テキストファイルを読み込みました: ${inputPath}`);
+                await processText(inputText, inputPath, config);
+            } catch (err) {
+                console.error(`ファイル読み込みエラー: ${err}`);
+            }
+        }
+    } else {
+        // 引数がない場合、インタラクティブモード
+        console.log("-------------------------------------------------------");
+        console.log(" ファイルが指定されていません。");
+        console.log(" クリップボードモードで実行します。");
+        console.log("-------------------------------------------------------");
+        console.log("");
+        console.log(" 1. 変換したいテキストをコピーしてください。");
+        console.log(" 2. 準備ができたら Enter キーを押してください。");
+        console.log("");
+
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+
+        await new Promise(resolve => rl.question('', resolve));
+        rl.close();
+
+        try {
+            const clipboardContent = clipboardy.readSync();
+            if (clipboardContent) {
+                console.log("クリップボードからテキストを取得しました。");
+                await processText(clipboardContent, "", config);
+            } else {
+                console.error("クリップボードが空です。");
+            }
+        } catch (err) {
+            console.error(`クリップボード取得エラー: ${err}`);
+        }
+    }
 }
 
 main();

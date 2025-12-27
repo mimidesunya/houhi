@@ -5,6 +5,14 @@ const GeminiBatchProcessor = require('./gemini_batch');
 
 const MODEL_ID = "gemini-3-flash-preview"; 
 
+function formatTime(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return [h, m, s].map(v => v.toString().padStart(2, '0')).join(':');
+}
+
 function getOcrPrompt(numPages, contextInstruction = "") {
     return `
 # ROLE
@@ -58,32 +66,44 @@ function createOcrRequest(pdfBytes, numPages, contextInstruction = "") {
     };
 }
 
-async function runBatches(requests, batchProcessor) {
+async function runBatches(requests, batchProcessor, progressState) {
     let currentBatchRequests = [];
     let currentBatchSize = 0;
     const MAX_BATCH_SIZE = 19 * 1024 * 1024; // 19MB
     const allResults = [];
 
+    const processBatch = async () => {
+        if (currentBatchRequests.length === 0) return;
+        
+        const batchCount = currentBatchRequests.length;
+        console.log(`[Batch] Sending batch job with ${batchCount} requests...`);
+        
+        const results = await batchProcessor.runInlineBatch(currentBatchRequests, MODEL_ID, progressState);
+        allResults.push(...results);
+        
+        progressState.completed += batchCount;
+        const elapsed = Date.now() - progressState.startTime;
+        const avgTimePerRequest = elapsed / progressState.completed;
+        const remainingRequests = progressState.total - progressState.completed;
+        const estimatedRemaining = avgTimePerRequest * remainingRequests;
+
+        console.log(`[Batch] Completed: ${progressState.completed}/${progressState.total} requests`);
+        console.log(`[Batch] Elapsed: ${formatTime(elapsed)} | Remaining: ${formatTime(estimatedRemaining)} (est.)`);
+        
+        currentBatchRequests = [];
+        currentBatchSize = 0;
+    };
+
     for (const req of requests) {
         const reqSize = JSON.stringify(req).length;
         if (currentBatchSize + reqSize > MAX_BATCH_SIZE) {
-            if (currentBatchRequests.length > 0) {
-                console.log(`[INFO] Sending batch job with ${currentBatchRequests.length} requests...`);
-                const results = await batchProcessor.runInlineBatch(currentBatchRequests, MODEL_ID);
-                allResults.push(...results);
-                currentBatchRequests = [];
-                currentBatchSize = 0;
-            }
+            await processBatch();
         }
         currentBatchRequests.push(req);
         currentBatchSize += reqSize;
     }
 
-    if (currentBatchRequests.length > 0) {
-        console.log(`[INFO] Sending final batch job with ${currentBatchRequests.length} requests...`);
-        const results = await batchProcessor.runInlineBatch(currentBatchRequests, MODEL_ID);
-        allResults.push(...results);
-    }
+    await processBatch();
     
     return allResults;
 }
@@ -127,6 +147,12 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
     let retryCount = 0;
     const MAX_RETRIES = 3;
 
+    const progressState = {
+        completed: 0,
+        total: requests.length,
+        startTime: Date.now()
+    };
+
     while (pendingIndices.length > 0) {
         if (retryCount >= MAX_RETRIES) {
             console.error(`[ERROR] Max retries reached. ${pendingIndices.length} batches failed.`);
@@ -138,7 +164,7 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
         }
 
         const currentRequests = pendingIndices.map(i => requests[i]);
-        const batchResults = await runBatches(currentRequests, batchProcessor);
+        const batchResults = await runBatches(currentRequests, batchProcessor, progressState);
 
         const nextPendingIndices = [];
 
@@ -187,10 +213,10 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
             text = `\n\n[ERROR: OCR Failed for pages ${meta.startPage}-${meta.startPage + meta.numPages - 1} after retries]\n\n`;
         } else {
              // Fix page numbers (Relative -> Absolute)
-             text = text.replace(/=-- Begin Page (\d+)/g, (match, p1) => {
+             text = text.replace(/### -- Begin Page (\d+)/g, (match, p1) => {
                  const relativePage = parseInt(p1, 10);
                  const absolutePage = meta.startPage + relativePage - 1;
-                 return `=-- Begin Page ${absolutePage}`;
+                 return `### -- Begin Page ${absolutePage}`;
              });
         }
         allMarkdown += text + "\n\n";

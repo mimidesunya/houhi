@@ -70,32 +70,41 @@ function mergeOcrPages(filePath) {
 function main() {
     const args = process.argv.slice(2);
     if (args.length === 0) {
-        console.error("Usage: node ocr_merge_pages.js <input_path>");
+        console.log("-------------------------------------------------------");
+        console.log(" Markdownファイル（_paged.md）またはフォルダをドロップしてください。");
+        console.log(" Usage: node ocr_merge_pages.js <input_path...>");
+        console.log("-------------------------------------------------------");
         return;
     }
 
-    const inputPath = path.resolve(args[0]);
-    
-    if (fs.statSync(inputPath).isDirectory()) {
-        let mdFiles = fs.readdirSync(inputPath)
-            .filter(f => f.endsWith("_paged.md"))
-            .map(f => path.join(inputPath, f));
-            
-        if (mdFiles.length === 0) {
-            mdFiles = fs.readdirSync(inputPath)
-                .filter(f => f.endsWith(".md"))
+    for (const arg of args) {
+        const inputPath = path.resolve(arg);
+        if (!fs.existsSync(inputPath)) {
+            console.error(`[ERROR] Path not found: ${inputPath}`);
+            continue;
+        }
+        
+        if (fs.statSync(inputPath).isDirectory()) {
+            let mdFiles = fs.readdirSync(inputPath)
+                .filter(f => f.endsWith("_paged.md"))
                 .map(f => path.join(inputPath, f));
-        }
-            
-        console.log(`[INFO] Found ${mdFiles.length} Markdown files in ${inputPath}`);
-        for (const mdFile of mdFiles) {
-            if (mdFile.endsWith("_merged.md")) {
-                continue;
+                
+            if (mdFiles.length === 0) {
+                mdFiles = fs.readdirSync(inputPath)
+                    .filter(f => f.endsWith(".md"))
+                    .map(f => path.join(inputPath, f));
             }
-            mergeOcrPages(mdFile);
+                
+            console.log(`[INFO] Found ${mdFiles.length} Markdown files in ${inputPath}`);
+            for (const mdFile of mdFiles) {
+                if (mdFile.endsWith("_merged.md")) {
+                    continue;
+                }
+                mergeOcrPages(mdFile);
+            }
+        } else {
+            mergeOcrPages(inputPath);
         }
-    } else {
-        mergeOcrPages(inputPath);
     }
 }
 

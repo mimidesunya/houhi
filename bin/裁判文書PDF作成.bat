@@ -2,7 +2,10 @@
 cd /d "%~dp0"
 cd ..
 
-set "TARGET_FILE=%~1"
+node src\convert_to_pdf.js %*
 
-node src\convert_to_pdf.js "%TARGET_FILE%"
+if %errorlevel% neq 0 pause
+echo.
+echo すべての処理が完了しました。
+pause
 

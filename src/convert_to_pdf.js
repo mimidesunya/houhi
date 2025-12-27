@@ -43,77 +43,7 @@ ${markdownContent}
 </html>`;
 }
 
-async function main() {
-    let inputText = "";
-    let isHtmlInput = false;
-    let isMarkdownInput = false;
-    let inputPath = "";
-
-    const args = process.argv.slice(2);
-
-    // 1. 入力ソースの決定
-    if (args.length > 0 && args[0].trim()) {
-        inputPath = path.resolve(args[0]);
-        
-        if (!fs.existsSync(inputPath)) {
-            console.error(`エラー: 入力ファイル ${inputPath} が見つかりません。`);
-            return;
-        }
-
-        if (fs.statSync(inputPath).isDirectory()) {
-            console.error(`エラー: ディレクトリが指定されています。ファイルを指定してください: ${inputPath}`);
-            return;
-        }
-        
-        const ext = path.extname(inputPath).toLowerCase();
-        if (ext === '.html') {
-            isHtmlInput = true;
-            console.log(`HTMLファイルを検出: ${inputPath}`);
-        } else if (ext === '.md') {
-            isMarkdownInput = true;
-            inputText = fs.readFileSync(inputPath, 'utf-8');
-            console.log(`Markdownファイルを検出: ${inputPath}`);
-        } else {
-            console.error("エラー: .html または .md ファイルを指定してください。");
-            return;
-        }
-    } else {
-        // 引数がない場合、クリップボードからHTMLまたはMarkdownを試行
-        console.log("-------------------------------------------------------");
-        console.log(" ファイルが指定されていません。");
-        console.log(" クリップボードからHTMLまたはMarkdownを取得します。");
-        console.log("-------------------------------------------------------");
-        
-        try {
-            const clipboardContent = clipboardy.readSync();
-            if (clipboardContent) {
-                const trimmed = clipboardContent.trim().toLowerCase();
-                if (trimmed.startsWith("<!doctype html") || trimmed.includes("<html")) {
-                    console.log("クリップボードからHTMLを検出しました。");
-                    if (!fs.existsSync(DEFAULT_OUTPUT_DIR)) {
-                        fs.mkdirSync(DEFAULT_OUTPUT_DIR, { recursive: true });
-                    }
-                    const tempHtmlPath = path.join(DEFAULT_OUTPUT_DIR, "temp_clipboard_input.html");
-                    fs.writeFileSync(tempHtmlPath, clipboardContent, 'utf-8');
-                    inputPath = tempHtmlPath;
-                    isHtmlInput = true;
-                } else {
-                    console.log("クリップボードの内容をMarkdownとして処理します。");
-                    inputText = clipboardContent;
-                    isMarkdownInput = true;
-                }
-            } else {
-                inputPath = path.join(DEFAULT_TEMPLATE_DIR, DEFAULT_MAIN_HTML);
-                isHtmlInput = true;
-                console.log("クリップボードが空です。デフォルトテンプレートを使用します。");
-            }
-        } catch (err) {
-            console.error(`クリップボード取得エラー: ${err}`);
-            inputPath = path.join(DEFAULT_TEMPLATE_DIR, DEFAULT_MAIN_HTML);
-            isHtmlInput = true;
-        }
-    }
-
+async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput) {
     // 出力ディレクトリの準備
     if (!fs.existsSync(DEFAULT_OUTPUT_DIR)) {
         fs.mkdirSync(DEFAULT_OUTPUT_DIR, { recursive: true });
@@ -130,7 +60,7 @@ async function main() {
             if (htmlContent.includes('<pre')) {
                 const newContent = renderPreTags(htmlContent);
                 if (newContent !== htmlContent) {
-                    const tempRenderedPath = path.join(DEFAULT_OUTPUT_DIR, "temp_rendered.html");
+                    const tempRenderedPath = path.join(DEFAULT_OUTPUT_DIR, `temp_rendered_${Date.now()}.html`);
                     fs.writeFileSync(tempRenderedPath, newContent, 'utf-8');
                     inputPath = tempRenderedPath;
                     filesToDelete.push(tempRenderedPath);
@@ -185,12 +115,74 @@ async function main() {
 
     // PDFを開く
     if (fs.existsSync(outputPdfPath)) {
-        console.log(`PDFを開きます: ${outputPdfPath}`);
+        console.log(`PDFを作成しました: ${outputPdfPath}`);
         const platform = process.platform;
         let command = platform === 'win32' ? `start "" "${outputPdfPath}"` : (platform === 'darwin' ? `open "${outputPdfPath}"` : `xdg-open "${outputPdfPath}"`);
         exec(command, (err) => {
             if (err) console.error(`PDFを開けませんでした: ${err}`);
         });
+    }
+}
+
+async function main() {
+    const args = process.argv.slice(2);
+
+    if (args.length > 0) {
+        for (const arg of args) {
+            const inputPath = path.resolve(arg);
+            if (!fs.existsSync(inputPath)) {
+                console.error(`エラー: 入力ファイル ${inputPath} が見つかりません。`);
+                continue;
+            }
+
+            if (fs.statSync(inputPath).isDirectory()) {
+                console.error(`エラー: ディレクトリが指定されています。ファイルを指定してください: ${inputPath}`);
+                continue;
+            }
+            
+            const ext = path.extname(inputPath).toLowerCase();
+            if (ext === '.html') {
+                await processFile(inputPath, "", true, false);
+            } else if (ext === '.md') {
+                const inputText = fs.readFileSync(inputPath, 'utf-8');
+                await processFile(inputPath, inputText, false, true);
+            } else {
+                console.error(`エラー: .html または .md ファイルを指定してください: ${inputPath}`);
+            }
+        }
+    } else {
+        // 引数がない場合、クリップボードからHTMLまたはMarkdownを試行
+        console.log("-------------------------------------------------------");
+        console.log(" ファイルが指定されていません。");
+        console.log(" クリップボードからHTMLまたはMarkdownを取得します。");
+        console.log("-------------------------------------------------------");
+        
+        try {
+            const clipboardContent = clipboardy.readSync();
+            if (clipboardContent) {
+                const trimmed = clipboardContent.trim().toLowerCase();
+                if (trimmed.startsWith("<!doctype html") || trimmed.includes("<html")) {
+                    console.log("クリップボードからHTMLを検出しました。");
+                    if (!fs.existsSync(DEFAULT_OUTPUT_DIR)) {
+                        fs.mkdirSync(DEFAULT_OUTPUT_DIR, { recursive: true });
+                    }
+                    const tempHtmlPath = path.join(DEFAULT_OUTPUT_DIR, "temp_clipboard_input.html");
+                    fs.writeFileSync(tempHtmlPath, clipboardContent, 'utf-8');
+                    await processFile(tempHtmlPath, "", true, false);
+                } else {
+                    console.log("クリップボードの内容をMarkdownとして処理します。");
+                    await processFile("", clipboardContent, false, true);
+                }
+            } else {
+                const defaultHtmlPath = path.join(DEFAULT_TEMPLATE_DIR, DEFAULT_MAIN_HTML);
+                await processFile(defaultHtmlPath, "", true, false);
+                console.log("クリップボードが空です。デフォルトテンプレートを使用します。");
+            }
+        } catch (err) {
+            console.error(`クリップボード取得エラー: ${err}`);
+            const defaultHtmlPath = path.join(DEFAULT_TEMPLATE_DIR, DEFAULT_MAIN_HTML);
+            await processFile(defaultHtmlPath, "", true, false);
+        }
     }
 }
 
