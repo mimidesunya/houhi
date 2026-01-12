@@ -108,52 +108,13 @@ function createOcrRequest(pdfBytes, numPages, contextInstruction = "") {
     }, contextInstruction, false);
 }
 
-async function runBatches(requests, metadata, batchProcessor, progressState) {
-    let currentBatchRequests = [];
-    let currentBatchMetadata = [];
-    let currentBatchSize = 0;
-    const MAX_BATCH_SIZE = 19 * 1024 * 1024; // 19MB
-    const allResults = [];
-
-    const processBatch = async () => {
-        if (currentBatchRequests.length === 0) return;
-        
-        const batchCount = currentBatchRequests.length;
-        const pagesInBatch = currentBatchMetadata.map(m => m.pages.join(',')).join(' | ');
-        console.log(`[バッチ] ${batchCount} 件のリクエストを送信中 (ページ: ${pagesInBatch})...`);
-        
-        const results = await batchProcessor.runInlineBatch(currentBatchRequests, MODEL_ID, progressState);
-        allResults.push(...results);
-        
-        progressState.completed += batchCount;
-        const elapsed = Date.now() - progressState.startTime;
-        const avgTimePerRequest = elapsed / progressState.completed;
-        const remainingRequests = progressState.total - progressState.completed;
-        const estimatedRemaining = avgTimePerRequest * remainingRequests;
-
-        console.log(`[バッチ] 完了: ${progressState.completed}/${progressState.total} リクエスト`);
-        console.log(`[バッチ] 経過時間: ${formatTime(elapsed)} | 残り時間（予想）: ${formatTime(estimatedRemaining)}`);
-        
-        currentBatchRequests = [];
-        currentBatchMetadata = [];
-        currentBatchSize = 0;
-    };
-
-    for (let i = 0; i < requests.length; i++) {
-        const req = requests[i];
-        const meta = metadata[i];
-        const reqSize = JSON.stringify(req).length;
-        if (currentBatchSize + reqSize > MAX_BATCH_SIZE) {
-            await processBatch();
-        }
-        currentBatchRequests.push(req);
-        currentBatchMetadata.push(meta);
-        currentBatchSize += reqSize;
-    }
-
-    await processBatch();
+async function runBatches(requests, metadata, batchProcessor, progressState, persistenceFile) {
+    // File API allows efficient processing of all requests in one job.
+    // Chunking logic (19MB limit) is not needed for file-based batch.
     
-    return allResults;
+    console.log(`[バッチ] ${requests.length} 件のリクエストを送信中...`);
+    const results = await batchProcessor.runFileBatch(requests, MODEL_ID, progressState, "ocr-batch-job", persistenceFile);
+    return results;
 }
 
 function extractPagesFromMarkdown(content) {
@@ -250,7 +211,10 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
 
         const currentRequests = pendingIndices.map(i => requests[i]);
         const currentMetadata = pendingIndices.map(i => batchMetadata[i]);
-        const batchResults = await runBatches(currentRequests, currentMetadata, batchProcessor, progressState);
+        
+        // Resilience: Use a persistence file for the batch state
+        const persistenceFile = `${pdfPath}.batch_state.txt`;
+        const batchResults = await runBatches(currentRequests, currentMetadata, batchProcessor, progressState, persistenceFile);
 
         const nextPendingIndices = [];
 
@@ -371,7 +335,8 @@ async function docxToText(docxPath, contextInstruction = "") {
             true
         );
 
-        const results = await batchProcessor.runInlineBatch([request], MODEL_ID, progressState);
+        const persistenceFile = `${docxPath}.batch_state.txt`;
+        const results = await batchProcessor.runFileBatch([request], MODEL_ID, progressState, "word-batch-job", persistenceFile);
         const result = results[0];
 
         if (!result.error && result.response?.candidates?.[0]?.content?.parts) {
