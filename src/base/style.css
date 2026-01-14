@@ -41,7 +41,6 @@ p {
     margin: 0;
     text-indent: 1em;
     text-align: justify;
-    text-justify: inter-ideograph;
 }
 
 /* =========================================
@@ -82,10 +81,8 @@ table.info {
 
 table.info td {
     text-align: justify;
-    text-justify: inter-ideograph;
     text-align-last: justify;
-    -moz-text-align-last: justify;
-    min-width: 8em;
+    min-width: 4em;
 }
 
 table.info td:first-child {
@@ -96,7 +93,6 @@ table.info td:first-child {
 table.info td.val {
     text-align: right;
     text-align-last: right;
-    -moz-text-align-last: right;
 }
 
 /* =========================================
@@ -260,7 +256,52 @@ table.att td:first-child:before {
 }
 
 /* =========================================
-   その他
+   証拠説明書テーブル (Evidence Table)
    ========================================= */
-.break { page-break-before: always; }
-.end-mark { text-align: right; margin-top: 19.4pt; }
+table.evidence {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 19.4pt;
+}
+
+table.evidence th,
+table.evidence td {
+    border: 0.5pt solid #000;
+    padding: 2pt 4pt;
+    vertical-align: top;
+    text-align: left;
+}
+
+table.evidence th {
+    font-weight: normal;
+    text-align: center;
+}
+
+/* 列幅の設定 */
+.evidence .col-1 {
+    width: 3em; /* 号証 */
+}
+
+.evidence .col-2 {
+    width: auto; /* 標目 */
+}
+
+.evidence .col-3 {
+    width: 2em; /* 原本／写 - 2文字固定 */
+    text-align: center;
+}
+
+.evidence .col-4 {
+    width: 5em; /* 作成年月日 */
+    white-space: nowrap; /* ラップ禁止 */
+}
+
+.evidence .col-5 {
+    width: 3em; /* 作成者 */
+}
+
+.evidence .col-6 {
+    width: auto; /* 立証趣旨 */
+}
+
+/* =========================================

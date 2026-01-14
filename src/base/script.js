@@ -33,6 +33,8 @@ function convertMarkdownToCourtHtml(markdown) {
     let inRightBlock = false;
     let inLeftBlock = false;
     let lastHeader = '';
+    let inEvidenceTable = false;
+    let evidenceTableBuffer = [];
 
     // インデント用のヘルパー
     const indent = (level) => '    '.repeat(level);
@@ -41,6 +43,7 @@ function convertMarkdownToCourtHtml(markdown) {
     // --- 事前スキャン: table.info のグローバルな列幅を計算 ---
     const globalColWidths = [];
     let scanHeader = '';
+    let inScanEvidenceTable = false;
     for (let line of lines) {
         const trimmed = line.trim();
         if (trimmed.startsWith('#')) {
@@ -49,7 +52,16 @@ function convertMarkdownToCourtHtml(markdown) {
         const tableMatch = trimmed.match(/^\|(.*)\|$/);
         const listTableMatch = trimmed.match(/^- (.*?)[：:](.*)$/);
         if (tableMatch || listTableMatch) {
-            if (scanHeader !== '附属書類') {
+            // 証拠説明書テーブルの開始を検出
+            if (tableMatch && tableMatch[1].includes('号証') && tableMatch[1].includes('標目')) {
+                inScanEvidenceTable = true;
+            }
+            // 附属書類テーブルと証拠説明書テーブルは除外
+            if (scanHeader !== '附属書類' && !inScanEvidenceTable) {
+                // セパレーター行（|:---|:---|...）は除外
+                if (tableMatch && /^[\s|:-]+$/.test(tableMatch[1])) {
+                    continue;
+                }
                 let cells;
                 if (tableMatch) {
                     cells = tableMatch[1].split('|');
@@ -61,12 +73,15 @@ function convertMarkdownToCourtHtml(markdown) {
                     if (!globalColWidths[i] || w > globalColWidths[i]) globalColWidths[i] = w;
                 });
             }
+        } else if (inScanEvidenceTable) {
+            // テーブル行以外が来たら証拠説明書テーブル終了
+            inScanEvidenceTable = false;
         }
     }
     // table.info の合計幅（署名欄の幅に使用）
-    // 各列の最小幅を 8em とし、第1列の padding-right: 1.5em を考慮する
-    const col0Width = Math.max(globalColWidths[0] || 0, 8);
-    const col1Width = Math.max(globalColWidths[1] || 0, 8);
+    // 各列の最小幅を 4em とし、第1列の padding-right: 1.5em を考慮する
+    const col0Width = Math.max(globalColWidths[0] || 0, 4);
+    const col1Width = Math.max(globalColWidths[1] || 0, 4);
     const totalInfoWidth = (col0Width + 1.5) + col1Width;
 
     // テーブルをフラッシュしてHTMLを生成する内部関数
@@ -80,17 +95,131 @@ function convertMarkdownToCourtHtml(markdown) {
             row.forEach((cell, i) => {
                 const text = cell.trim();
                 const isAmount = i > 0 && /^[0-9０-９,，．.]+円?$/.test(text);
-                const className = isAmount ? ' class="val"' : '';
-                let style = '';
-                if (tableClass === 'info' && globalColWidths[i]) {
-                    style = ` style="width: ${globalColWidths[i]}em"`;
-                }
-                tableHtml += indent(lastLevel + 2) + `<td${className}${style}>${text}</td>` + nl;
+                const classes = [];
+                if (tableClass === 'info') classes.push(`col-${i + 1}`);
+                if (isAmount) classes.push('val');
+                const classAttr = classes.length > 0 ? ` class="${classes.join(' ')}"` : '';
+                tableHtml += indent(lastLevel + 2) + `<td${classAttr}>${text}</td>` + nl;
             });
             tableHtml += indent(lastLevel + 1) + '</tr>' + nl;
         });
         tableHtml += indent(lastLevel) + '</table>' + nl;
         tableBuffer = [];
+        return tableHtml;
+    };
+
+    // 証拠説明書テーブルをフラッシュしてHTMLを生成する内部関数
+    const flushEvidenceTable = () => {
+        if (evidenceTableBuffer.length === 0) return '';
+        let tableHtml = '';
+        
+        // ヘッダー行とセパレーター行をスキップ
+        const headerRow = evidenceTableBuffer[0];
+        const dataRows = evidenceTableBuffer.slice(2); // ヘッダーとセパレーターをスキップ
+        
+        tableHtml += indent(lastLevel) + '<table class="evidence">' + nl;
+        
+        // ヘッダー行を生成
+        tableHtml += indent(lastLevel + 1) + '<thead>' + nl;
+        tableHtml += indent(lastLevel + 2) + '<tr>' + nl;
+        headerRow.forEach((cell, i) => {
+            const text = cell.trim();
+            tableHtml += indent(lastLevel + 3) + `<th class="col-${i + 1}">${text}</th>` + nl;
+        });
+        tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
+        tableHtml += indent(lastLevel + 1) + '</thead>' + nl;
+        
+        // データ行を生成
+        tableHtml += indent(lastLevel + 1) + '<tbody>' + nl;
+        
+        // 各列で結合が必要な行を追跡
+        const rowspanMap = new Map(); // key: colIndex, value: { rowIndex, span, text }
+        
+        dataRows.forEach((row, rowIndex) => {
+            tableHtml += indent(lastLevel + 2) + '<tr>' + nl;
+            
+            row.forEach((cell, colIndex) => {
+                const text = cell.trim();
+                
+                // この列が既に結合中かチェック
+                if (rowspanMap.has(colIndex)) {
+                    const info = rowspanMap.get(colIndex);
+                    if (rowIndex < info.rowIndex + info.span) {
+                        // まだ結合中なのでセルをスキップ
+                        return;
+                    }
+                }
+                
+                // 空のセルの場合、上のセルと結合
+                if (text === '') {
+                    // 上方向に遡って最初の非空セルを探す
+                    let spanCount = 1;
+                    let lookupRow = rowIndex - 1;
+                    let mergedText = '';
+                    
+                    while (lookupRow >= 0) {
+                        const prevText = dataRows[lookupRow][colIndex].trim();
+                        if (prevText !== '') {
+                            mergedText = prevText;
+                            // 既存のrowspanを更新
+                            if (rowspanMap.has(colIndex)) {
+                                const existingInfo = rowspanMap.get(colIndex);
+                                if (lookupRow >= existingInfo.rowIndex && lookupRow < existingInfo.rowIndex + existingInfo.span) {
+                                    // 既存の結合を拡張
+                                    existingInfo.span++;
+                                    return;
+                                }
+                            }
+                            
+                            // 新しいrowspanの開始位置まで遡る
+                            let startRow = lookupRow;
+                            while (startRow > 0 && dataRows[startRow - 1][colIndex].trim() === '') {
+                                startRow--;
+                                spanCount++;
+                            }
+                            
+                            // この空セルまでのスパンをカウント
+                            spanCount = rowIndex - startRow + 1;
+                            
+                            // 既存のマッピングを更新
+                            if (rowspanMap.has(colIndex)) {
+                                const info = rowspanMap.get(colIndex);
+                                if (info.rowIndex === startRow) {
+                                    info.span = spanCount + 1;
+                                }
+                            }
+                            break;
+                        }
+                        lookupRow--;
+                        spanCount++;
+                    }
+                    return; // 空のセルは出力しない
+                }
+                
+                // 下方向に空のセルがいくつ続くかカウント
+                let rowspan = 1;
+                for (let nextRow = rowIndex + 1; nextRow < dataRows.length; nextRow++) {
+                    if (dataRows[nextRow][colIndex].trim() === '') {
+                        rowspan++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if (rowspan > 1) {
+                    rowspanMap.set(colIndex, { rowIndex, span: rowspan, text });
+                }
+                
+                const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
+                tableHtml += indent(lastLevel + 3) + `<td class="col-${colIndex + 1}"${rowspanAttr}>${text}</td>` + nl;
+            });
+            
+            tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
+        });
+        
+        tableHtml += indent(lastLevel + 1) + '</tbody>' + nl;
+        tableHtml += indent(lastLevel) + '</table>' + nl;
+        evidenceTableBuffer = [];
         return tableHtml;
     };
 
@@ -158,7 +287,31 @@ function convertMarkdownToCourtHtml(markdown) {
         const listTableMatch = trimmedLine.match(/^- (.*?)[：:](.*)$/);
 
         if (tableMatch || listTableMatch) {
-            if (!inTable) {
+            // セパレーター行（|:---|:---|...）をチェック
+            const isSeparator = tableMatch && /^[\s|:-]+$/.test(tableMatch[1]);
+            
+            // ヘッダー行（「号証」「標目」などを含む）をチェック
+            const isEvidenceHeader = tableMatch && tableMatch[1].includes('号証') && 
+                                      tableMatch[1].includes('標目');
+            
+            if (isEvidenceHeader || (inEvidenceTable && tableMatch)) {
+                // 証拠説明書テーブル
+                if (!inEvidenceTable) {
+                    while (lastLevel > 0) {
+                        html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                        lastLevel--;
+                    }
+                    inEvidenceTable = true;
+                }
+                
+                if (tableMatch) {
+                    const cells = tableMatch[1].split('|');
+                    evidenceTableBuffer.push(cells);
+                }
+                
+                continue;
+            } else if (!inTable) {
+                // 通常のテーブル（info/att）
                 while (lastLevel > 0) {
                     html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                     lastLevel--;
@@ -179,6 +332,9 @@ function convertMarkdownToCourtHtml(markdown) {
         } else if (inTable) {
             html += flushTable();
             inTable = false;
+        } else if (inEvidenceTable) {
+            html += flushEvidenceTable();
+            inEvidenceTable = false;
         }
 
         // 改ページマーカーの処理: ### -- 任意のテキスト --
@@ -273,12 +429,27 @@ function convertMarkdownToCourtHtml(markdown) {
     if (inTable) {
         html += flushTable();
     }
+    if (inEvidenceTable) {
+        html += flushEvidenceTable();
+    }
     while (lastLevel > 0) {
         html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
         lastLevel--;
     }
 
-    return html;
+    // table.info の列幅スタイルを生成
+    let styleTag = '';
+    if (globalColWidths.length > 0) {
+        styleTag = '<style>' + nl;
+        globalColWidths.forEach((w, i) => {
+            if (w) {
+                styleTag += `table.info td.col-${i + 1} { width: ${w}em; }` + nl;
+            }
+        });
+        styleTag += '</style>' + nl;
+    }
+
+    return styleTag + html;
 }
 
 /**
