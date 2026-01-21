@@ -117,7 +117,7 @@ async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput) {
     if (fs.existsSync(outputPdfPath)) {
         console.log(`PDFを作成しました: ${outputPdfPath}`);
         const platform = process.platform;
-        let command = platform === 'win32' ? `start "" "${outputPdfPath}"` : (platform === 'darwin' ? `open "${outputPdfPath}"` : `xdg-open "${outputPdfPath}"`);
+        let command = platform === 'win32' ? `start msedge "${outputPdfPath}"` : (platform === 'darwin' ? `open "${outputPdfPath}"` : `xdg-open "${outputPdfPath}"`);
         exec(command, (err) => {
             if (err) console.error(`PDFを開けませんでした: ${err}`);
         });

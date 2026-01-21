@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>法匪</title>
+    <style>
+        :root {
+            --bg-color: rgba(20, 25, 30, 0.85);
+            --card-color: rgba(40, 45, 55, 0.6);
+            --accent-color: #64b5f6;
+            --text-color: #e0e0e0;
+            --secondary-text-color: #a0a0a0;
+            --success-color: #81c784;
+            --error-color: #e57373;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: transparent;
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .app-container {
+            flex: 1;
+            background: var(--bg-color);
+            backdrop-filter: blur(12px);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            margin: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .header {
+            padding: 15px 20px;
+            -webkit-app-region: drag;
+            text-align: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+            font-weight: 300;
+            color: var(--accent-color);
+            letter-spacing: 2px;
+        }
+
+        /* Tool Selection Grid */
+        .tools-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 8px;
+            padding: 0 20px;
+            margin-bottom: 15px;
+        }
+
+
+
+        .tool-card {
+            background: var(--card-color);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            display: flex;
+            flex-direction: row;
+            /* Horizontal layout */
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            height: 45px;
+            /* Compact height */
+        }
+
+        .tool-card:hover {
+            background: rgba(100, 181, 246, 0.1);
+            border-color: var(--accent-color);
+            transform: translateY(-2px);
+        }
+
+        .tool-card.active {
+            background: rgba(100, 181, 246, 0.2);
+            border-color: var(--accent-color);
+            box-shadow: 0 0 15px rgba(100, 181, 246, 0.2);
+        }
+
+        .tool-icon {
+            font-size: 1.2rem;
+            margin-bottom: 0;
+            font-size: 1.2rem;
+            margin-bottom: 0;
+            color: var(--accent-color);
+        }
+
+        .tool-name {
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        /* Drop Zone */
+        .drop-zone {
+            flex: 1;
+            margin: 0 20px 20px;
+            border: 2px dashed rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: all 0.3s ease;
+            background: rgba(0, 0, 0, 0.2);
+            min-height: 80px;
+            /* Small fixed height */
+            flex: 0 0 80px;
+            /* Fixed, no grow */
+        }
+
+        .drop-zone.drag-over {
+            border-color: var(--accent-color);
+            background: rgba(100, 181, 246, 0.05);
+            transform: scale(0.99);
+        }
+
+        .drop-message {
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .drop-icon {
+            font-size: 2rem;
+            /* Smaller icon */
+            color: var(--secondary-text-color);
+            margin-bottom: 5px;
+            transition: color 0.3s ease;
+        }
+
+        .drop-text {
+            color: var(--secondary-text-color);
+            font-size: 1rem;
+        }
+
+        .drop-subtext {
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 0.8rem;
+            margin-top: 8px;
+        }
+
+        /* Console Output */
+        /* Console Output */
+        .console-container {
+            flex: 1;
+            /* Take all remaining space */
+            background: #111;
+            margin: 0 20px 40px 20px;
+            /* Extra bottom margin */
+            border-radius: 6px;
+            padding: 10px;
+            font-family: 'Consolas', monospace;
+            font-size: 0.85rem;
+            overflow-y: auto;
+            color: #ccc;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .log-line {
+            margin: 2px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            padding-bottom: 1px;
+        }
+
+        .log-error {
+            color: var(--error-color);
+        }
+
+        .log-success {
+            color: var(--success-color);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* Status Indicator */
+        .status-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: transparent;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: var(--accent-color);
+            width: 0%;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px var(--accent-color);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <div class="header">
+            <!-- <h1>Sousei</h1> -->
+            <!-- Only Drag Region -->
+        </div>
+
+        <div class="tools-grid">
+            <div class="tool-card active" data-script="pdf">
+                <div class="tool-icon">📄</div>
+                <div class="tool-name">PDF作成</div>
+            </div>
+            <div class="tool-card" data-script="ocr_general">
+                <div class="tool-icon">🔍</div>
+                <div class="tool-name">一般OCR</div>
+            </div>
+            <div class="tool-card" data-script="ocr_court">
+                <div class="tool-icon">⚖️</div>
+                <div class="tool-name">裁判OCR</div>
+            </div>
+            <div class="tool-card" data-script="ocr_merge">
+                <div class="tool-icon">📑</div>
+                <div class="tool-name">ページ結合</div>
+            </div>
+            <div class="tool-card" data-script="renumber">
+                <div class="tool-icon">🔢</div>
+                <div class="tool-name">番号振直</div>
+            </div>
+            <div class="tool-card" data-script="ai_draft">
+                <div class="tool-icon">🤖</div>
+                <div class="tool-name">AI起案</div>
+            </div>
+            <div class="tool-card" data-script="ai_archive">
+                <div class="tool-icon">📦</div>
+                <div class="tool-name">AIアーカイブ</div>
+            </div>
+            <div class="tool-card" data-script="preview">
+                <div class="tool-icon">👁️</div>
+                <div class="tool-name">プレビュー</div>
+            </div>
+        </div>
+
+        <div class="drop-zone" id="dropZone">
+            <div class="drop-message">
+                <div class="drop-icon">📂</div>
+                <div class="drop-text">ここにファイルをドロップ</div>
+                <div class="drop-subtext">または クリックして選択</div>
+            </div>
+        </div>
+
+        <div class="console-container" id="consoleOutput">
+            <div class="log-line">システム準備完了。ツールを選択してファイルをドロップしてください。</div>
+        </div>
+
+        <div class="status-bar">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+
+</html>

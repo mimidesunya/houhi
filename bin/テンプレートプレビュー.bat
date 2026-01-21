@@ -1,8 +1,0 @@
-@echo off
-cd /d "%~dp0"
-cd ..
-
-echo テンプレートプレビューを実行します...
-
-node src/preview_template.js
-pause
