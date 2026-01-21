@@ -35,6 +35,7 @@ function convertMarkdownToCourtHtml(markdown) {
     let lastHeader = '';
     let inEvidenceTable = false;
     let evidenceTableBuffer = [];
+    let inSimpleList = false;
 
     // インデント用のヘルパー
     const indent = (level) => '    '.repeat(level);
@@ -44,10 +45,14 @@ function convertMarkdownToCourtHtml(markdown) {
     const globalColWidths = [];
     let scanHeader = '';
     let inScanEvidenceTable = false;
+    let isSoufusho = false;
     for (let line of lines) {
         const trimmed = line.trim();
         if (trimmed.startsWith('#')) {
             scanHeader = trimmed.replace(/^#*\s*/, '').trim();
+            if (scanHeader === '送付書') {
+                isSoufusho = true;
+            }
         }
         const tableMatch = trimmed.match(/^\|(.*)\|$/);
         const listTableMatch = trimmed.match(/^- (.*?)[：:](.*)$/);
@@ -78,11 +83,6 @@ function convertMarkdownToCourtHtml(markdown) {
             inScanEvidenceTable = false;
         }
     }
-    // table.info の合計幅（署名欄の幅に使用）
-    // 各列の最小幅を 4em とし、第1列の padding-right: 1.5em を考慮する
-    const col0Width = Math.max(globalColWidths[0] || 0, 4);
-    const col1Width = Math.max(globalColWidths[1] || 0, 4);
-    const totalInfoWidth = (col0Width + 1.5) + col1Width;
 
     // テーブルをフラッシュしてHTMLを生成する内部関数
     const flushTable = () => {
@@ -337,6 +337,24 @@ function convertMarkdownToCourtHtml(markdown) {
             inEvidenceTable = false;
         }
 
+        // シンプルなリスト形式の処理: * 項目名
+        const simpleListMatch = trimmedLine.match(/^[*＊]\s+(.+)$/);
+        if (simpleListMatch) {
+            if (!inSimpleList) {
+                while (lastLevel > 0) {
+                    html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                    lastLevel--;
+                }
+                html += '<ul>' + nl;
+                inSimpleList = true;
+            }
+            html += indent(1) + `<li>${simpleListMatch[1]}</li>` + nl;
+            continue;
+        } else if (inSimpleList) {
+            html += '</ul>' + nl;
+            inSimpleList = false;
+        }
+
         // 改ページマーカーの処理: ### -- 任意のテキスト --
         if (/^### --.*--$/.test(trimmedLine)) {
             // リストを閉じて改ページを挿入
@@ -403,6 +421,13 @@ function convertMarkdownToCourtHtml(markdown) {
                 lastLevel--;
             }
             html += `<div class="end-mark">${text}</div>` + nl;
+        } else if (text === '記') {
+            // 「記」のみの行は特別扱い（リストを閉じてセンタリング）
+            while (lastLevel > 0) {
+                html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                lastLevel--;
+            }
+            html += `<div class="center-mark">${text}</div>` + nl;
         } else if (/^(?:(?:令和|平成|昭和|大正|明治)\s*(?:[0-9０-９]{1,2}|[元〇○一二三四五六七八九十]{1,3})|[0-9０-９]{1,4})\s*年\s*(?:[0-9０-９]{1,2}|[〇○一二三四五六七八九十]{1,3})\s*月\s*(?:[0-9０-９]{1,2}|[元〇○一二三四五六七八九十]{1,3})\s*日$/.test(text)) {
             // 日付の識別 (和暦・西暦、数字・漢数字、元年などに対応)
             html += currentIndent + `<div class="date">${text}</div>` + nl;
@@ -410,17 +435,7 @@ function convertMarkdownToCourtHtml(markdown) {
             // 宛先の識別
             html += currentIndent + `<div class="dest">${text}</div>` + nl;
         } else {
-            let style = '';
-            if (inRightBlock) {
-                // 署名欄の幅は table.info の合計幅に合わせる。
-                // ただし table.info がない場合や、テキストの方が長い場合はそちらに合わせる。
-                const textW = getVisualWidth(text);
-                const w = Math.max(textW, totalInfoWidth);
-                if (w > 0) {
-                    style = ` style="width: ${w}em"`;
-                }
-            }
-            html += currentIndent + `<p${style}>${text}</p>` + nl;
+            html += currentIndent + `<p>${text}</p>` + nl;
         }
         lastLevel = level;
     }
@@ -432,15 +447,21 @@ function convertMarkdownToCourtHtml(markdown) {
     if (inEvidenceTable) {
         html += flushEvidenceTable();
     }
+    if (inSimpleList) {
+        html += '</ul>' + nl;
+    }
     while (lastLevel > 0) {
         html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
         lastLevel--;
     }
 
-    // table.info の列幅スタイルを生成
+    // スタイルを生成
     let styleTag = '';
-    if (globalColWidths.length > 0) {
+    if (globalColWidths.length > 0 || isSoufusho) {
         styleTag = '<style>' + nl;
+        if (isSoufusho) {
+            styleTag += '* { font-size: 10.5pt; }' + nl;
+        }
         globalColWidths.forEach((w, i) => {
             if (w) {
                 styleTag += `table.info td.col-${i + 1} { width: ${w}em; }` + nl;

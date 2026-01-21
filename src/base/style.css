@@ -34,7 +34,7 @@ body {
 * {
     font-family: "NotoSerifJP-Regular" "MS Mincho", "Hiragino Mincho ProN", serif;
     font-size: 12pt;
-    line-height: 19.4pt; /* 12pt * 1.618 */
+    line-height: 1.618em;
 }
 
 p {
@@ -49,7 +49,7 @@ p {
 h1 {
     font-size: 12pt;
     text-align: center;
-    margin: 19.4pt 0;
+    margin: 1.618em 0;
     font-weight: normal;
     letter-spacing: 0.5em;
     page-break-after: avoid;
@@ -57,11 +57,10 @@ h1 {
 
 .date {
     text-align: right;
-    margin-bottom: 19.4pt;
+    margin-bottom: 1.618em;
 }
 
 .dest {
-    margin: 19.4pt 0;
     text-align: left;
 }
 
@@ -76,7 +75,7 @@ table.info, table.att {
 
 /* 事件情報・訴訟物の価格など */
 table.info {
-    margin-bottom: 19.4pt;
+    margin-bottom: 1.618em;
 }
 
 table.info td {
@@ -100,6 +99,7 @@ table.info td.val {
    ========================================= */
 .right {
     text-align: right;
+    margin: 1.618em 0;
 }
 
 .left {
@@ -122,6 +122,24 @@ table.info td.val {
     text-align: left;
 }
 
+/* 「以上」マーク（右寄せ） */
+.end-mark {
+    text-align: right;
+    margin: 1.618em 0;
+}
+
+/* 「記」マーク（センタリング） */
+.center-mark {
+    text-align: center;
+    margin: 1.618em 0;
+}
+
+/* 切り取り線 */
+.break {
+    border-top: 1pt dashed #000;
+    margin: 1.618em 0;
+}
+
 /* ブロック内のテーブル配置 */
 .right table.info {
     margin-left: auto;
@@ -135,7 +153,7 @@ table.info td.val {
 
 /* 複数当事者間の間隔 */
 .right table + p {
-    margin-top: 19.4pt;
+    margin-top: 1.618em;
 }
 
 /* =========================================
@@ -177,7 +195,7 @@ ol.lvl6 { counter-reset: cnt6; }
 ol.lvl7 { counter-reset: cnt7; }
 
 /* 各レベルのスタイル */
-ol.lvl1 > li { margin-top: 19.4pt; }
+ol.lvl1 > li { margin-top: 1.618em; }
 ol.lvl1 > li:before {
     counter-increment: cnt1;
     content: "第" counter(cnt1);
@@ -186,49 +204,49 @@ ol.lvl1 > li:before {
 
 ol.lvl2 > li {
     position: relative;
-    padding-left: 1.5em;
-    text-indent: 1.5em;
+    padding-left: 1em;
+    text-indent: 1em;
 }
 ol.lvl2 > li:before {
     counter-increment: cnt2;
     content: counter(cnt2) "　";
-    position: absolute; left: 0; top: 0; width: 1.5em;
+    position: absolute; left: -.5em; top: 0; width: 1.5em;
 }
 ol.lvl2 > li > h2 { display: block; padding-left: 0; }
 
-ol.lvl3 > li { position: relative; padding-left: 2em; }
+ol.lvl3 > li { position: relative; padding-left: .5em; }
 ol.lvl3 > li:before {
     counter-increment: cnt3;
     content: "(" counter(cnt3) ") ";
-    position: absolute; left: 0; top: 0; width: 2em;
+    position: absolute; left: -1em; top: 0; width: 2em;
 }
 
-ol.lvl4 > li { position: relative; padding-left: 2em; }
+ol.lvl4 > li { position: relative; padding-left: .5em; }
 ol.lvl4 > li:before {
     counter-increment: cnt4;
     content: counter(cnt4, katakana) " ";
-    position: absolute; left: 0; top: 0; width: 2em;
+    position: absolute; left: -1em; top: 0; width: 2em;
 }
 
-ol.lvl5 > li { position: relative; padding-left: 2.5em; }
+ol.lvl5 > li { position: relative; padding-left: .5em; }
 ol.lvl5 > li:before {
     counter-increment: cnt5;
     content: "(" counter(cnt5, katakana) ") ";
-    position: absolute; left: 0; top: 0; width: 2.5em;
+    position: absolute; left: -1.5em; top: 0; width: 2.5em;
 }
 
-ol.lvl6 > li { position: relative; padding-left: 2em; }
+ol.lvl6 > li { position: relative; padding-left: .5em; }
 ol.lvl6 > li:before {
     counter-increment: cnt6;
     content: counter(cnt6, lower-latin) " ";
-    position: absolute; left: 0; top: 0; width: 2em;
+    position: absolute; left: -1em; top: 0; width: 2em;
 }
 
-ol.lvl7 > li { position: relative; padding-left: 2.5em; }
+ol.lvl7 > li { position: relative; padding-left: .5em; }
 ol.lvl7 > li:before {
     counter-increment: cnt7;
     content: "(" counter(cnt7, lower-latin) ") ";
-    position: absolute; left: 0; top: 0; width: 2.5em;
+    position: absolute; left: -1.5em; top: 0; width: 2.5em;
 }
 
 /* =========================================
@@ -261,7 +279,7 @@ table.att td:first-child:before {
 table.evidence {
     border-collapse: collapse;
     width: 100%;
-    margin-bottom: 19.4pt;
+    margin: 1.618em 0;
 }
 
 table.evidence th,
