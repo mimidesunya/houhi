@@ -265,7 +265,8 @@ table.att td {
 }
 
 table.att td:first-child {
-    width: 22em;
+    padding-right: 1em;
+    white-space: nowrap;
 }
 
 table.att td:first-child:before {

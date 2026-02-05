@@ -317,7 +317,7 @@ function convertMarkdownToCourtHtml(markdown) {
                     lastLevel--;
                 }
                 // 直前のヘッダが「附属書類」なら att クラス、そうでなければ info クラス
-                tableClass = (lastHeader === '附属書類') ? 'att' : 'info';
+                tableClass = (lastHeader === '附属書類' || lastHeader === '証拠書類') ? 'att' : 'info';
                 inTable = true;
             }
 
@@ -464,6 +464,7 @@ function convertMarkdownToCourtHtml(markdown) {
         }
         globalColWidths.forEach((w, i) => {
             if (w) {
+                w += 1; // 余裕を持たせる
                 styleTag += `table.info td.col-${i + 1} { width: ${w}em; }` + nl;
             }
         });

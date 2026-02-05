@@ -159,10 +159,11 @@
         }
 
         /* Console Output */
-        /* Console Output */
         .console-container {
             flex: 1;
             /* Take all remaining space */
+            min-height: 100px;
+            max-height: 200px;
             background: #111;
             margin: 0 20px 40px 20px;
             /* Extra bottom margin */
@@ -171,6 +172,7 @@
             font-family: 'Consolas', monospace;
             font-size: 0.85rem;
             overflow-y: auto;
+            overflow-x: hidden;
             color: #ccc;
             border: 1px solid rgba(255, 255, 255, 0.05);
         }

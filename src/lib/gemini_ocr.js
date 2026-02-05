@@ -1,7 +1,9 @@
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 const { PDFDocument } = require('pdf-lib');
 const AdminZip = require('adm-zip');
+const WordExtractor = require('word-extractor');
 const GeminiBatchProcessor = require('./gemini_batch');
 
 const MODEL_ID = "gemini-3-flash-preview"; 
@@ -75,6 +77,47 @@ The following parts represent a Japanese Word (.docx) document:
 `;
 }
 
+function getDocTextPrompt(contextInstruction = "") {
+    return `
+# ROLE
+High-precision document formatting engine converting extracted Japanese Word (.doc) text to clean Markdown.
+
+${contextInstruction}
+
+# INPUT
+Plain text extracted from a Japanese Word (.doc) document. The text structure may be somewhat degraded due to the extraction process.
+
+# OUTPUT RULES
+1. **Markdown Only**: No conversational text.
+2. **No Skipping**: Format everything from the very beginning.
+3. **Page Markers**:
+   - **Start**: At the start of each logical section/page, output \`### -- Begin Page N --\`.
+     - N: Page index (1-based). Estimate page breaks based on content flow.
+   - **End**: At the end of each logical section/page, output \`### -- End --\`.
+4. **Formatting Rules**:
+   - **No Indentation**: Standard Markdown paragraphs.
+   - **Numbers**: Convert ALL full-width numbers to half-width.
+   - **Structure**: Identify and format headings, lists, and tables appropriately.
+   - **Cleanup**: Remove redundant whitespace and line breaks while preserving paragraph structure.
+`;
+}
+
+function createDocTextRequest(extractedText, contextInstruction = "") {
+    const prompt = getDocTextPrompt(contextInstruction);
+    
+    return {
+        contents: [
+            {
+                role: "user",
+                parts: [
+                    { text: "--- EXTRACTED DOCUMENT TEXT START ---\n" + extractedText + "\n--- EXTRACTED DOCUMENT TEXT END ---" },
+                    { text: prompt }
+                ]
+            }
+        ]
+    };
+}
+
 function createDocRequest(contentParts, contextInstruction = "", isWord = false) {
     const prompt = isWord ? getWordPrompt(contextInstruction) : getOcrPrompt(contentParts.numPages, contextInstruction);
     
@@ -109,12 +152,41 @@ function createOcrRequest(pdfBytes, numPages, contextInstruction = "") {
 }
 
 async function runBatches(requests, metadata, batchProcessor, progressState, persistenceFile) {
-    // File API allows efficient processing of all requests in one job.
-    // Chunking logic (19MB limit) is not needed for file-based batch.
+    // リクエストサイズを見積もり、閾値に応じてインラインかファイルバッチを選択
+    const INLINE_THRESHOLD = 15 * 1024 * 1024; // 15MB（安全マージン込み）
     
-    console.log(`[バッチ] ${requests.length} 件のリクエストを送信中...`);
-    const results = await batchProcessor.runFileBatch(requests, MODEL_ID, progressState, "ocr-batch-job", persistenceFile);
-    return results;
+    const payloadEstimate = JSON.stringify(requests).length;
+    const sizeMB = (payloadEstimate / 1024 / 1024).toFixed(2);
+    
+    console.log(`[バッチ] ${requests.length} 件のリクエストを送信中... (見積もりサイズ: ${sizeMB} MB)`);
+    
+    if (payloadEstimate < INLINE_THRESHOLD) {
+        console.log(`[バッチ] インラインバッチを使用 (高速モード)`);
+        const results = await batchProcessor.runInlineBatch(requests, MODEL_ID, progressState, "ocr-batch-job");
+        return results;
+    } else {
+        console.log(`[バッチ] ファイルバッチを使用 (大容量モード)`);
+        const results = await batchProcessor.runFileBatch(requests, MODEL_ID, progressState, "ocr-batch-job", persistenceFile);
+        return results;
+    }
+}
+
+// 単一または少数のリクエスト用ヘルパー（Word文書用）
+async function runSingleBatch(requests, batchProcessor, progressState, displayName, persistenceFile) {
+    const INLINE_THRESHOLD = 15 * 1024 * 1024; // 15MB
+    
+    const payloadEstimate = JSON.stringify(requests).length;
+    const sizeMB = (payloadEstimate / 1024 / 1024).toFixed(2);
+    
+    console.log(`[バッチ] リクエスト送信中... (見積もりサイズ: ${sizeMB} MB)`);
+    
+    if (payloadEstimate < INLINE_THRESHOLD) {
+        console.log(`[バッチ] インラインバッチを使用 (高速モード)`);
+        return await batchProcessor.runInlineBatch(requests, MODEL_ID, progressState, displayName);
+    } else {
+        console.log(`[バッチ] ファイルバッチを使用 (大容量モード)`);
+        return await batchProcessor.runFileBatch(requests, MODEL_ID, progressState, displayName, persistenceFile);
+    }
 }
 
 function extractPagesFromMarkdown(content) {
@@ -139,8 +211,8 @@ function extractPagesFromMarkdown(content) {
 }
 
 async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, contextInstruction = "") {
-    const pdfBuffer = fs.readFileSync(pdfPath);
-    const srcDoc = await PDFDocument.load(pdfBuffer);
+    const pdfBuffer = await fsPromises.readFile(pdfPath);
+    const srcDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
     const totalPages = srcDoc.getPageCount();
     
     const actualEndPage = endPage || totalPages;
@@ -288,6 +360,50 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
     }
 }
 
+async function docToText(docPath, contextInstruction = "") {
+    console.log(`[情報] Word文書(doc)の解析を開始: ${docPath}`);
+    const normalPath = docPath.replace(/\.doc$/i, "_paged.md");
+
+    try {
+        // word-extractorを使用してテキストを抽出
+        const extractor = new WordExtractor();
+        const extracted = await extractor.extract(docPath);
+        const extractedText = extracted.getBody();
+        
+        if (!extractedText || extractedText.trim().length === 0) {
+            throw new Error("テキストを抽出できませんでした");
+        }
+        
+        console.log(`[情報] テキスト抽出完了 (${extractedText.length} 文字)`);
+
+        const batchProcessor = new GeminiBatchProcessor();
+        const progressState = {
+            completed: 0,
+            total: 1,
+            startTime: Date.now()
+        };
+
+        const request = createDocTextRequest(extractedText, contextInstruction);
+
+        const persistenceFile = `${docPath}.batch_state.txt`;
+        const results = await runSingleBatch([request], batchProcessor, progressState, "word-batch-job", persistenceFile);
+        const result = results[0];
+
+        if (!result.error && result.response?.candidates?.[0]?.content?.parts) {
+            let text = result.response.candidates[0].content.parts.map(p => p.text).join('');
+            fs.writeFileSync(normalPath, text, 'utf-8');
+            console.log(`[成功] ${normalPath} に保存されました`);
+            return normalPath;
+        } else {
+            throw new Error(JSON.stringify(result.error || "内容なし"));
+        }
+    } catch (e) {
+        const errorMsg = `[エラー] Word文書(doc)の処理に失敗しました: ${e.message}`;
+        console.error(errorMsg);
+        throw e;
+    }
+}
+
 async function docxToText(docxPath, contextInstruction = "") {
     console.log(`[情報] Word文書(docx)の解析を開始: ${docxPath}`);
     const normalPath = docxPath.replace(/\.docx$/i, "_paged.md");
@@ -336,7 +452,7 @@ async function docxToText(docxPath, contextInstruction = "") {
         );
 
         const persistenceFile = `${docxPath}.batch_state.txt`;
-        const results = await batchProcessor.runFileBatch([request], MODEL_ID, progressState, "word-batch-job", persistenceFile);
+        const results = await runSingleBatch([request], batchProcessor, progressState, "word-batch-job", persistenceFile);
         const result = results[0];
 
         if (!result.error && result.response?.candidates?.[0]?.content?.parts) {
@@ -356,6 +472,7 @@ async function docxToText(docxPath, contextInstruction = "") {
 
 module.exports = {
     pdfToText,
+    docToText,
     docxToText,
     getOcrPrompt
 };

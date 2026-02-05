@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>実行ログ</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --text-color: #e0e0e0;
+            --accent-color: #64b5f6;
+            --success-color: #81c784;
+            --error-color: #e57373;
+            --warning-color: #ffb74d;
+            --info-color: #4fc3f7;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            padding: 12px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            -webkit-app-region: drag;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-icon {
+            font-size: 1.2rem;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--accent-color);
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            -webkit-app-region: no-drag;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--warning-color);
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-indicator.completed {
+            background: var(--success-color);
+            animation: none;
+        }
+
+        .status-indicator.error {
+            background: var(--error-color);
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .console-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 15px 20px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 10px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .log-time {
+            color: #666;
+            font-size: 0.75rem;
+            min-width: 70px;
+            flex-shrink: 0;
+        }
+
+        .log-content {
+            flex: 1;
+            word-break: break-word;
+        }
+
+        .log-entry.info .log-content {
+            color: var(--info-color);
+        }
+
+        .log-entry.success .log-content {
+            color: var(--success-color);
+        }
+
+        .log-entry.error .log-content {
+            color: var(--error-color);
+        }
+
+        .log-entry.warning .log-content {
+            color: var(--warning-color);
+        }
+
+        .log-entry.command .log-content {
+            color: #ce93d8;
+            font-weight: 500;
+        }
+
+        .log-entry.output .log-content {
+            color: #b0b0b0;
+        }
+
+        .log-entry.separator {
+            border-top: 1px dashed rgba(255, 255, 255, 0.1);
+            margin-top: 10px;
+            padding-top: 10px;
+        }
+
+        .footer {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.8rem;
+        }
+
+        .footer-info {
+            color: #888;
+        }
+
+        .footer-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            background: rgba(100, 181, 246, 0.2);
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: rgba(100, 181, 246, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn.btn-close {
+            background: rgba(229, 115, 115, 0.2);
+            border-color: var(--error-color);
+            color: var(--error-color);
+        }
+
+        .btn.btn-close:hover {
+            background: rgba(229, 115, 115, 0.3);
+        }
+
+        /* Progress bar */
+        .progress-container {
+            height: 3px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-color), var(--info-color));
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-bar.indeterminate {
+            width: 30%;
+            animation: indeterminate 1.5s infinite ease-in-out;
+        }
+
+        @keyframes indeterminate {
+            0% { margin-left: 0%; }
+            50% { margin-left: 70%; }
+            100% { margin-left: 0%; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="header-title">
+            <span class="header-icon">📋</span>
+            <h1 id="taskTitle">実行ログ</h1>
+        </div>
+        <div class="header-status">
+            <div class="status-indicator" id="statusIndicator"></div>
+            <span id="statusText">実行中...</span>
+        </div>
+    </div>
+
+    <div class="progress-container">
+        <div class="progress-bar indeterminate" id="progressBar"></div>
+    </div>
+
+    <div class="console-container" id="consoleOutput">
+        <!-- Log entries will be added here -->
+    </div>
+
+    <div class="footer">
+        <div class="footer-info">
+            <span id="lineCount">0</span> 行 | <span id="elapsedTime">0:00</span> 経過
+        </div>
+        <div class="footer-actions">
+            <button class="btn" id="btnClear">クリア</button>
+            <button class="btn" id="btnCopy">コピー</button>
+            <button class="btn btn-close" id="btnClose" disabled>閉じる</button>
+        </div>
+    </div>
+
+    <script>
+        const consoleOutput = document.getElementById('consoleOutput');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const progressBar = document.getElementById('progressBar');
+        const taskTitle = document.getElementById('taskTitle');
+        const lineCountEl = document.getElementById('lineCount');
+        const elapsedTimeEl = document.getElementById('elapsedTime');
+        const btnClear = document.getElementById('btnClear');
+        const btnCopy = document.getElementById('btnCopy');
+        const btnClose = document.getElementById('btnClose');
+
+        let lineCount = 0;
+        let startTime = Date.now();
+        let timerInterval;
+        let allLogs = [];
+
+        // Update elapsed time
+        function updateElapsedTime() {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            elapsedTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        timerInterval = setInterval(updateElapsedTime, 1000);
+
+        function getTimestamp() {
+            const now = new Date();
+            return now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function addLogEntry(message, type = 'normal') {
+            if (!message || message.trim() === '') return;
+            
+            const lines = message.split('\n');
+            lines.forEach(line => {
+                if (line.trim() === '') return;
+                
+                lineCount++;
+                lineCountEl.textContent = lineCount;
+                allLogs.push({ time: getTimestamp(), message: line, type });
+
+                const entry = document.createElement('div');
+                entry.className = `log-entry ${type}`;
+                
+                const timeSpan = document.createElement('span');
+                timeSpan.className = 'log-time';
+                timeSpan.textContent = getTimestamp();
+                
+                const contentSpan = document.createElement('span');
+                contentSpan.className = 'log-content';
+                contentSpan.textContent = line;
+                
+                entry.appendChild(timeSpan);
+                entry.appendChild(contentSpan);
+                consoleOutput.appendChild(entry);
+            });
+            
+            // Auto scroll to bottom
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        function setCompleted(success) {
+            clearInterval(timerInterval);
+            progressBar.classList.remove('indeterminate');
+            progressBar.style.width = '100%';
+            
+            if (success) {
+                statusIndicator.classList.add('completed');
+                statusText.textContent = '完了';
+                progressBar.style.background = 'var(--success-color)';
+            } else {
+                statusIndicator.classList.add('error');
+                statusText.textContent = 'エラー';
+                progressBar.style.background = 'var(--error-color)';
+            }
+            
+            btnClose.disabled = false;
+        }
+
+        // Button handlers
+        btnClear.addEventListener('click', () => {
+            consoleOutput.innerHTML = '';
+            lineCount = 0;
+            lineCountEl.textContent = '0';
+            allLogs = [];
+        });
+
+        btnCopy.addEventListener('click', () => {
+            const text = allLogs.map(l => `[${l.time}] ${l.message}`).join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+                btnCopy.textContent = 'コピー完了';
+                setTimeout(() => { btnCopy.textContent = 'コピー'; }, 1500);
+            });
+        });
+
+        btnClose.addEventListener('click', () => {
+            window.close();
+        });
+
+        // Listen to IPC events from main process
+        window.consoleAPI.onLog((msg) => addLogEntry(msg, 'output'));
+        window.consoleAPI.onInfo((msg) => addLogEntry(msg, 'info'));
+        window.consoleAPI.onSuccess((msg) => addLogEntry(msg, 'success'));
+        window.consoleAPI.onError((msg) => addLogEntry(msg, 'error'));
+        window.consoleAPI.onWarning((msg) => addLogEntry(msg, 'warning'));
+        window.consoleAPI.onCommand((msg) => addLogEntry(msg, 'command'));
+        window.consoleAPI.onComplete((success) => setCompleted(success));
+        window.consoleAPI.onTaskInfo((info) => {
+            taskTitle.textContent = `${info.taskName} - ${info.fileCount}ファイル`;
+            addLogEntry(`タスク: ${info.taskName}`, 'info');
+            addLogEntry(`対象ファイル: ${info.fileCount}個`, 'info');
+            info.files.forEach(f => addLogEntry(`  📄 ${f}`, 'info'));
+            addLogEntry('─'.repeat(50), 'normal');
+        });
+    </script>
+</body>
+
+</html>

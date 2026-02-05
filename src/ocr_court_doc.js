@@ -6,7 +6,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { pdfToText, docxToText, getOcrPrompt } = require('./lib/gemini_ocr.js');
+const { pdfToText, docToText, docxToText, getOcrPrompt } = require('./lib/gemini_ocr.js');
 
 const samplePath = path.join(__dirname, 'base', 'sample.md');
 let sampleContent = "";
@@ -69,6 +69,9 @@ async function main() {
             } else if (ext === ".docx") {
                 console.log(`\n[Word 処理] 開始: ${path.basename(filePath)}`);
                 await docxToText(filePath, COURT_DOC_STYLE);
+            } else if (ext === ".doc") {
+                console.log(`\n[Word(doc) 処理] 開始: ${path.basename(filePath)}`);
+                await docToText(filePath, COURT_DOC_STYLE);
             } else {
                 console.warn(`[警告] 未対応のファイル形式です: ${path.basename(filePath)}`);
             }
@@ -78,7 +81,7 @@ async function main() {
             const files = fs.readdirSync(absPath)
                 .filter(f => {
                     const ext = f.toLowerCase();
-                    return ext.endsWith(".pdf") || ext.endsWith(".docx");
+                    return ext.endsWith(".pdf") || ext.endsWith(".docx") || ext.endsWith(".doc");
                 })
                 .sort();
                 
