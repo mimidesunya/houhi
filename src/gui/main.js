@@ -170,10 +170,23 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
         });
 
         childProcess.on('close', (code) => {
+            // Auto-close logic
+            const setAutoClose = () => {
+                if (!consoleWin.isDestroyed()) {
+                    consoleWin.webContents.send('console-info', 'ℹ️ このウィンドウは10分後に自動的に閉じます');
+                    setTimeout(() => {
+                        if (!consoleWin.isDestroyed()) {
+                            consoleWin.close();
+                        }
+                    }, 10 * 60 * 1000); // 10 minutes
+                }
+            };
+
             if (code === 0) {
                 consoleWin.webContents.send('console-success', '─'.repeat(50));
                 consoleWin.webContents.send('console-success', '✅ 処理が正常に完了しました');
                 consoleWin.webContents.send('console-complete', true);
+                setAutoClose();
                 resolve({ 
                     success: true, 
                     output: stdout 
@@ -182,6 +195,7 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
                 consoleWin.webContents.send('console-error', '─'.repeat(50));
                 consoleWin.webContents.send('console-error', `❌ 処理がエラーで終了しました (コード: ${code})`);
                 consoleWin.webContents.send('console-complete', false);
+                setAutoClose();
                 resolve({ 
                     success: false, 
                     output: stdout, 

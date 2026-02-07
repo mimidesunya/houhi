@@ -26,8 +26,6 @@ pip-delete-this-directory.txt
 # Project specific
 output/*
 !output/.gitkeep
-instructions/*
-!instructions/.gitkeep
 copper_drivers/
 *.zip
 

@@ -35,6 +35,20 @@ The level is determined by the marker at the start of each line. Use these marke
 - **### --左**: Starts a left-aligned block (used for case numbers, parties, etc.).
 - **### --**: Ends the alignment block.
 
+**Rules**:
+- No blank lines inside blocks
+- Use `-` (hyphen) for party lists, NOT `*` (asterisk)
+- Use `:` (half-width colon) for party labels
+
+**Example**:
+```markdown
+### --左
+令和〇年（ワ）第〇〇号　損害賠償請求事件
+- 原告:甲野　太郎
+- 被告:乙野　次郎
+### --
+```
+
 ### Tables
 Two formats are supported:
 1. **Standard Table**: |Column 1|Column 2|

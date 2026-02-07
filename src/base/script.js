@@ -14,7 +14,7 @@ function getVisualWidth(text) {
         if ((code >= 0x0020 && code <= 0x007e) || (code >= 0xff61 && code <= 0xff9f)) {
             width += 0.5;
         } else {
-            width += 1;
+            width += 1.0;
         }
     }
     return width;
@@ -41,41 +41,72 @@ function convertMarkdownToCourtHtml(markdown) {
     const indent = (level) => '    '.repeat(level);
     const nl = '\n';
 
-    // --- 事前スキャン: table.info のグローバルな列幅を計算 ---
-    const globalColWidths = [];
+    // --- 事前スキャン: 各エリアのグローバルな列幅を計算 ---
+    const rightColWidths = [];
+    const leftColWidths = [];
+    const attColWidths = [];
+    const defaultColWidths = [];
+
     let scanHeader = '';
     let inScanEvidenceTable = false;
     let isSoufusho = false;
+    let scanInRight = false;
+    let scanInLeft = false;
+
     for (let line of lines) {
         const trimmed = line.trim();
+        
+        // ブロック検出
+        if (trimmed === '### --右') { scanInRight = true; scanInLeft = false; continue; }
+        if (trimmed === '### --左') { scanInLeft = true; scanInRight = false; continue; }
+        if (trimmed === '### --') { scanInRight = false; scanInLeft = false; continue; }
+
         if (trimmed.startsWith('#')) {
+            // 改ページマーカー等はヘッダーとして扱わない
+            if (/^### --.*--$/.test(trimmed)) continue;
+
             scanHeader = trimmed.replace(/^#*\s*/, '').trim();
             if (scanHeader === '送付書') {
                 isSoufusho = true;
             }
         }
+        
         const tableMatch = trimmed.match(/^\|(.*)\|$/);
         const listTableMatch = trimmed.match(/^- (.*?)[：:](.*)$/);
+        
         if (tableMatch || listTableMatch) {
             // 証拠説明書テーブルの開始を検出
             if (tableMatch && tableMatch[1].includes('号証') && tableMatch[1].includes('標目')) {
                 inScanEvidenceTable = true;
             }
-            // 附属書類テーブルと証拠説明書テーブルは除外
-            if (scanHeader !== '附属書類' && !inScanEvidenceTable) {
+            
+            // 証拠説明書テーブルは除外（別扱い）
+            if (!inScanEvidenceTable) {
                 // セパレーター行（|:---|:---|...）は除外
                 if (tableMatch && /^[\s|:-]+$/.test(tableMatch[1])) {
                     continue;
                 }
+                
                 let cells;
                 if (tableMatch) {
                     cells = tableMatch[1].split('|');
                 } else {
                     cells = [listTableMatch[1], listTableMatch[2]];
                 }
+                
+                // どの幅配列を使うか決定
+                let targetWidths = defaultColWidths;
+                if (scanHeader === '附属書類' || scanHeader === '証拠書類') {
+                    targetWidths = attColWidths;
+                } else if (scanInRight) {
+                    targetWidths = rightColWidths;
+                } else if (scanInLeft) {
+                    targetWidths = leftColWidths;
+                }
+
                 cells.forEach((cell, i) => {
                     const w = getVisualWidth(cell.trim());
-                    if (!globalColWidths[i] || w > globalColWidths[i]) globalColWidths[i] = w;
+                    if (!targetWidths[i] || w > targetWidths[i]) targetWidths[i] = w;
                 });
             }
         } else if (inScanEvidenceTable) {
@@ -96,7 +127,7 @@ function convertMarkdownToCourtHtml(markdown) {
                 const text = cell.trim();
                 const isAmount = i > 0 && /^[0-9０-９,，．.]+円?$/.test(text);
                 const classes = [];
-                if (tableClass === 'info') classes.push(`col-${i + 1}`);
+                if (tableClass.includes('info') || tableClass.includes('att')) classes.push(`col-${i + 1}`);
                 if (isAmount) classes.push('val');
                 const classAttr = classes.length > 0 ? ` class="${classes.join(' ')}"` : '';
                 tableHtml += indent(lastLevel + 2) + `<td${classAttr}>${text}</td>` + nl;
@@ -316,8 +347,16 @@ function convertMarkdownToCourtHtml(markdown) {
                     html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                     lastLevel--;
                 }
-                // 直前のヘッダが「附属書類」なら att クラス、そうでなければ info クラス
-                tableClass = (lastHeader === '附属書類' || lastHeader === '証拠書類') ? 'att' : 'info';
+                
+                if (lastHeader === '附属書類' || lastHeader === '証拠書類') {
+                    tableClass = 'att';
+                } else if (inRightBlock) {
+                    tableClass = 'info right-info';
+                } else if (inLeftBlock) {
+                    tableClass = 'info left-info';
+                } else {
+                    tableClass = 'info default-info';
+                }
                 inTable = true;
             }
 
@@ -457,17 +496,32 @@ function convertMarkdownToCourtHtml(markdown) {
 
     // スタイルを生成
     let styleTag = '';
-    if (globalColWidths.length > 0 || isSoufusho) {
+    if (rightColWidths.length > 0 || leftColWidths.length > 0 || attColWidths.length > 0 || defaultColWidths.length > 0 || isSoufusho) {
         styleTag = '<style>' + nl;
         if (isSoufusho) {
             styleTag += '* { font-size: 10.5pt; }' + nl;
         }
-        globalColWidths.forEach((w, i) => {
-            if (w) {
-                w += 1; // 余裕を持たせる
-                styleTag += `table.info td.col-${i + 1} { width: ${w}em; }` + nl;
-            }
-        });
+        
+        const generateTableStyle = (widths, className) => {
+            let css = '';
+            widths.forEach((w, i) => {
+                if (w) {
+                    w += 1; // 余裕を持たせる
+                    // 附属書類・証拠書類（attクラス）の1列目はカウンター（2em）があるため幅を広げる
+                    if (className === 'att' && i === 0) {
+                        w += 2.5; 
+                    }
+                    css += `table.${className} td.col-${i + 1} { width: ${w}em; }` + nl;
+                }
+            });
+            return css;
+        };
+
+        styleTag += generateTableStyle(rightColWidths, 'right-info');
+        styleTag += generateTableStyle(leftColWidths, 'left-info');
+        styleTag += generateTableStyle(attColWidths, 'att');
+        styleTag += generateTableStyle(defaultColWidths, 'default-info'); // クラス指定がない通常のinfoテーブル用
+
         styleTag += '</style>' + nl;
     }
 
