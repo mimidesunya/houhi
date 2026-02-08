@@ -76,7 +76,8 @@ function convertMarkdownToCourtHtml(markdown) {
         
         if (tableMatch || listTableMatch) {
             // 証拠説明書テーブルの開始を検出
-            if (tableMatch && tableMatch[1].includes('号証') && tableMatch[1].includes('標目')) {
+            // 「号証」を含むヘッダー行を証拠説明書テーブルとして扱う
+            if (tableMatch && (tableMatch[1].includes('号証'))) {
                 inScanEvidenceTable = true;
             }
             
@@ -321,9 +322,8 @@ function convertMarkdownToCourtHtml(markdown) {
             // セパレーター行（|:---|:---|...）をチェック
             const isSeparator = tableMatch && /^[\s|:-]+$/.test(tableMatch[1]);
             
-            // ヘッダー行（「号証」「標目」などを含む）をチェック
-            const isEvidenceHeader = tableMatch && tableMatch[1].includes('号証') && 
-                                      tableMatch[1].includes('標目');
+            // ヘッダー行（「号証」を含む）をチェック
+            const isEvidenceHeader = tableMatch && tableMatch[1].includes('号証');
             
             if (isEvidenceHeader || (inEvidenceTable && tableMatch)) {
                 // 証拠説明書テーブル
@@ -396,12 +396,16 @@ function convertMarkdownToCourtHtml(markdown) {
 
         // 改ページマーカーの処理: ### -- 任意のテキスト --
         if (/^### --.*--$/.test(trimmedLine)) {
+            // テキスト部分を抽出
+            const match = trimmedLine.match(/^### --\s*(.*?)\s*--$/);
+            const breakText = match ? match[1].trim() : '';
+            
             // リストを閉じて改ページを挿入
             while (lastLevel > 0) {
                 html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                 lastLevel--;
             }
-            html += '<div class="break"></div>' + nl;
+            html += `<div class="break">(${breakText})</div>` + nl;
             continue;
         }
 

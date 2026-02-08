@@ -470,9 +470,202 @@ async function docxToText(docxPath, contextInstruction = "") {
     }
 }
 
+async function odtToText(odtPath, contextInstruction = "") {
+    console.log(`[情報] ODT文書の解析を開始: ${odtPath}`);
+    const normalPath = odtPath.replace(/\.odt$/i, "_paged.md");
+
+    try {
+        const zip = new AdminZip(odtPath);
+        const dataParts = [];
+
+        // 1. 本文XMLの抽出
+        const contentXml = zip.readAsText("content.xml");
+        if (contentXml) {
+            dataParts.push({ text: "--- ODT CONTENT XML START ---\n" + contentXml + "\n--- ODT CONTENT XML END ---" });
+        }
+
+        // 2. スタイルXMLの抽出（構造の理解に役立つ）
+        const stylesXml = zip.readAsText("styles.xml");
+        if (stylesXml) {
+            dataParts.push({ text: "--- ODT STYLES XML START ---\n" + stylesXml + "\n--- ODT STYLES XML END ---" });
+        }
+
+        // 3. 画像ファイルの抽出 (Pictures/ 内の全ファイル)
+        const entries = zip.getEntries();
+        for (const entry of entries) {
+            if (entry.entryName.startsWith("Pictures/") && !entry.isDirectory) {
+                const buffer = entry.getData();
+                const ext = path.extname(entry.entryName).toLowerCase();
+                let mimeType = "image/jpeg";
+                if (ext === ".png") mimeType = "image/png";
+                else if (ext === ".webp") mimeType = "image/webp";
+                else if (ext === ".gif") mimeType = "image/gif";
+                else if (ext === ".svg") continue; // SVGはスキップ
+
+                dataParts.push({
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: buffer.toString('base64')
+                    }
+                });
+            }
+        }
+
+        const batchProcessor = new GeminiBatchProcessor();
+        const progressState = { completed: 0, total: 1, startTime: Date.now() };
+
+        const prompt = getWordPrompt(contextInstruction); // Word用プロンプトを流用（XML→Markdown変換として十分）
+        const request = {
+            contents: [{
+                role: "user",
+                parts: [...dataParts, { text: prompt }]
+            }]
+        };
+
+        const persistenceFile = `${odtPath}.batch_state.txt`;
+        const results = await runSingleBatch([request], batchProcessor, progressState, "odt-batch-job", persistenceFile);
+        const result = results[0];
+
+        if (!result.error && result.response?.candidates?.[0]?.content?.parts) {
+            let text = result.response.candidates[0].content.parts.map(p => p.text).join('');
+            fs.writeFileSync(normalPath, text, 'utf-8');
+            console.log(`[成功] ${normalPath} に保存されました`);
+            return normalPath;
+        } else {
+            throw new Error(JSON.stringify(result.error || "内容なし"));
+        }
+    } catch (e) {
+        console.error(`[エラー] ODT文書の処理に失敗しました: ${e.message}`);
+        throw e;
+    }
+}
+
+function getPptxPrompt(contextInstruction = "") {
+    return `
+# ROLE
+High-precision document transcribing engine converting Japanese PowerPoint (.pptx) slide content (XML and associated images) to clean Markdown.
+
+${contextInstruction}
+
+# INPUT
+The following parts represent a Japanese PowerPoint (.pptx) presentation:
+1. **XML Content**: The raw slide XML files containing text and structural tags.
+2. **Images**: Visuals (photos, diagrams) extracted from the slides.
+
+# OUTPUT RULES
+1. **Markdown Only**: No conversational text.
+2. **No Skipping**: Transcribe every slide from the very beginning.
+3. **Page Markers**:
+   - **Start**: At the start of each slide, output \`### -- Begin Page N --\`.
+     - N: Slide number (1-based).
+   - **End**: At the end of each slide, output \`### -- End --\`.
+4. **Transcription Rules**:
+   - **No Indentation**: Standard Markdown paragraphs.
+   - **Numbers**: Convert ALL full-width numbers to half-width.
+   - **Slide Titles**: Use ## for slide titles.
+   - **Bullet Points**: Use standard Markdown list syntax.
+   - **Tables**: Format as Markdown tables.
+   - **Visuals**: Correlate the provided images with their positions. For each, provide a Japanese explanation formatted as \`(--! Explanation)\`.
+   - **Speaker Notes**: If present in the XML, include them formatted as \`> Note: ...\`.
+   - **Exclusions**: Omit system tags/metadata. Keep the content clean.
+`;
+}
+
+async function pptxToText(pptxPath, contextInstruction = "") {
+    console.log(`[情報] PowerPoint文書の解析を開始: ${pptxPath}`);
+    const normalPath = pptxPath.replace(/\.pptx$/i, "_paged.md");
+
+    try {
+        const zip = new AdminZip(pptxPath);
+        const dataParts = [];
+
+        // 1. スライドXMLの抽出（番号順にソート）
+        const entries = zip.getEntries();
+        const slideEntries = entries
+            .filter(e => /^ppt\/slides\/slide\d+\.xml$/.test(e.entryName))
+            .sort((a, b) => {
+                const numA = parseInt(a.entryName.match(/slide(\d+)/)[1]);
+                const numB = parseInt(b.entryName.match(/slide(\d+)/)[1]);
+                return numA - numB;
+            });
+
+        for (const entry of slideEntries) {
+            const xml = zip.readAsText(entry.entryName);
+            const slideNum = entry.entryName.match(/slide(\d+)/)[1];
+            dataParts.push({ text: `--- SLIDE ${slideNum} XML START ---\n${xml}\n--- SLIDE ${slideNum} XML END ---` });
+        }
+
+        // 2. ノートの抽出
+        const noteEntries = entries
+            .filter(e => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(e.entryName))
+            .sort((a, b) => {
+                const numA = parseInt(a.entryName.match(/notesSlide(\d+)/)[1]);
+                const numB = parseInt(b.entryName.match(/notesSlide(\d+)/)[1]);
+                return numA - numB;
+            });
+
+        for (const entry of noteEntries) {
+            const xml = zip.readAsText(entry.entryName);
+            const noteNum = entry.entryName.match(/notesSlide(\d+)/)[1];
+            dataParts.push({ text: `--- NOTES FOR SLIDE ${noteNum} START ---\n${xml}\n--- NOTES FOR SLIDE ${noteNum} END ---` });
+        }
+
+        // 3. 画像ファイルの抽出 (ppt/media/ 内)
+        for (const entry of entries) {
+            if (entry.entryName.startsWith("ppt/media/") && !entry.isDirectory) {
+                const buffer = entry.getData();
+                const ext = path.extname(entry.entryName).toLowerCase();
+                let mimeType = "image/jpeg";
+                if (ext === ".png") mimeType = "image/png";
+                else if (ext === ".webp") mimeType = "image/webp";
+                else if (ext === ".gif") mimeType = "image/gif";
+                else if (ext === ".emf" || ext === ".wmf" || ext === ".svg") continue; // 非対応形式はスキップ
+
+                dataParts.push({
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: buffer.toString('base64')
+                    }
+                });
+            }
+        }
+
+        console.log(`[情報] ${slideEntries.length} スライドを検出`);
+
+        const batchProcessor = new GeminiBatchProcessor();
+        const progressState = { completed: 0, total: 1, startTime: Date.now() };
+
+        const prompt = getPptxPrompt(contextInstruction);
+        const request = {
+            contents: [{
+                role: "user",
+                parts: [...dataParts, { text: prompt }]
+            }]
+        };
+
+        const persistenceFile = `${pptxPath}.batch_state.txt`;
+        const results = await runSingleBatch([request], batchProcessor, progressState, "pptx-batch-job", persistenceFile);
+        const result = results[0];
+
+        if (!result.error && result.response?.candidates?.[0]?.content?.parts) {
+            let text = result.response.candidates[0].content.parts.map(p => p.text).join('');
+            fs.writeFileSync(normalPath, text, 'utf-8');
+            console.log(`[成功] ${normalPath} に保存されました`);
+            return normalPath;
+        } else {
+            throw new Error(JSON.stringify(result.error || "内容なし"));
+        }
+    } catch (e) {
+        console.error(`[エラー] PowerPoint文書の処理に失敗しました: ${e.message}`);
+        throw e;
+    }
+}
+
 module.exports = {
     pdfToText,
     docToText,
     docxToText,
+    odtToText,
+    pptxToText,
     getOcrPrompt
 };

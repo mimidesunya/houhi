@@ -134,9 +134,9 @@ table.info td.val {
     margin: 1.618em 0;
 }
 
-/* 切り取り線 */
+/* 改ページ */
 .break {
-    border-top: 1pt dashed #000;
+    page-break-before: always;
     margin: 1.618em 0;
 }
 

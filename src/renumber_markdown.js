@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 // SAIBAN Markdown Renumbering Tool (JS Port)
 // Corrects numbering inconsistencies in legal markdown documents.
@@ -44,9 +45,12 @@ const MARKER_DEFS = [
 
 // Compile Regexes
 const REGEX_LIST = MARKER_DEFS.map(def => {
-    // JS Regex: ^(##\s*)?(MARKER)([\s\u3000].*)?$
-    // We use [\s\u3000] to match whitespace including full-width space.
-    const patternStr = `^(##\\s*)?(${def.str})([\\s\\u3000].*)?$`;
+    // JS Regex: ^(##(?!#)\s*)?(MARKER)([\s\u3000].*)?$
+    // Group 1: Optional "## " prefix (heading line) — absent for plain paragraph lines
+    // Group 2: Marker (第1, 1, (1), ア, etc.)
+    // Group 3: Suffix (rest of line after marker)
+    // (?!#) ensures we don't match ### (negative lookahead)
+    const patternStr = `^(##(?!#)\\s*)?(${def.str})([\\s\\u3000].*)?$`;
     return {
         level: def.level,
         re: new RegExp(patternStr)
@@ -98,9 +102,9 @@ function renumberLines(lines) {
             }
 
             // Reconstruct
-            // Group 1: Prefix (matchResult[1])
-            // Group 2: Marker (matchResult[2]) - replaced
-            // Group 3: Suffix (matchResult[3])
+            // Group 1: Prefix (matchResult[1]) - "## " or empty
+            // Group 2: Marker (matchResult[2]) - replaced with newMarker
+            // Group 3: Suffix (matchResult[3]) - rest of line
             
             const prefix = matchResult[1] || "";
             const suffix = matchResult[3] || "";
@@ -144,7 +148,41 @@ function main() {
         const outputContent = renumbered.join('\n');
         
         fs.writeFileSync(outputPath, outputContent, 'utf8');
-        console.log(`Renumbered file saved to ${outputPath}`);
+        console.log(`リナンバー完了: ${outputPath}`);
+        
+        // クリップボードにコピー
+        try {
+            if (process.platform === 'win32') {
+                // 保存したファイルを直接PowerShellで読み込んでクリップボードにコピー
+                const result = spawnSync('powershell.exe', [
+                    '-NoProfile',
+                    '-Command',
+                    `Get-Content -Path "${outputPath}" -Encoding UTF8 -Raw | Set-Clipboard`
+                ], {
+                    encoding: 'utf8'
+                });
+                
+                if (result.status === 0) {
+                    console.log('クリップボードにコピー成功');
+                } else {
+                    console.error(`警告: クリップボードへのコピーに失敗しました (終了コード: ${result.status})`);
+                }
+            } else if (process.platform === 'darwin') {
+                const result = spawnSync('pbcopy', [], {
+                    input: Buffer.from(outputContent, 'utf8')
+                });
+                
+                if (result.status === 0) {
+                    console.log('クリップボードにコピー成功');
+                } else {
+                    console.error(`警告: クリップボードへのコピーに失敗しました (終了コード: ${result.status})`);
+                }
+            } else {
+                console.log('クリップボードのコピーはWindowsとmacOSのみ対応しています');
+            }
+        } catch (clipError) {
+            console.error(`警告: クリップボードへのコピーに失敗しました: ${clipError.message}`);
+        }
     } catch (e) {
         console.error(`Error: ${e.message}`);
         process.exit(1);
