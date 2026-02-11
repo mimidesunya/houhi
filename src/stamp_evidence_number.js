@@ -224,23 +224,37 @@ async function main() {
     let errCount = 0;
     const stampedList = []; // 結合用にスタンプ済みPDFバイト列を保持
 
-    for (const filePath of sortedPaths) {
+    // 並列処理に変更
+    const tasks = sortedPaths.map(async (filePath) => {
         const filename = path.basename(filePath);
         const evidenceNum = extractEvidenceNumber(filename);
 
         if (!evidenceNum) {
             console.log(`  SKIP  ${filename} （証拠番号なし）`);
-            continue;
+            return null;
         }
 
         const outputPath = path.join(outputDir, filename);
         try {
             const pdfBytes = await stampPdf(filePath, outputPath, evidenceNum, fontBytes, { allPages, fontSize });
             console.log(`  完了  ${evidenceNum}${STAMP_SUFFIX} ← ${filename}`);
-            stampedList.push({ bytes: pdfBytes, evidenceNum });
-            okCount++;
+            return { success: true, bytes: pdfBytes, evidenceNum };
         } catch (err) {
             console.error(`  エラー ${filename}: ${err.message}`);
+            return { success: false };
+        }
+    });
+
+    // 全ての処理が終わるのを待つ
+    const results = await Promise.all(tasks);
+
+    // 結果を集計（Promise.allは順序を保持するのでソート順は維持される）
+    for (const res of results) {
+        if (!res) continue; // SKIP
+        if (res.success) {
+            stampedList.push({ bytes: res.bytes, evidenceNum: res.evidenceNum });
+            okCount++;
+        } else {
             errCount++;
         }
     }
