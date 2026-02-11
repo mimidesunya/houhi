@@ -80,9 +80,8 @@ const SCRIPTS = {
     'ocr_court': { path: 'src/ocr_court_doc.js', name: '裁判文書OCR' },
     'ocr_merge': { path: 'src/ocr_merge_pages.js', name: 'OCRページ結合' },
     'renumber': { path: 'src/renumber_markdown.js', name: 'Markdown番号振直' },
-    'ai_draft': { path: 'src/ai_generate_markdown.js', name: '裁判文書AI起案' },
     'ai_archive': { path: 'src/archive_for_ai.js', name: 'AI分析用アーカイブ作成' },
-    'preview': { path: 'src/preview_template.js', name: 'テンプレートプレビュー' }
+    'stamp': { path: 'src/stamp_evidence_number.js', name: '号証スタンプ' }
 };
 
 ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {

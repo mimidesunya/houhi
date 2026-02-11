@@ -2,14 +2,14 @@
   "name": "houhi",
   "version": "1.0.0",
   "description": "Court document generation system",
-  "main": "src/preview_template.js",
+  "main": "src/gui/main.js",
   "scripts": {
-    "preview": "node src/preview_template.js",
     "gui": "electron src/gui/main.js"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
     "@google/generative-ai": "^0.24.1",
+    "@pdf-lib/fontkit": "^1.1.1",
     "adm-zip": "^0.5.16",
     "clipboardy": "^2.3.0",
     "copper-cti": "github:mimidesunya/cti.nodejs",
