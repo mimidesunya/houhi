@@ -38,8 +38,16 @@ async function convertHtmlToPdf(htmlPath, outputPath, resourceDir, defaultTempla
         session.setOutputAsFile(outputPath);
         console.log(`出力を設定: ${outputPath}`);
 
+        // PDFバージョンは固定
+        console.log('プロパティを設定: output.pdf.version = 1.4A-1');
+        session.setProperty('output.pdf.version', '1.4A-1');
+
         // 汎用プロパティの設定
         for (const [name, value] of Object.entries(properties)) {
+            if (name === 'output.pdf.version') {
+                console.log('  output.pdf.version は固定値 1.4A-1 を使用します');
+                continue;
+            }
             console.log(`プロパティを設定: ${name} = ${value}`);
             session.setProperty(name, value);
         }

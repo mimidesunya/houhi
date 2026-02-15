@@ -81,7 +81,8 @@ const SCRIPTS = {
     'ocr_merge': { path: 'src/ocr_merge_pages.js', name: 'OCRページ結合' },
     'renumber': { path: 'src/renumber_markdown.js', name: 'Markdown番号振直' },
     'ai_archive': { path: 'src/archive_for_ai.js', name: 'AI分析用アーカイブ作成' },
-    'stamp': { path: 'src/stamp_evidence_number.js', name: '号証スタンプ' }
+    'stamp': { path: 'src/stamp_evidence_number.js', name: '号証スタンプ' },
+    'fax_pdf': { path: 'src/fax_prepare_pdf.js', name: 'FAX送信用PDF変換' }
 };
 
 ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {

@@ -189,12 +189,50 @@ class GeminiBatchProcessor {
       "JOB_STATE_EXPIRED",
     ]);
 
+    const maxWaitMs = Number(process.env.GEMINI_BATCH_MAX_WAIT_MS || 3 * 60 * 60 * 1000);
+    const maxNoProgressMs = Number(process.env.GEMINI_BATCH_MAX_NO_PROGRESS_MS || 20 * 60 * 1000);
+    const startedAt = Date.now();
+
     let cur = await this.ai.batches.get({ name: jobName });
+    let lastState = cur.state;
+    let lastCompleted = this.getCompletedCount(cur);
+    let lastProgressAt = Date.now();
+
+    console.log(
+      `[バッチ] 監視開始: job=${jobName} | 最大待機=${this.formatTime(maxWaitMs)} | 進捗停滞上限=${this.formatTime(maxNoProgressMs)}`
+    );
 
     while (!completedStates.has(cur.state)) {
+      const now = Date.now();
+      const elapsed = now - startedAt;
+      const stalled = now - lastProgressAt;
+
+      if (elapsed > maxWaitMs) {
+        throw new Error(
+          `バッチ待機がタイムアウトしました (${this.formatTime(elapsed)} > ${this.formatTime(maxWaitMs)}) / state=${cur.state} / job=${jobName}`
+        );
+      }
+
+      if (stalled > maxNoProgressMs) {
+        throw new Error(
+          `バッチ進捗が停滞しました (${this.formatTime(stalled)} > ${this.formatTime(maxNoProgressMs)}) / state=${cur.state} / job=${jobName}`
+        );
+      }
+
       this.logProgress(cur, progressState);
       await new Promise((r) => setTimeout(r, pollMs));
       cur = await this.ai.batches.get({ name: cur.name });
+
+      const completed = this.getCompletedCount(cur);
+      const progressed = completed !== null && (lastCompleted === null || completed > lastCompleted);
+      const stateChanged = cur.state !== lastState;
+
+      if (progressed || stateChanged) {
+        lastProgressAt = Date.now();
+      }
+
+      if (completed !== null) lastCompleted = completed;
+      lastState = cur.state;
     }
 
     console.log(`[バッチ] 最終ステータス: ${cur.state}`);
@@ -249,6 +287,14 @@ class GeminiBatchProcessor {
     if (inlined) return inlined;
 
     throw new Error("ジョブは成功しましたが、結果（responsesFile / inlinedResponses）が見つかりませんでした。");
+  }
+
+  getCompletedCount(cur) {
+    const stats = cur?.batchStats;
+    if (!stats) return null;
+    const ok = Number(stats.successfulRequestCount ?? stats.successful_request_count ?? 0);
+    const ng = Number(stats.failedRequestCount ?? stats.failed_request_count ?? 0);
+    return ok + ng;
   }
 
   logProgress(cur, progressState) {

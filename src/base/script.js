@@ -63,7 +63,7 @@ function convertMarkdownToCourtHtml(markdown) {
 
         if (trimmed.startsWith('#')) {
             // 改ページマーカー等はヘッダーとして扱わない
-            if (/^### --.*--$/.test(trimmed)) continue;
+            if (/^### --.*--$/.test(trimmed) || trimmed === '### ---' || trimmed === '### ...') continue;
 
             scanHeader = trimmed.replace(/^#*\s*/, '').trim();
             if (scanHeader === '送付書') {
@@ -392,6 +392,37 @@ function convertMarkdownToCourtHtml(markdown) {
         } else if (inSimpleList) {
             html += '</ul>' + nl;
             inSimpleList = false;
+        }
+
+        // 空行（スペーサー）マーカーの処理: ### ...
+        // 空行は入力上は捨てられるため、見た目の空行を挿入する
+        if (trimmedLine === '### ...') {
+            const currentIndent = indent(lastLevel + (lastLevel > 0 ? 1 : 0));
+            html += currentIndent + '<div class="blank-line"></div>' + nl;
+            continue;
+        }
+
+        // 区切り線マーカーの処理: ### ---
+        // 改ページはせず、点線（区切り線）を挿入する
+        if (trimmedLine === '### ---') {
+            // 右/左ブロック内で使われた場合も安全に閉じる
+            if (inRightBlock || inLeftBlock) {
+                while (lastLevel > 0) {
+                    html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                    lastLevel--;
+                }
+                html += '</div>' + nl;
+                inRightBlock = false;
+                inLeftBlock = false;
+            }
+
+            // リストを閉じて区切り線を挿入
+            while (lastLevel > 0) {
+                html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                lastLevel--;
+            }
+            html += '<hr class="separator" />' + nl;
+            continue;
         }
 
         // 改ページマーカーの処理: ### -- 任意のテキスト --

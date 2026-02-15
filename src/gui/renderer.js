@@ -13,7 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'ocr_merge': '画像ファイルを結合',
         'renumber': 'Markdownの段落番号を整理',
         'ai_archive': 'AI分析用データ作成',
-        'stamp': 'PDFに号証番号を赤字でスタンプ'
+        'stamp': 'PDFに号証番号を赤字でスタンプ',
+        'fax_pdf': 'PDFをFAX送信用に画像化・二値化'
     };
     
     // Tool Selection Logic

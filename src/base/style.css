@@ -140,6 +140,20 @@ table.info td.val {
     margin: 1.618em 0;
 }
 
+/* 空行（スペーサー） */
+.blank-line {
+    height: 1.618em;
+}
+
+/* 区切り線（点線） */
+hr.separator {
+    border: 0;
+    border-top: 1px dotted black;
+    margin: 1.618em 0;
+    page-break-before: avoid;
+    page-break-after: avoid;
+}
+
 /* ブロック内のテーブル配置 */
 .right table.info {
     margin-left: auto;
