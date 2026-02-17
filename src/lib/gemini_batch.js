@@ -11,7 +11,54 @@ class GeminiBatchProcessor {
     const apiKey = getApiKey();
     if (!apiKey) throw new Error("API Key not found");
     this.apiKey = apiKey;
-    this.ai = new GoogleGenAI({ apiKey });
+    this.ai = new GoogleGenAI({ apiKey: this.apiKey });
+  }
+
+  /**
+   * Synchronous (sequential) mode — calls generateContent one by one.
+   * Returns results in the same format as batch for compatibility.
+   */
+  async runSync(requests, modelId, progressState) {
+    const results = [];
+    let completedCount = 0;
+
+    for (let i = 0; i < requests.length; i++) {
+      const req = requests[i] && requests[i].request ? requests[i].request : requests[i];
+      try {
+        console.log(`[同期] リクエスト ${i + 1}/${requests.length} 送信中...`);
+        const response = await this.ai.models.generateContent({
+          model: modelId,
+          contents: req.contents,
+        });
+
+        results.push({
+          key: `request-${i + 1}`,
+          response: response,
+          error: null,
+        });
+      } catch (err) {
+        console.error(`[同期] リクエスト ${i + 1} 失敗: ${err.message}`);
+        results.push({
+          key: `request-${i + 1}`,
+          response: null,
+          error: { message: err.message },
+        });
+      }
+
+      completedCount++;
+      if (progressState) {
+        progressState.completed = completedCount;
+        const elapsed = Date.now() - progressState.startTime;
+        const avg = completedCount > 0 ? elapsed / completedCount : 0;
+        const remain = Math.max(0, (progressState.total || requests.length) - completedCount);
+        const eta = avg > 0 ? avg * remain : 0;
+        console.log(
+          `[同期] 進捗: ${completedCount}/${progressState.total || requests.length} | 経過: ${this.formatTime(elapsed)} | 残り(予想): ${this.formatTime(eta)}`
+        );
+      }
+    }
+
+    return results;
   }
 
   /**
@@ -154,7 +201,7 @@ class GeminiBatchProcessor {
     }
 
     // Sort results by key (request-N) to match input requests order
-    // Because the caller (gemini_ocr.js) expects results[i] to match requests[i]
+    // Because the caller (ai_ocr.js) expects results[i] to match requests[i]
     if (Array.isArray(results)) {
       const orderedResults = new Array(requests.length).fill(null);
       for (const res of results) {

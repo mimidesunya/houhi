@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { convertMarkdownToCourtHtml } = require('../base/script.js');
+const { convertMarkdownToCourtHtml } = require('../base/court_markdown.js');
 
 /**
  * HTML内の全 <pre> タグを裁判文書用HTMLに変換して置換します。

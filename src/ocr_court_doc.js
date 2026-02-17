@@ -6,7 +6,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { pdfToText, docToText, docxToText, getOcrPrompt } = require('./lib/gemini_ocr.js');
+const { pdfToText, docToText, docxToText, getOcrPrompt } = require('./lib/ai_ocr.js');
 
 const samplePath = path.join(__dirname, 'base', 'sample.md');
 let sampleContent = "";
@@ -30,12 +30,16 @@ async function main() {
     let startPage = 1;
     let endPage = null;
     let showPrompt = false;
+    let aiProvider = 'gemini';
+    let processMode = 'batch';
 
     for (let i = 0; i < args.length; i++) {
         if (args[i] === "--batch_size") batchSize = parseInt(args[++i]);
         else if (args[i] === "--start_page") startPage = parseInt(args[++i]);
         else if (args[i] === "--end_page") endPage = parseInt(args[++i]);
         else if (args[i] === "--show_prompt") showPrompt = true;
+        else if (args[i] === "--ai") aiProvider = args[++i];
+        else if (args[i] === "--mode") processMode = args[++i];
         else inputPaths.push(args[i]);
     }
 
@@ -49,7 +53,7 @@ async function main() {
     if (inputPaths.length === 0) {
         console.log("-------------------------------------------------------");
         console.log(" PDF/Wordファイルまたはフォルダをドロップしてください。");
-        console.log(" 使い方: node ocr_court_doc.js <input_path...> [--batch_size <n>]");
+        console.log(" 使い方: node ocr_court_doc.js <input_path...> [--batch_size <n>] [--ai gemini|claude] [--mode batch|sync]");
         console.log("-------------------------------------------------------");
         return;
     }
@@ -74,28 +78,42 @@ async function main() {
     const processFile = async (filePath) => {
         const ext = path.extname(filePath).toLowerCase();
         if (ext === ".pdf") {
-            console.log(`\n[PDF 処理] 開始: ${path.basename(filePath)}`);
-            await pdfToText(filePath, batchSize, startPage, endPage, COURT_DOC_STYLE);
+            console.log(`\n[PDF 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
+            await pdfToText(filePath, batchSize, startPage, endPage, COURT_DOC_STYLE, aiProvider, processMode);
         } else if (ext === ".docx") {
-            console.log(`\n[Word 処理] 開始: ${path.basename(filePath)}`);
-            await docxToText(filePath, COURT_DOC_STYLE);
+            console.log(`\n[Word 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
+            await docxToText(filePath, COURT_DOC_STYLE, aiProvider, processMode);
         } else if (ext === ".doc") {
-            console.log(`\n[Word(doc) 処理] 開始: ${path.basename(filePath)}`);
-            await docToText(filePath, COURT_DOC_STYLE);
+            console.log(`\n[Word(doc) 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
+            await docToText(filePath, COURT_DOC_STYLE, aiProvider, processMode);
         } else {
             console.warn(`[警告] 未対応のファイル形式です: ${path.basename(filePath)}`);
         }
     };
 
-    // 直接指定されたファイルは並列処理
+    // 同期モードならファイルを1つずつ順次処理、バッチモードなら並列処理
+    const runFiles = async (files) => {
+        if (processMode === 'sync') {
+            console.log(`[情報] ${files.length} 個のファイルを順次処理します`);
+            for (const fp of files) {
+                try {
+                    await processFile(fp);
+                } catch (err) {
+                    console.error(`[エラー] ${path.basename(fp)}: ${err.message}`);
+                }
+            }
+        } else {
+            console.log(`[情報] ${files.length} 個のファイルを並列処理します`);
+            await Promise.all(files.map(fp => processFile(fp).catch(err => {
+                console.error(`[エラー] ${path.basename(fp)}: ${err.message}`);
+            })));
+        }
+    };
+
     if (fileJobs.length > 0) {
-        console.log(`[情報] ${fileJobs.length} 個のファイルを並列処理します`);
-        await Promise.all(fileJobs.map(fp => processFile(fp).catch(err => {
-            console.error(`[エラー] ${path.basename(fp)}: ${err.message}`);
-        })));
+        await runFiles(fileJobs);
     }
 
-    // ディレクトリ内のファイルも並列処理
     for (const absPath of dirJobs) {
         const files = fs.readdirSync(absPath)
             .filter(f => {
@@ -109,13 +127,7 @@ async function main() {
             continue;
         }
 
-        console.log(`[情報] ${absPath} 内の ${files.length} 個のファイルを並列処理します`);
-        await Promise.all(files.map(file => {
-            const filePath = path.join(absPath, file);
-            return processFile(filePath).catch(err => {
-                console.error(`[エラー] ${file}: ${err.message}`);
-            });
-        }));
+        await runFiles(files.map(f => path.join(absPath, f)));
     }
     console.log("\nすべての処理が完了しました。");
 }

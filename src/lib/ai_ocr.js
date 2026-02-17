@@ -179,9 +179,13 @@ async function runBatches(requests, metadata, batchProcessor, progressState, per
 
 async function runClaudeBatch(requests, progressState, processMode = 'batch') {
     const processor = new ClaudeOcrProcessor();
-    const concurrency = processMode === 'sync' ? 1 : 2;
-    console.log(`[Claude] ${requests.length} 件のリクエストを処理中... (${processMode === 'sync' ? '同期' : '並行'}モード)`);
-    return await processor.runBatch(requests, progressState, concurrency);
+    if (processMode === 'sync') {
+        console.log(`[Claude] ${requests.length} 件のリクエストを順次処理中...`);
+        return await processor.runBatch(requests, progressState, 1);
+    } else {
+        console.log(`[Claude] ${requests.length} 件のリクエストを並列処理中...`);
+        return await processor.runBatch(requests, progressState, 2);
+    }
 }
 
 // 単一または少数のリクエスト用ヘルパー（Word文書用）

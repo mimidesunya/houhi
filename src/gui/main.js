@@ -85,13 +85,19 @@ const SCRIPTS = {
     'fax_pdf': { path: 'src/fax_prepare_pdf.js', name: 'FAX送信用PDF変換' }
 };
 
-ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
+ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvider, processMode }) => {
     if (!SCRIPTS[scriptKey]) {
         throw new Error('Invalid script key');
     }
 
     const script = SCRIPTS[scriptKey];
     const scriptPath = path.resolve(__dirname, '../../', script.path);
+    
+    // Build script arguments: add --ai and --mode flags for OCR scripts
+    const isOcrScript = scriptKey === 'ocr_general' || scriptKey === 'ocr_court';
+    const scriptArgs = isOcrScript
+        ? ['--ai', aiProvider || 'gemini', '--mode', processMode || 'batch', ...filePaths]
+        : [...filePaths];
     
     // Create console window for this task
     const consoleWin = createConsoleWindow(script.name, filePaths.length);
@@ -112,9 +118,14 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
 
     // Log command to console window
     const quotedPaths = filePaths.map(p => `"${p}"`).join(' ');
-    const command = `node "${scriptPath}" ${quotedPaths}`;
-    consoleWin.webContents.send('console-command', `実行コマンド: node ${path.basename(scriptPath)} ...`);
+    const aiFlag = isOcrScript && aiProvider ? ` --ai ${aiProvider}` : '';
+    const modeFlag = isOcrScript && processMode ? ` --mode ${processMode}` : '';
+    const command = `node "${scriptPath}"${aiFlag}${modeFlag} ${quotedPaths}`;
+    consoleWin.webContents.send('console-command', `実行コマンド: node ${path.basename(scriptPath)}${aiFlag}${modeFlag} ...`);
     consoleWin.webContents.send('console-info', `作業ディレクトリ: ${path.resolve(__dirname, '../../')}`);
+    if (isOcrScript) {
+        consoleWin.webContents.send('console-info', `AIプロバイダー: ${aiProvider || 'gemini'} / モード: ${processMode === 'sync' ? '同期' : 'バッチ'}`);
+    }
     
     // Also send to main window
     event.sender.send('script-log', `実行コマンド: ${command}\n`);
@@ -123,7 +134,7 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
         // Use spawn for real-time output streaming
         // shell: false to properly handle spaces in file paths
         // Use 'node' command (from PATH) instead of process.execPath (which is Electron)
-        const childProcess = spawn('node', [scriptPath, ...filePaths], {
+        const childProcess = spawn('node', [scriptPath, ...scriptArgs], {
             cwd: path.resolve(__dirname, '../../'),
             shell: false,
             windowsHide: true,
@@ -132,6 +143,13 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
 
         let stdout = '';
         let stderr = '';
+
+        // Safe send helper — guards against destroyed window
+        const safeSend = (channel, data) => {
+            if (consoleWin && !consoleWin.isDestroyed()) {
+                consoleWin.webContents.send(channel, data);
+            }
+        };
 
         // Stream stdout in real-time
         childProcess.stdout.on('data', (data) => {
@@ -143,15 +161,15 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
                 if (line.trim()) {
                     // Detect different types of messages
                     if (line.includes('エラー') || line.includes('Error') || line.includes('error')) {
-                        consoleWin.webContents.send('console-error', line);
+                        safeSend('console-error', line);
                     } else if (line.includes('警告') || line.includes('Warning') || line.includes('warning')) {
-                        consoleWin.webContents.send('console-warning', line);
+                        safeSend('console-warning', line);
                     } else if (line.includes('完了') || line.includes('成功') || line.includes('Success')) {
-                        consoleWin.webContents.send('console-success', line);
+                        safeSend('console-success', line);
                     } else if (line.includes('処理中') || line.includes('開始') || line.includes('...')) {
-                        consoleWin.webContents.send('console-info', line);
+                        safeSend('console-info', line);
                     } else {
-                        consoleWin.webContents.send('console-log', line);
+                        safeSend('console-log', line);
                     }
                 }
             });
@@ -164,7 +182,7 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
             
             text.split('\n').forEach(line => {
                 if (line.trim()) {
-                    consoleWin.webContents.send('console-error', line);
+                    safeSend('console-error', line);
                 }
             });
         });
@@ -183,18 +201,18 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
             };
 
             if (code === 0) {
-                consoleWin.webContents.send('console-success', '─'.repeat(50));
-                consoleWin.webContents.send('console-success', '✅ 処理が正常に完了しました');
-                consoleWin.webContents.send('console-complete', true);
+                safeSend('console-success', '─'.repeat(50));
+                safeSend('console-success', '✅ 処理が正常に完了しました');
+                safeSend('console-complete', true);
                 setAutoClose();
                 resolve({ 
                     success: true, 
                     output: stdout 
                 });
             } else {
-                consoleWin.webContents.send('console-error', '─'.repeat(50));
-                consoleWin.webContents.send('console-error', `❌ 処理がエラーで終了しました (コード: ${code})`);
-                consoleWin.webContents.send('console-complete', false);
+                safeSend('console-error', '─'.repeat(50));
+                safeSend('console-error', `❌ 処理がエラーで終了しました (コード: ${code})`);
+                safeSend('console-complete', false);
                 setAutoClose();
                 resolve({ 
                     success: false, 
@@ -206,8 +224,8 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
         });
 
         childProcess.on('error', (error) => {
-            consoleWin.webContents.send('console-error', `プロセスエラー: ${error.message}`);
-            consoleWin.webContents.send('console-complete', false);
+            safeSend('console-error', `プロセスエラー: ${error.message}`);
+            safeSend('console-complete', false);
             resolve({ 
                 success: false, 
                 output: stdout, 

@@ -12,6 +12,13 @@
         "imageModel": "gemini-3-pro-image-preview",
         "maxRetries": 3
     },
+    "claude": {
+        "apiKey": "YOUR_CLAUDE_API_KEY",
+        "baseUrl": "https://api.anthropic.com/v1/messages",
+        "chatModel": "claude-opus-4-6",
+        "timeoutMs": 300000,
+        "maxRetries": 3
+    },
     "copper": {
         "serverUri": "ctip://cti.li/",
         "user": "user",

@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressBar = document.getElementById('progressBar');
     
     let currentScript = 'pdf'; // Default
+    let currentAiProvider = 'gemini'; // Default AI provider
+    let currentProcessMode = 'batch'; // Default process mode
 
     const toolDescriptions = {
         'pdf': 'Markdown/HTMLをPDFへ変換',
@@ -42,6 +44,55 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // AI Provider Selection
+    const aiOptions = document.querySelectorAll('.ai-option');
+    const modeToggle = document.querySelector('.mode-toggle');
+    const modeLabel = document.querySelector('.mode-label');
+
+    function updateModeToggleState() {
+        if (currentAiProvider === 'claude') {
+            // Claude doesn't support batch API — force sync and disable toggle
+            modeToggle.classList.add('disabled');
+            modeLabel.classList.add('disabled');
+            modeOptions.forEach(o => {
+                o.classList.remove('active');
+                o.classList.add('disabled');
+            });
+            // Force sync mode
+            const syncBtn = document.querySelector('.mode-option[data-mode="sync"]');
+            if (syncBtn) {
+                syncBtn.classList.add('active');
+                syncBtn.classList.remove('disabled');
+            }
+            currentProcessMode = 'sync';
+        } else {
+            modeToggle.classList.remove('disabled');
+            modeLabel.classList.remove('disabled');
+            modeOptions.forEach(o => o.classList.remove('disabled'));
+        }
+    }
+
+    aiOptions.forEach(option => {
+        option.addEventListener('click', () => {
+            aiOptions.forEach(o => o.classList.remove('active'));
+            option.classList.add('active');
+            currentAiProvider = option.dataset.ai;
+            log(`AIプロバイダー変更: ${currentAiProvider}`);
+            updateModeToggleState();
+        });
+    });
+
+    // Process Mode Selection
+    const modeOptions = document.querySelectorAll('.mode-option');
+    modeOptions.forEach(option => {
+        option.addEventListener('click', () => {
+            modeOptions.forEach(o => o.classList.remove('active'));
+            option.classList.add('active');
+            currentProcessMode = option.dataset.mode;
+            log(`処理モード変更: ${currentProcessMode === 'sync' ? '同期' : 'バッチ'}`);
+        });
+    });
+
     // Drag and Drop Events
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -68,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(true);
 
         try {
-            const result = await window.electronAPI.executeScript(currentScript, files);
+            const result = await window.electronAPI.executeScript(currentScript, files, currentAiProvider, currentProcessMode);
             if (result.success) {
                 log('処理が正常に完了しました。', 'success');
             } else {
@@ -92,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 log(`${files.length} 個のファイルを処理中 (${currentScript})...`);
                 setLoading(true);
                 try {
-                    const result = await window.electronAPI.executeScript(currentScript, files);
+                    const result = await window.electronAPI.executeScript(currentScript, files, currentAiProvider, currentProcessMode);
                     if (result.success) {
                         log('処理が正常に完了しました。', 'success');
                     } else {

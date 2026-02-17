@@ -31,7 +31,7 @@ function wrapMarkdownInHtml(markdownContent, title = "裁判文書") {
     <meta charset="UTF-8">
     <title>${title}</title>
     <link rel="stylesheet" href="style.css">
-    <script src="script.js"></script>
+    <script src="court_markdown.js"></script>
 </head>
 <body>
 
