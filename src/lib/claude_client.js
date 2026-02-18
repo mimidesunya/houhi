@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const Anthropic = require('@anthropic-ai/sdk');
 
 function getProjectRoot() {
     return path.dirname(path.dirname(path.dirname(__filename)));
@@ -33,6 +34,11 @@ function formatTime(ms) {
     return [hours, minutes, seconds].map(v => String(v).padStart(2, '0')).join(':');
 }
 
+function normalizeAnthropicBaseUrl(baseUrl) {
+    if (!baseUrl) return undefined;
+    return baseUrl.replace(/\/v1\/messages\/?$/i, '');
+}
+
 /**
  * Claude API クライアント
  */
@@ -45,6 +51,12 @@ class ClaudeClient {
         this.model = config.chatModel || "claude-opus-4-6";
         this.timeoutMs = config.timeoutMs || 300000;
         this.maxRetries = config.maxRetries || 3;
+        this.client = new Anthropic({
+            apiKey: this.apiKey,
+            baseURL: normalizeAnthropicBaseUrl(this.baseUrl),
+            timeout: this.timeoutMs,
+            maxRetries: this.maxRetries
+        });
     }
 
     /**
@@ -65,48 +77,13 @@ class ClaudeClient {
             }]
         };
 
-        for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
-            try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
-
-                const response = await fetch(this.baseUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-api-key': this.apiKey,
-                        'anthropic-version': '2023-06-01'
-                    },
-                    body: JSON.stringify(body),
-                    signal: controller.signal
-                });
-
-                clearTimeout(timeout);
-
-                if (!response.ok) {
-                    const errorText = await response.text().catch(() => '');
-                    if (response.status === 429 || response.status >= 500) {
-                        const waitMs = Math.min(2000 * Math.pow(2, attempt), 60000);
-                        console.warn(`[Claude] API error ${response.status}, ${waitMs / 1000}秒後にリトライ (${attempt}/${this.maxRetries})...`);
-                        await new Promise(r => setTimeout(r, waitMs));
-                        continue;
-                    }
-                    throw new Error(`Claude API error: ${response.status} ${response.statusText} - ${errorText}`);
-                }
-
-                return await response.json();
-            } catch (err) {
-                if (err.name === 'AbortError') {
-                    console.warn(`[Claude] タイムアウト, リトライ ${attempt}/${this.maxRetries}...`);
-                    if (attempt === this.maxRetries) throw new Error('Claude API: タイムアウト回数超過');
-                    continue;
-                }
-                if (attempt === this.maxRetries) throw err;
-                console.warn(`[Claude] エラー: ${err.message}, リトライ ${attempt}/${this.maxRetries}...`);
-                await new Promise(r => setTimeout(r, 2000 * attempt));
-            }
+        try {
+            return await this.client.messages.create(body);
+        } catch (err) {
+            const status = err && typeof err.status === 'number' ? ` ${err.status}` : '';
+            const msg = err && err.message ? err.message : String(err);
+            throw new Error(`Claude SDK error:${status} ${msg}`.trim());
         }
-        throw new Error('Claude API: リトライ回数超過');
     }
 
     /**

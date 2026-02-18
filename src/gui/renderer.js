@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentAiProvider = 'gemini'; // Default AI provider
     let currentProcessMode = 'batch'; // Default process mode
 
+    const AI_TOOLS = new Set(['ocr_general', 'ocr_court']);
+    const isAiTool = (scriptKey) => AI_TOOLS.has(scriptKey);
+
     const toolDescriptions = {
         'pdf': 'Markdown/HTMLをPDFへ変換',
         'ocr_general': '画像/PDFをOCR処理',
@@ -41,6 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update current script
             currentScript = card.dataset.script;
             log(`ツール変更: ${card.querySelector('.tool-name').innerText}`);
+
+            applyAiUiConstraints();
         });
     });
 
@@ -48,8 +53,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const aiOptions = document.querySelectorAll('.ai-option');
     const modeToggle = document.querySelector('.mode-toggle');
     const modeLabel = document.querySelector('.mode-label');
+    const aiToggle = document.querySelector('.ai-toggle');
 
     function updateModeToggleState() {
+        // Tool-level disable takes precedence (e.g. PDF作成など)
+        if (!isAiTool(currentScript)) return;
+
         if (currentAiProvider === 'claude') {
             // Claude doesn't support batch API — force sync and disable toggle
             modeToggle.classList.add('disabled');
@@ -72,8 +81,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function applyAiUiConstraints() {
+        const enabled = isAiTool(currentScript);
+
+        // Provider buttons
+        aiOptions.forEach(o => o.classList.toggle('disabled', !enabled));
+
+        // Mode buttons + label
+        modeLabel.classList.toggle('disabled', !enabled);
+        modeToggle.classList.toggle('disabled', !enabled);
+        modeOptions.forEach(o => o.classList.toggle('disabled', !enabled));
+
+        // Visual grouping
+        if (aiToggle) aiToggle.classList.toggle('disabled', !enabled);
+
+        // When enabled, apply provider-specific constraints (Claude forces sync)
+        if (enabled) {
+            updateModeToggleState();
+        }
+    }
+
     aiOptions.forEach(option => {
         option.addEventListener('click', () => {
+            if (option.classList.contains('disabled')) return;
+
             aiOptions.forEach(o => o.classList.remove('active'));
             option.classList.add('active');
             currentAiProvider = option.dataset.ai;
@@ -86,12 +117,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const modeOptions = document.querySelectorAll('.mode-option');
     modeOptions.forEach(option => {
         option.addEventListener('click', () => {
+            if (option.classList.contains('disabled')) return;
+
             modeOptions.forEach(o => o.classList.remove('active'));
             option.classList.add('active');
             currentProcessMode = option.dataset.mode;
             log(`処理モード変更: ${currentProcessMode === 'sync' ? '同期' : 'バッチ'}`);
         });
     });
+
+    // Initial state (default tool is PDF)
+    applyAiUiConstraints();
 
     // Drag and Drop Events
     dropZone.addEventListener('dragover', (e) => {
