@@ -6,6 +6,9 @@ const AdminZip = require('adm-zip');
 const WordExtractor = require('word-extractor');
 const GeminiBatchProcessor = require('./gemini_batch');
 const { ClaudeOcrProcessor } = require('./claude_client');
+const os = require('os');
+const { extractPdfToImages } = require('./pdf_to_image.js');
+const { runNdlocr } = require('./ndlocr_runner.js');
 
 const MODEL_ID = "gemini-3-flash-preview"; 
 
@@ -236,8 +239,8 @@ function extractPagesFromMarkdown(content) {
     return pageMap;
 }
 
-async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, contextInstruction = "", aiProvider = "gemini", processMode = "batch") {
-    console.log(`[情報] AIプロバイダー: ${aiProvider} / モード: ${processMode === 'sync' ? '同期' : 'バッチ'}`);
+async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, contextInstruction = "", aiProvider = "gemini", processMode = "batch", useNdlocr = false) {
+    console.log(`[情報] AIプロバイダー: ${aiProvider} / モード: ${processMode === 'sync' ? '同期' : 'バッチ'} / Pre-OCR: ${useNdlocr ? 'ndlocr' : 'Off'}`);
     const pdfBuffer = await fsPromises.readFile(pdfPath);
     const srcDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
     const totalPages = srcDoc.getPageCount();
@@ -266,6 +269,32 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
 
     if (pageIndices.length === 0) {
         console.log(`[情報] すべての対象ページは既に完了しています。`);
+        return fs.existsSync(errorPath) ? errorPath : normalPath;
+    }
+
+    let ndlocrOutDir = null;
+    let tmpDir = null;
+    if (useNdlocr && pageIndices.length > 0) {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ndlocr_'));
+        const imagesDir = path.join(tmpDir, 'images');
+        ndlocrOutDir = path.join(tmpDir, 'output');
+        fs.mkdirSync(imagesDir);
+        fs.mkdirSync(ndlocrOutDir);
+        
+        console.log(`[Pre-OCR] PDFのページを画像として抽出中...`);
+        for (const pNum of pageIndices) {
+            await extractPdfToImages(pdfPath, imagesDir, 300, pNum, pNum);
+        }
+        
+        console.log(`[Pre-OCR] ndlocr-lite を実行中... しばらくお待ちください。`);
+        try {
+            await runNdlocr(imagesDir, ndlocrOutDir, true);
+            console.log(`[Pre-OCR] ndlocr-lite の処理が完了しました。`);
+        } catch (err) {
+            console.error(`[Pre-OCR エラー] ${err.message}`);
+            console.log(`[Pre-OCR] ndlocr-lite の結果なしで通常のAI OCRを続行します。`);
+            useNdlocr = false;
+        }
     }
 
     // 1. Prepare all requests
@@ -282,7 +311,55 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
         }
 
         const batchPdfBytes = await newDoc.save();
-        requests.push(createOcrRequest(Buffer.from(batchPdfBytes), batch.length, contextInstruction));
+        
+        if (useNdlocr) {
+            let combinedNdlocrText = "";
+            for (let j = 0; j < batch.length; j++) {
+                const pNum = batch[j];
+                const fileName = `page_${String(pNum).padStart(4, '0')}.txt`;
+                const txtPath = path.join(ndlocrOutDir, fileName);
+                let ndlocrText = "[未検出]";
+                if (fs.existsSync(txtPath)) {
+                    ndlocrText = fs.readFileSync(txtPath, 'utf8');
+                }
+                combinedNdlocrText += `\n### -- Begin Page ${j + 1} --\n${ndlocrText}\n### -- End --\n`;
+            }
+            
+            const prompt = `
+# ROLE
+High-precision document formatting engine converting raw OCR text to clean Markdown.
+
+${contextInstruction}
+
+# INPUT
+Raw text extracted by an OCR engine, separated by page markers. The content may contain some OCR errors or formatting artifacts.
+
+# OUTPUT RULES
+1. **Markdown Only**: No conversational text.
+2. **Formatting**: Reconstruct the original document's structure into clean Markdown paragraphs. Merge lines that are part of the same logical sentence.
+3. **Headings**: Identify probable headings and format them with Markdown (#, ##, etc.).
+4. **Errors**: Correct obvious OCR text recognition errors using surrounding context if possible.
+5. **Numbers**: Convert ALL full-width numbers to half-width (e.g., "１" -> "1").
+6. **Page Markers**: 
+   - Retain the exact same \`### -- Begin Page N --\` and \`### -- End --\` markers around each page's content in your output.
+7. **No Skipping**: Format the entire input text completely from the beginning to the end.
+`;
+            
+            requests.push({
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { text: prompt },
+                            { text: "--- RAW OCR TEXT START ---\n" + combinedNdlocrText + "\n--- RAW OCR TEXT END ---" }
+                        ]
+                    }
+                ]
+            });
+        } else {
+            requests.push(createOcrRequest(Buffer.from(batchPdfBytes), batch.length, contextInstruction));
+        }
+        
         batchMetadata.push({ startPage: batch[0], numPages: batch.length, pages: batch });
     }
 
@@ -376,6 +453,14 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
         } else {
             allMarkdown += `### -- Begin Page ${i} --\n\n[ERROR: OCR Failed for page ${i}]\n\n`;
             hasError = true;
+        }
+    }
+
+    if (tmpDir && fs.existsSync(tmpDir)) {
+        try {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        } catch (e) {
+            console.warn(`[警告] 一時ディレクトリの削除に失敗しました: ${e.message}`);
         }
     }
 

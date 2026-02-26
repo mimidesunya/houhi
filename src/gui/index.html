@@ -140,14 +140,40 @@
             background: rgba(255, 255, 255, 0.05);
         }
 
-        .mode-option.disabled {
+        .mode-option.disabled,
+        .ndlocr-option.disabled {
             opacity: 0.3;
             cursor: not-allowed;
             pointer-events: none;
         }
 
-        .mode-toggle.disabled {
+        .mode-toggle.disabled,
+        .ndlocr-toggle.disabled {
             opacity: 0.4;
+        }
+
+        .ndlocr-option {
+            padding: 4px 14px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.35);
+            transition: all 0.2s ease;
+            border: none;
+            background: transparent;
+            border-radius: 4px;
+            font-family: inherit;
+        }
+
+        .ndlocr-option:hover {
+            color: rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .ndlocr-option.active {
+            color: #fff;
+            background: var(--accent-color);
+            font-weight: 600;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
         }
 
 
@@ -358,11 +384,18 @@
         </div>
 
         <div class="ai-selector">
-            <span class="ai-selector-label">AI:</span>
+            <span class="ai-selector-label ndlocr-label">Pre-OCR:</span>
+            <div class="ai-toggle ndlocr-toggle">
+                <button class="ndlocr-option" data-ndlocr="false">Off</button>
+                <button class="ndlocr-option active" data-ndlocr="true">ndlocr</button>
+            </div>
+
+            <span class="ai-selector-label" style="margin-left: 12px;">AI:</span>
             <div class="ai-toggle">
                 <button class="ai-option active" data-ai="gemini">Gemini</button>
                 <button class="ai-option" data-ai="claude">Claude</button>
             </div>
+
             <span class="ai-selector-label mode-label" style="margin-left: 12px;">Mode:</span>
             <div class="ai-toggle mode-toggle">
                 <button class="mode-option active" data-mode="batch">バッチ</button>

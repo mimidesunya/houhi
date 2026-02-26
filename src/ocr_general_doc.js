@@ -24,6 +24,7 @@ async function main() {
     let showPrompt = false;
     let aiProvider = 'gemini';
     let processMode = 'batch';
+    let useNdlocr = false;
 
     for (let i = 0; i < args.length; i++) {
         if (args[i] === "--batch_size") batchSize = parseInt(args[++i]);
@@ -32,6 +33,7 @@ async function main() {
         else if (args[i] === "--show_prompt") showPrompt = true;
         else if (args[i] === "--ai") aiProvider = args[++i];
         else if (args[i] === "--mode") processMode = args[++i];
+        else if (args[i] === "--ndlocr") useNdlocr = true;
         else inputPaths.push(args[i]);
     }
 
@@ -45,7 +47,7 @@ async function main() {
     if (inputPaths.length === 0) {
         console.log("-------------------------------------------------------");
         console.log(" PDFファイルまたはフォルダをドロップしてください。");
-        console.log(" 使い方: node ocr_general_doc.js <input_path...> [--batch_size <n>] [--ai gemini|claude] [--mode batch|sync]");
+        console.log(" 使い方: node ocr_general_doc.js <input_path...> [--batch_size <n>] [--ai gemini|claude] [--mode batch|sync] [--ndlocr]");
         console.log("-------------------------------------------------------");
         return;
     }
@@ -70,8 +72,8 @@ async function main() {
     const processFile = async (filePath) => {
         const ext = path.extname(filePath).toLowerCase();
         if (ext === ".pdf") {
-            console.log(`\n[PDF 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
-            await pdfToText(filePath, batchSize, startPage, endPage, GENERAL_DOC_STYLE, aiProvider, processMode);
+            console.log(`\n[PDF 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode}, Pre-OCR: ${useNdlocr})`);
+            await pdfToText(filePath, batchSize, startPage, endPage, GENERAL_DOC_STYLE, aiProvider, processMode, useNdlocr);
         } else if (ext === ".docx") {
             console.log(`\n[Word 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
             await docxToText(filePath, GENERAL_DOC_STYLE, aiProvider, processMode);

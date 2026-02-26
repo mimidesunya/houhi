@@ -19,6 +19,10 @@
         "timeoutMs": 300000,
         "maxRetries": 3
     },
+    "ndlocrLite": {
+        "pythonPath": "python",
+        "repoPath": "PATH_TO_NDLOCR_LITE_REPO"
+    },
     "copper": {
         "serverUri": "ctip://cti.li/",
         "user": "user",

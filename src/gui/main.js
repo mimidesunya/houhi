@@ -85,7 +85,7 @@ const SCRIPTS = {
     'fax_pdf': { path: 'src/fax_prepare_pdf.js', name: 'FAX送信用PDF変換' }
 };
 
-ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvider, processMode }) => {
+ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvider, processMode, useNdlocr }) => {
     if (!SCRIPTS[scriptKey]) {
         throw new Error('Invalid script key');
     }
@@ -93,11 +93,15 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvide
     const script = SCRIPTS[scriptKey];
     const scriptPath = path.resolve(__dirname, '../../', script.path);
     
-    // Build script arguments: add --ai and --mode flags for OCR scripts
+    // Build script arguments: add --ai, --mode, and --ndlocr flags for OCR scripts
     const isOcrScript = scriptKey === 'ocr_general' || scriptKey === 'ocr_court';
-    const scriptArgs = isOcrScript
-        ? ['--ai', aiProvider || 'gemini', '--mode', processMode || 'batch', ...filePaths]
-        : [...filePaths];
+    let scriptArgs = [...filePaths];
+    if (isOcrScript) {
+        scriptArgs = ['--ai', aiProvider || 'gemini', '--mode', processMode || 'batch', ...filePaths];
+        if (useNdlocr) {
+            scriptArgs.unshift('--ndlocr');
+        }
+    }
     
     // Create console window for this task
     const consoleWin = createConsoleWindow(script.name, filePaths.length);
@@ -120,11 +124,12 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvide
     const quotedPaths = filePaths.map(p => `"${p}"`).join(' ');
     const aiFlag = isOcrScript && aiProvider ? ` --ai ${aiProvider}` : '';
     const modeFlag = isOcrScript && processMode ? ` --mode ${processMode}` : '';
-    const command = `node "${scriptPath}"${aiFlag}${modeFlag} ${quotedPaths}`;
-    consoleWin.webContents.send('console-command', `実行コマンド: node ${path.basename(scriptPath)}${aiFlag}${modeFlag} ...`);
+    const ndlocrFlag = isOcrScript && useNdlocr ? ' --ndlocr' : '';
+    const command = `node "${scriptPath}"${ndlocrFlag}${aiFlag}${modeFlag} ${quotedPaths}`;
+    consoleWin.webContents.send('console-command', `実行コマンド: node ${path.basename(scriptPath)}${ndlocrFlag}${aiFlag}${modeFlag} ...`);
     consoleWin.webContents.send('console-info', `作業ディレクトリ: ${path.resolve(__dirname, '../../')}`);
     if (isOcrScript) {
-        consoleWin.webContents.send('console-info', `AIプロバイダー: ${aiProvider || 'gemini'} / モード: ${processMode === 'sync' ? '同期' : 'バッチ'}`);
+        consoleWin.webContents.send('console-info', `AIプロバイダー: ${aiProvider || 'gemini'} / モード: ${processMode === 'sync' ? '同期' : 'バッチ'} / Pre-OCR: ${useNdlocr ? 'ndlocr' : 'Off'}`);
     }
     
     // Also send to main window

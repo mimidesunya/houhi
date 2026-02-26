@@ -30,6 +30,7 @@ function convertMarkdownToCourtHtml(markdown) {
     let inTable = false;
     let tableBuffer = [];
     let tableClass = '';
+    let tableHasHeader = false;
     let inRightBlock = false;
     let inLeftBlock = false;
     let lastHeader = '';
@@ -72,7 +73,7 @@ function convertMarkdownToCourtHtml(markdown) {
         }
         
         const tableMatch = trimmed.match(/^\|(.*)\|$/);
-        const listTableMatch = trimmed.match(/^- (.*?)[：:](.*)$/);
+        const listTableMatch = trimmed.match(/^[-*] (.*?)[：:](.*)$/);
         
         if (tableMatch || listTableMatch) {
             // 証拠説明書テーブルの開始を検出
@@ -121,22 +122,38 @@ function convertMarkdownToCourtHtml(markdown) {
         if (tableBuffer.length === 0) return '';
         let tableHtml = '';
         
-        tableHtml += indent(lastLevel) + `<table class="${tableClass}">` + nl;
-        tableBuffer.forEach(row => {
-            tableHtml += indent(lastLevel + 1) + '<tr>' + nl;
+        const effectiveClass = tableHasHeader ? tableClass + ' has-header' : tableClass;
+        tableHtml += indent(lastLevel) + `<table class="${effectiveClass}">` + nl;
+
+        const renderRow = (row, tag) => {
+            let rowHtml = indent(lastLevel + 2) + '<tr>' + nl;
             row.forEach((cell, i) => {
                 const text = cell.trim();
-                const isAmount = i > 0 && /^[0-9０-９,，．.]+円?$/.test(text);
+                const isAmount = tag === 'td' && i > 0 && /^[0-9０-９,，．.]+円?$/.test(text);
                 const classes = [];
                 if (tableClass.includes('info') || tableClass.includes('att')) classes.push(`col-${i + 1}`);
                 if (isAmount) classes.push('val');
                 const classAttr = classes.length > 0 ? ` class="${classes.join(' ')}"` : '';
-                tableHtml += indent(lastLevel + 2) + `<td${classAttr}>${text}</td>` + nl;
+                rowHtml += indent(lastLevel + 3) + `<${tag}${classAttr}>${text}</${tag}>` + nl;
             });
-            tableHtml += indent(lastLevel + 1) + '</tr>' + nl;
-        });
+            rowHtml += indent(lastLevel + 2) + '</tr>' + nl;
+            return rowHtml;
+        };
+
+        if (tableHasHeader && tableBuffer.length > 0) {
+            tableHtml += indent(lastLevel + 1) + '<thead>' + nl;
+            tableHtml += renderRow(tableBuffer[0], 'th');
+            tableHtml += indent(lastLevel + 1) + '</thead>' + nl;
+            tableHtml += indent(lastLevel + 1) + '<tbody>' + nl;
+            tableBuffer.slice(1).forEach(row => { tableHtml += renderRow(row, 'td'); });
+            tableHtml += indent(lastLevel + 1) + '</tbody>' + nl;
+        } else {
+            tableBuffer.forEach(row => { tableHtml += renderRow(row, 'td'); });
+        }
+
         tableHtml += indent(lastLevel) + '</table>' + nl;
         tableBuffer = [];
+        tableHasHeader = false;
         return tableHtml;
     };
 
@@ -147,7 +164,7 @@ function convertMarkdownToCourtHtml(markdown) {
         
         // ヘッダー行とセパレーター行をスキップ
         const headerRow = evidenceTableBuffer[0];
-        const dataRows = evidenceTableBuffer.slice(2); // ヘッダーとセパレーターをスキップ
+        const dataRows = evidenceTableBuffer.slice(1); // セパレーターは既に除外済みのためヘッダーのみスキップ
         
         tableHtml += indent(lastLevel) + '<table class="evidence">' + nl;
         
@@ -316,12 +333,16 @@ function convertMarkdownToCourtHtml(markdown) {
 
         // テーブル行の処理: |書類名|通数| または - 書類名：通数
         const tableMatch = trimmedLine.match(/^\|(.*)\|$/);
-        const listTableMatch = trimmedLine.match(/^- (.*?)[：:](.*)$/);
+        const listTableMatch = trimmedLine.match(/^[-*] (.*?)[：:](.*)$/);
 
         if (tableMatch || listTableMatch) {
             // セパレーター行（|:---|:---|...）をチェック
             const isSeparator = tableMatch && /^[\s|:-]+$/.test(tableMatch[1]);
-            
+            if (isSeparator) {
+                tableHasHeader = true;
+                continue;
+            }
+
             // ヘッダー行（「号証」を含む）をチェック
             const isEvidenceHeader = tableMatch && tableMatch[1].includes('号証');
             
@@ -347,7 +368,7 @@ function convertMarkdownToCourtHtml(markdown) {
                     html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                     lastLevel--;
                 }
-                
+                tableHasHeader = false;
                 if (lastHeader === '附属書類' || lastHeader === '証拠書類') {
                     tableClass = 'att';
                 } else if (inRightBlock) {
@@ -481,12 +502,12 @@ function convertMarkdownToCourtHtml(markdown) {
             if (levelInfo) {
                 html += currentIndent + `<h2>${text}</h2>` + nl;
             } else {
-                // マーカーがないヘッダは h1 とし、リストの外に出す
+                // マーカーがないヘッダもh2とし、リストの外に出す
                 while (lastLevel > 0) {
                     html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                     lastLevel--;
                 }
-                html += `<h1>${text}</h1>` + nl;
+                html += `<h2 class="doc-title">${text}</h2>` + nl;
             }
         } else if (text === '以上') {
             // 「以上」のみの行は特別扱い（リストを閉じて右寄せ）

@@ -63,20 +63,22 @@ function loadFontBytes(fontPath) {
 }
 
 /**
- * ファイル名から証拠番号を抽出
+ * ファイル名から証拠番号を抽出（枝番対応: 甲4-1 など）
  */
 function extractEvidenceNumber(filename) {
-    const match = filename.match(/^([甲乙丙丁戊証疎]\d+)/);
+    const match = filename.match(/^([甲乙丙丁戊証疎]\d+(?:-\d+)?)/);
     return match ? match[1] : null;
 }
 
 /**
- * 自然順ソート用キー
+ * 自然順ソート用キー（枝番対応）
+ * @returns {[number, number]} [主番号, 枝番号]
  */
 function naturalSortKey(filepath) {
     const name = path.basename(filepath);
-    const match = name.match(/[甲乙丙丁戊証疎](\d+)/);
-    return match ? parseInt(match[1], 10) : 0;
+    const match = name.match(/[甲乙丙丁戊証疎](\d+)(?:-(\d+))?/);
+    if (!match) return [0, 0];
+    return [parseInt(match[1], 10), match[2] ? parseInt(match[2], 10) : 0];
 }
 
 /**
@@ -212,7 +214,11 @@ async function main() {
 
     // ソート
     // 甲*.pdf に限定せず、乙・丙等も対象
-    const sortedPaths = [...filePaths].sort((a, b) => naturalSortKey(a) - naturalSortKey(b));
+    const sortedPaths = [...filePaths].sort((a, b) => {
+        const [aMain, aBranch] = naturalSortKey(a);
+        const [bMain, bBranch] = naturalSortKey(b);
+        return aMain !== bMain ? aMain - bMain : aBranch - bBranch;
+    });
 
     const stampMode = allPages ? '全ページ' : '1ページ目のみ';
     console.log(`対象: ${sortedPaths.length} ファイル`);

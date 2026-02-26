@@ -46,13 +46,14 @@ p {
 /* =========================================
    タイトル・日付・宛先
    ========================================= */
-h1 {
+h2.doc-title {
     font-size: 12pt;
     text-align: center;
     margin: 1.618em 0;
     font-weight: normal;
     letter-spacing: 0.5em;
     page-break-after: avoid;
+    display: block;
 }
 
 .date {
@@ -82,6 +83,27 @@ table.info td {
     text-align: justify;
     text-align-last: justify;
     min-width: 4em;
+}
+
+/* ヘッダー行付きテーブル（反訳書・明細等）*/
+table.has-header {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 1.618em;
+}
+
+table.has-header th,
+table.has-header td {
+    text-align: left;
+    text-align-last: left;
+    vertical-align: top;
+    padding: 0.2em 0.5em;
+    border-bottom: 0.5pt solid #ccc;
+}
+
+table.has-header thead th {
+    border-bottom: 1pt solid #000;
+    font-weight: bold;
 }
 
 table.info td:first-child {
