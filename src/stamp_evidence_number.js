@@ -20,6 +20,8 @@ const DEFAULT_FONT_SIZE = 20;
 const MARGIN_RIGHT = 15;   // 右余白 (pt)
 const MARGIN_TOP = 12;     // 上余白 (pt)
 const STAMP_SUFFIX = '号証';
+const A4_WIDTH = 595.28;   // A4 幅 (pt)
+const A4_HEIGHT = 841.89;  // A4 高さ (pt)
 
 // 日本語フォント候補（TTFを優先、TTC は pdf-lib で扱えないため避ける）
 const FONT_CANDIDATES = [
@@ -63,6 +65,48 @@ function loadFontBytes(fontPath) {
 }
 
 /**
+ * A4未満のページをA4サイズに中央配置する
+ * A4以上のページはそのまま保持
+ */
+async function ensureA4Pages(pdfBytes) {
+    const srcDoc = await PDFDocument.load(pdfBytes);
+    const srcPages = srcDoc.getPages();
+
+    // リサイズが必要なページがあるか確認
+    const needsResize = srcPages.some(page => {
+        const { width, height } = page.getSize();
+        const isLandscape = width > height;
+        const [a4W, a4H] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+        return width < a4W && height < a4H;
+    });
+    if (!needsResize) return pdfBytes;
+
+    const newDoc = await PDFDocument.create();
+
+    for (let i = 0; i < srcPages.length; i++) {
+        const srcPage = srcPages[i];
+        const { width, height } = srcPage.getSize();
+        const isLandscape = width > height;
+        const [a4W, a4H] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+
+        if (width < a4W && height < a4H) {
+            // A4ページを作成し、元のページを中央に配置
+            const newPage = newDoc.addPage([a4W, a4H]);
+            const embedded = await newDoc.embedPage(srcPage);
+            const x = (a4W - width) / 2;
+            const y = (a4H - height) / 2;
+            newPage.drawPage(embedded, { x, y });
+        } else {
+            // そのままコピー
+            const [copiedPage] = await newDoc.copyPages(srcDoc, [i]);
+            newDoc.addPage(copiedPage);
+        }
+    }
+
+    return await newDoc.save();
+}
+
+/**
  * ファイル名から証拠番号を抽出（枝番対応: 甲4-1 など）
  */
 function extractEvidenceNumber(filename) {
@@ -88,7 +132,9 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options = {
     const { allPages = false, fontSize = DEFAULT_FONT_SIZE } = options;
     const stampText = `${evidenceNumber}${STAMP_SUFFIX}`;
 
-    const existingPdfBytes = fs.readFileSync(inputPath);
+    const rawPdfBytes = fs.readFileSync(inputPath);
+    // A4未満のページをA4に中央配置
+    const existingPdfBytes = await ensureA4Pages(rawPdfBytes);
     const pdfDoc = await PDFDocument.load(existingPdfBytes);
 
     // フォント登録
