@@ -7,7 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentScript = 'pdf'; // Default
     let currentAiProvider = 'gemini'; // Default AI provider
     let currentProcessMode = 'batch'; // Default process mode
-    let currentUseNdlocr = true; // Default use Ndlocr
+    let currentOcrMode = 'ai'; // ai | ndlocr_ai | ndlocr_only
+    let currentPreferPdfText = false; // prefer embedded PDF text
 
     const AI_TOOLS = new Set(['ocr_general', 'ocr_court']);
     const isAiTool = (scriptKey) => AI_TOOLS.has(scriptKey);
@@ -54,16 +55,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const aiOptions = document.querySelectorAll('.ai-option');
     const modeToggle = document.querySelector('.mode-toggle');
     const modeLabel = document.querySelector('.mode-label');
-    const aiToggle = document.querySelector('.ai-toggle');
+    const aiToggle = document.querySelector('.ai-toggle-provider');
     
     // Ndlocr Selection
     const ndlocrOptions = document.querySelectorAll('.ndlocr-option');
     const ndlocrToggle = document.querySelector('.ndlocr-toggle');
     const ndlocrLabel = document.querySelector('.ndlocr-label');
+    const modeOptions = document.querySelectorAll('.mode-option');
+    const pdfTextOptions = document.querySelectorAll('.pdftext-option');
+    const pdfTextToggle = document.querySelector('.pdftext-toggle');
+    const pdfTextLabel = document.querySelector('.pdftext-label');
 
     function updateModeToggleState() {
         // Tool-level disable takes precedence (e.g. PDF作成など)
         if (!isAiTool(currentScript)) return;
+
+        if (currentOcrMode === 'ndlocr_only') {
+            modeToggle.classList.add('disabled');
+            modeLabel.classList.add('disabled');
+            modeOptions.forEach(o => o.classList.add('disabled'));
+            return;
+        }
 
         if (currentAiProvider === 'claude') {
             // Claude doesn't support batch API — force sync and disable toggle
@@ -89,22 +101,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function applyAiUiConstraints() {
         const enabled = isAiTool(currentScript);
+        const aiEnabled = enabled && currentOcrMode !== 'ndlocr_only';
 
         // Provider buttons
-        aiOptions.forEach(o => o.classList.toggle('disabled', !enabled));
+        aiOptions.forEach(o => o.classList.toggle('disabled', !aiEnabled));
 
         // Mode buttons + label
-        modeLabel.classList.toggle('disabled', !enabled);
-        modeToggle.classList.toggle('disabled', !enabled);
-        modeOptions.forEach(o => o.classList.toggle('disabled', !enabled));
+        modeLabel.classList.toggle('disabled', !aiEnabled);
+        modeToggle.classList.toggle('disabled', !aiEnabled);
+        modeOptions.forEach(o => o.classList.toggle('disabled', !aiEnabled));
 
         // Visual grouping
-        if (aiToggle) aiToggle.classList.toggle('disabled', !enabled);
+        if (aiToggle) aiToggle.classList.toggle('disabled', !aiEnabled);
 
         // Ndlocr buttons + label
         if (ndlocrLabel) ndlocrLabel.classList.toggle('disabled', !enabled);
         if (ndlocrToggle) ndlocrToggle.classList.toggle('disabled', !enabled);
         if (ndlocrOptions) ndlocrOptions.forEach(o => o.classList.toggle('disabled', !enabled));
+
+        // PDF text preference buttons + label
+        if (pdfTextLabel) pdfTextLabel.classList.toggle('disabled', !enabled);
+        if (pdfTextToggle) pdfTextToggle.classList.toggle('disabled', !enabled);
+        if (pdfTextOptions) pdfTextOptions.forEach(o => o.classList.toggle('disabled', !enabled));
 
         // When enabled, apply provider-specific constraints (Claude forces sync)
         if (enabled) {
@@ -131,14 +149,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 ndlocrOptions.forEach(o => o.classList.remove('active'));
                 option.classList.add('active');
-                currentUseNdlocr = option.dataset.ndlocr === 'true';
-                log(`Pre-OCR変更: ${currentUseNdlocr ? 'ndlocr' : 'Off'}`);
+                currentOcrMode = option.dataset.ocrMode || 'ai';
+                if (currentOcrMode === 'ndlocr_ai') {
+                    log('OCRエンジン変更: ndlocr+AI');
+                } else if (currentOcrMode === 'ndlocr_only') {
+                    log('OCRエンジン変更: ndlocr-only');
+                } else {
+                    log('OCRエンジン変更: AIのみ');
+                }
+                applyAiUiConstraints();
+            });
+        });
+    }
+
+    if (pdfTextOptions) {
+        pdfTextOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                if (option.classList.contains('disabled')) return;
+
+                pdfTextOptions.forEach(o => o.classList.remove('active'));
+                option.classList.add('active');
+                currentPreferPdfText = option.dataset.pdftext === 'true';
+                log(`PDFテキスト優先: ${currentPreferPdfText ? 'On' : 'Off'}`);
             });
         });
     }
 
     // Process Mode Selection
-    const modeOptions = document.querySelectorAll('.mode-option');
     modeOptions.forEach(option => {
         option.addEventListener('click', () => {
             if (option.classList.contains('disabled')) return;
@@ -179,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setLoading(true);
 
         try {
-            const result = await window.electronAPI.executeScript(currentScript, files, currentAiProvider, currentProcessMode, currentUseNdlocr);
+            const result = await window.electronAPI.executeScript(currentScript, files, currentAiProvider, currentProcessMode, currentOcrMode, currentPreferPdfText);
             if (result.success) {
                 log('処理が正常に完了しました。', 'success');
             } else {
@@ -203,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 log(`${files.length} 個のファイルを処理中 (${currentScript})...`);
                 setLoading(true);
                 try {
-                    const result = await window.electronAPI.executeScript(currentScript, files, currentAiProvider, currentProcessMode, currentUseNdlocr);
+                    const result = await window.electronAPI.executeScript(currentScript, files, currentAiProvider, currentProcessMode, currentOcrMode, currentPreferPdfText);
                     if (result.success) {
                         log('処理が正常に完了しました。', 'success');
                     } else {

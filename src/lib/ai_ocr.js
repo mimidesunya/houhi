@@ -7,8 +7,10 @@ const WordExtractor = require('word-extractor');
 const GeminiBatchProcessor = require('./gemini_batch');
 const { ClaudeOcrProcessor } = require('./claude_client');
 const os = require('os');
+const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const { extractPdfToImages } = require('./pdf_to_image.js');
 const { runNdlocr } = require('./ndlocr_runner.js');
+const { loadConfig } = require('./gemini_client.js');
 
 const MODEL_ID = "gemini-3-flash-preview"; 
 
@@ -239,8 +241,187 @@ function extractPagesFromMarkdown(content) {
     return pageMap;
 }
 
-async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, contextInstruction = "", aiProvider = "gemini", processMode = "batch", useNdlocr = false) {
-    console.log(`[情報] AIプロバイダー: ${aiProvider} / モード: ${processMode === 'sync' ? '同期' : 'バッチ'} / Pre-OCR: ${useNdlocr ? 'ndlocr' : 'Off'}`);
+function normalizeNdlocrText(rawText) {
+    const lines = rawText.replace(/\r\n/g, '\n').split('\n');
+    const merged = [];
+
+    const endsSentence = (text) => /[。．！？!?：:；;」』）)】\]]$/.test(text);
+    const startsStructuredLine = (text) => {
+        return /^[・●◯■□◆◇※▶▷▼▽▲△◆◇★☆]/.test(text)
+            || /^[-*#]/.test(text)
+            || /^\d+[\.)．、]/.test(text)
+            || /^\([0-9０-９一二三四五六七八九十]+\)/.test(text)
+            || /^[ 　]{2,}/.test(text);
+    };
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+
+        if (trimmed === '') {
+            if (merged.length > 0 && merged[merged.length - 1] !== '') {
+                merged.push('');
+            }
+            continue;
+        }
+
+        if (merged.length === 0 || merged[merged.length - 1] === '') {
+            merged.push(trimmed);
+            continue;
+        }
+
+        const prev = merged[merged.length - 1];
+        if (endsSentence(prev) || startsStructuredLine(trimmed)) {
+            merged.push(trimmed);
+        } else {
+            merged[merged.length - 1] = prev + trimmed;
+        }
+    }
+
+    return merged.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function getNdlocrParallelJobs() {
+    const config = loadConfig();
+    const raw = config?.ndlocrLite?.parallelJobs;
+
+    const cpuCount = (() => {
+        try {
+            const cpus = os.cpus();
+            return Array.isArray(cpus) && cpus.length > 0 ? cpus.length : 1;
+        } catch (_e) {
+            return 1;
+        }
+    })();
+    const autoJobs = Math.max(1, Math.min(8, cpuCount - 1));
+
+    if (raw === undefined || raw === null || raw === '' || String(raw).toLowerCase() === 'auto') {
+        return autoJobs;
+    }
+
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isNaN(parsed) || parsed < 1) return autoJobs;
+    return Math.min(parsed, 16);
+}
+
+function buildPageRanges(pageIndices) {
+    if (!pageIndices || pageIndices.length === 0) return [];
+    const sorted = [...pageIndices].sort((a, b) => a - b);
+    const ranges = [];
+    let start = sorted[0];
+    let prev = sorted[0];
+
+    for (let i = 1; i < sorted.length; i++) {
+        const current = sorted[i];
+        if (current === prev + 1) {
+            prev = current;
+            continue;
+        }
+        ranges.push({ start, end: prev });
+        start = current;
+        prev = current;
+    }
+    ranges.push({ start, end: prev });
+    return ranges;
+}
+
+function getRawTextFormattingPrompt(contextInstruction = "") {
+    return `
+# ROLE
+High-precision document formatting engine converting raw OCR text to clean Markdown.
+
+${contextInstruction}
+
+# INPUT
+Raw text extracted by an OCR engine, separated by page markers. The content may contain some OCR errors or formatting artifacts.
+
+# OUTPUT RULES
+1. **Markdown Only**: No conversational text.
+2. **Formatting**: Reconstruct the original document's structure into clean Markdown paragraphs. Merge lines that are part of the same logical sentence.
+3. **Headings**: Identify probable headings and format them with Markdown (#, ##, etc.).
+4. **Errors**: Correct obvious OCR text recognition errors using surrounding context if possible.
+5. **Numbers**: Convert ALL full-width numbers to half-width (e.g., "１" -> "1").
+6. **Page Markers**:
+   - Retain the exact same \`### -- Begin Page N --\` and \`### -- End --\` markers around each page's content in your output.
+7. **No Skipping**: Format the entire input text completely from the beginning to the end.
+`;
+}
+
+function createRawTextRequest(batchPages, pageTextMap, contextInstruction = "") {
+    let combinedText = "";
+    for (let j = 0; j < batchPages.length; j++) {
+        const pNum = batchPages[j];
+        const sourceText = pageTextMap.get(pNum) || "[未検出]";
+        combinedText += `\n### -- Begin Page ${j + 1} --\n${sourceText}\n### -- End --\n`;
+    }
+
+    const prompt = getRawTextFormattingPrompt(contextInstruction);
+    return {
+        contents: [
+            {
+                role: "user",
+                parts: [
+                    { text: prompt },
+                    { text: "--- RAW OCR TEXT START ---\n" + combinedText + "\n--- RAW OCR TEXT END ---" }
+                ]
+            }
+        ]
+    };
+}
+
+async function extractEmbeddedTextFromPdfPages(pdfPath, pageNumbers) {
+    const result = new Map();
+    if (!pageNumbers || pageNumbers.length === 0) {
+        return result;
+    }
+
+    const pdfjsPackageDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
+    const standardFontDataUrl = path.join(pdfjsPackageDir, 'standard_fonts') + path.sep;
+    const cMapUrl = path.join(pdfjsPackageDir, 'cmaps') + path.sep;
+    const pdfBytes = fs.readFileSync(pdfPath);
+
+    const loadingTask = pdfjsLib.getDocument({
+        data: new Uint8Array(pdfBytes),
+        standardFontDataUrl,
+        cMapUrl,
+        cMapPacked: true,
+        useSystemFonts: false,
+        disableFontFace: true,
+        useWorkerFetch: false,
+        isEvalSupported: false
+    });
+
+    const srcPdf = await loadingTask.promise;
+    try {
+        for (const pageNum of pageNumbers) {
+            const page = await srcPdf.getPage(pageNum);
+            const textContent = await page.getTextContent();
+            const lines = textContent.items
+                .map(item => (item && typeof item.str === 'string') ? item.str.trim() : '')
+                .filter(Boolean);
+
+            const joined = lines.join('\n').trim();
+            if (joined.replace(/[\s\u3000]/g, '').length > 0) {
+                result.set(pageNum, joined);
+            }
+
+            if (typeof page.cleanup === 'function') {
+                page.cleanup();
+            }
+        }
+    } finally {
+        if (typeof srcPdf.cleanup === 'function') {
+            srcPdf.cleanup();
+        }
+    }
+
+    return result;
+}
+
+async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, contextInstruction = "", aiProvider = "gemini", processMode = "batch", useNdlocr = false, ndlocrOnly = false, preferPdfText = false) {
+    if (ndlocrOnly) {
+        useNdlocr = true;
+    }
+    console.log(`[情報] AIプロバイダー: ${aiProvider} / モード: ${processMode === 'sync' ? '同期' : 'バッチ'} / ndlocr: ${useNdlocr ? (ndlocrOnly ? 'Only' : 'Pre-OCR') : 'Off'} / PDFテキスト優先: ${preferPdfText ? 'On' : 'Off'}`);
     const pdfBuffer = await fsPromises.readFile(pdfPath);
     const srcDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
     const totalPages = srcDoc.getPageCount();
@@ -248,11 +429,15 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
     const actualEndPage = endPage || totalPages;
     console.log(`[情報] 処理開始: ${pdfPath} (${totalPages} ページ中 ${startPage} から ${actualEndPage} ページまで)`);
 
-    const errorPath = pdfPath.replace(/\.pdf$/i, "_ERROR_paged.md");
-    const normalPath = pdfPath.replace(/\.pdf$/i, "_paged.md");
+    const errorPath = ndlocrOnly
+        ? pdfPath.replace(/\.pdf$/i, "_ERROR_paged.txt")
+        : pdfPath.replace(/\.pdf$/i, "_ERROR_paged.md");
+    const normalPath = ndlocrOnly
+        ? pdfPath.replace(/\.pdf$/i, "_paged.txt")
+        : pdfPath.replace(/\.pdf$/i, "_paged.md");
     
     let pageMap = new Map();
-    if (fs.existsSync(errorPath)) {
+    if (!ndlocrOnly && fs.existsSync(errorPath)) {
         const existingContent = fs.readFileSync(errorPath, 'utf-8');
         pageMap = extractPagesFromMarkdown(existingContent);
         if (pageMap.size > 0) {
@@ -272,187 +457,310 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
         return fs.existsSync(errorPath) ? errorPath : normalPath;
     }
 
+    let embeddedTextMap = new Map();
+    if (preferPdfText) {
+        try {
+            console.log(`[PDFテキスト] 埋め込みテキストを確認中...`);
+            embeddedTextMap = await extractEmbeddedTextFromPdfPages(pdfPath, pageIndices);
+            console.log(`[PDFテキスト] ${embeddedTextMap.size}/${pageIndices.length} ページで埋め込みテキストを検出`);
+        } catch (e) {
+            console.warn(`[PDFテキスト] 抽出に失敗したためOCR処理へフォールバックします: ${e.message}`);
+            embeddedTextMap = new Map();
+        }
+    }
+
+    const ndlocrTargetPages = pageIndices.filter(pNum => !embeddedTextMap.has(pNum));
+
     let ndlocrOutDir = null;
     let tmpDir = null;
-    if (useNdlocr && pageIndices.length > 0) {
+    if (useNdlocr && ndlocrTargetPages.length > 0) {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ndlocr_'));
         const imagesDir = path.join(tmpDir, 'images');
         ndlocrOutDir = path.join(tmpDir, 'output');
         fs.mkdirSync(imagesDir);
         fs.mkdirSync(ndlocrOutDir);
+
+        const parallelJobs = getNdlocrParallelJobs();
+        const pageRanges = buildPageRanges(ndlocrTargetPages);
         
-        console.log(`[Pre-OCR] PDFのページを画像として抽出中...`);
-        for (const pNum of pageIndices) {
-            await extractPdfToImages(pdfPath, imagesDir, 300, pNum, pNum);
-        }
-        
-        console.log(`[Pre-OCR] ndlocr-lite を実行中... しばらくお待ちください。`);
+        console.log(`[ndlocr] 対象 ${ndlocrTargetPages.length} ページを処理します。`);
+        console.log(`[ndlocr] 並列ワーカー数: ${parallelJobs}`);
         try {
-            await runNdlocr(imagesDir, ndlocrOutDir, true);
-            console.log(`[Pre-OCR] ndlocr-lite の処理が完了しました。`);
+            for (const range of pageRanges) {
+                if (range.start === range.end) {
+                    console.log(`[ndlocr] 画像化中: ページ ${range.start}`);
+                } else {
+                    console.log(`[ndlocr] 画像化中: ページ ${range.start}-${range.end}`);
+                }
+                await extractPdfToImages(pdfPath, imagesDir, 300, range.start, range.end);
+            }
+
+            const imageFiles = ndlocrTargetPages
+                .map(pNum => path.join(imagesDir, `page_${String(pNum).padStart(4, '0')}.png`))
+                .filter(fp => fs.existsSync(fp));
+
+            if (imageFiles.length === 0) {
+                throw new Error('ndlocr に渡す画像が見つかりませんでした');
+            }
+
+            const workerCount = Math.min(parallelJobs, imageFiles.length);
+            const workerDirs = [];
+
+            if (workerCount <= 1) {
+                workerDirs.push({ srcDir: imagesDir, outDir: ndlocrOutDir });
+            } else {
+                const workersRoot = path.join(tmpDir, 'workers');
+                fs.mkdirSync(workersRoot, { recursive: true });
+
+                const chunks = Array.from({ length: workerCount }, () => []);
+                imageFiles.forEach((fp, idx) => {
+                    chunks[idx % workerCount].push(fp);
+                });
+
+                for (let i = 0; i < chunks.length; i++) {
+                    const chunk = chunks[i];
+                    if (chunk.length === 0) continue;
+                    const srcDir = path.join(workersRoot, `w${i + 1}`, 'images');
+                    const outDir = path.join(workersRoot, `w${i + 1}`, 'output');
+                    fs.mkdirSync(srcDir, { recursive: true });
+                    fs.mkdirSync(outDir, { recursive: true });
+                    for (const fp of chunk) {
+                        const dest = path.join(srcDir, path.basename(fp));
+                        fs.copyFileSync(fp, dest);
+                    }
+                    workerDirs.push({ srcDir, outDir });
+                }
+            }
+
+            const seenPages = new Set();
+            const totalPages = ndlocrTargetPages.length;
+            const scanProgress = () => {
+                for (const dirInfo of workerDirs) {
+                    const outDir = dirInfo.outDir;
+                    if (!fs.existsSync(outDir)) continue;
+                    for (const fileName of fs.readdirSync(outDir)) {
+                        const match = fileName.match(/^page_(\d+)\.txt$/i);
+                        if (!match) continue;
+                        const pageNum = parseInt(match[1], 10);
+                        if (seenPages.has(pageNum)) continue;
+                        seenPages.add(pageNum);
+                        console.log(`[ndlocr] 完了: ページ ${pageNum} (${seenPages.size}/${totalPages})`);
+                    }
+                }
+            };
+
+            const timer = setInterval(scanProgress, 1000);
+
+            try {
+                await Promise.all(workerDirs.map((dirInfo, idx) => {
+                    console.log(`[ndlocr] ワーカー ${idx + 1}/${workerDirs.length} 開始`);
+                    return runNdlocr(dirInfo.srcDir, dirInfo.outDir, true);
+                }));
+            } finally {
+                clearInterval(timer);
+                scanProgress();
+            }
+
+            if (workerDirs.length > 1) {
+                for (const dirInfo of workerDirs) {
+                    const outDir = dirInfo.outDir;
+                    if (!fs.existsSync(outDir)) continue;
+                    for (const fileName of fs.readdirSync(outDir)) {
+                        const src = path.join(outDir, fileName);
+                        const dst = path.join(ndlocrOutDir, fileName);
+                        fs.copyFileSync(src, dst);
+                    }
+                }
+            }
+
+            console.log(`[ndlocr] ndlocr-lite の処理が完了しました。`);
         } catch (err) {
-            console.error(`[Pre-OCR エラー] ${err.message}`);
-            console.log(`[Pre-OCR] ndlocr-lite の結果なしで通常のAI OCRを続行します。`);
+            console.error(`[ndlocr エラー] ${err.message}`);
+            if (ndlocrOnly) {
+                throw err;
+            }
+            console.log(`[ndlocr] ndlocr-lite の結果なしで通常のAI OCRを続行します。`);
             useNdlocr = false;
         }
+    } else if (useNdlocr && ndlocrTargetPages.length === 0) {
+        console.log(`[ndlocr] すべての対象ページで埋め込みテキストを検出したため、ndlocr実行をスキップします。`);
     }
 
-    // 1. Prepare all requests
-    const requests = [];
-    const batchMetadata = [];
-    
-    for (let i = 0; i < pageIndices.length; i += batchSize) {
-        const batch = pageIndices.slice(i, i + batchSize);
-
-        const newDoc = await PDFDocument.create();
-        for (const pNum of batch) {
-            const [copiedPage] = await newDoc.copyPages(srcDoc, [pNum - 1]);
-            newDoc.addPage(copiedPage);
-        }
-
-        const batchPdfBytes = await newDoc.save();
-        
-        if (useNdlocr) {
-            let combinedNdlocrText = "";
-            for (let j = 0; j < batch.length; j++) {
-                const pNum = batch[j];
+    if (ndlocrOnly) {
+        console.log(`[ndlocr-only] AI後処理なしでテキストを組み立てます。`);
+        for (const pNum of pageIndices) {
+            let sourceText = null;
+            if (embeddedTextMap.has(pNum)) {
+                sourceText = embeddedTextMap.get(pNum);
+            } else if (ndlocrOutDir) {
                 const fileName = `page_${String(pNum).padStart(4, '0')}.txt`;
                 const txtPath = path.join(ndlocrOutDir, fileName);
-                let ndlocrText = "[未検出]";
                 if (fs.existsSync(txtPath)) {
-                    ndlocrText = fs.readFileSync(txtPath, 'utf8');
+                    sourceText = fs.readFileSync(txtPath, 'utf8');
                 }
-                combinedNdlocrText += `\n### -- Begin Page ${j + 1} --\n${ndlocrText}\n### -- End --\n`;
             }
-            
-            const prompt = `
-# ROLE
-High-precision document formatting engine converting raw OCR text to clean Markdown.
 
-${contextInstruction}
+            if (sourceText !== null) {
+                const pageContent = normalizeNdlocrText(sourceText);
+                pageMap.set(pNum, pageContent);
+            }
+        }
+    } else {
+        const pageTextMap = new Map();
+        for (const pNum of pageIndices) {
+            if (embeddedTextMap.has(pNum)) {
+                pageTextMap.set(pNum, embeddedTextMap.get(pNum));
+            } else if (useNdlocr && ndlocrOutDir) {
+                const fileName = `page_${String(pNum).padStart(4, '0')}.txt`;
+                const txtPath = path.join(ndlocrOutDir, fileName);
+                if (fs.existsSync(txtPath)) {
+                    pageTextMap.set(pNum, fs.readFileSync(txtPath, 'utf8'));
+                }
+            }
+        }
 
-# INPUT
-Raw text extracted by an OCR engine, separated by page markers. The content may contain some OCR errors or formatting artifacts.
+        // 1. Prepare all requests
+        const requests = [];
+        const batchMetadata = [];
+        const effectiveBatchSize = preferPdfText ? 1 : batchSize;
+        
+        for (let i = 0; i < pageIndices.length; i += effectiveBatchSize) {
+            const batch = pageIndices.slice(i, i + effectiveBatchSize);
 
-# OUTPUT RULES
-1. **Markdown Only**: No conversational text.
-2. **Formatting**: Reconstruct the original document's structure into clean Markdown paragraphs. Merge lines that are part of the same logical sentence.
-3. **Headings**: Identify probable headings and format them with Markdown (#, ##, etc.).
-4. **Errors**: Correct obvious OCR text recognition errors using surrounding context if possible.
-5. **Numbers**: Convert ALL full-width numbers to half-width (e.g., "１" -> "1").
-6. **Page Markers**: 
-   - Retain the exact same \`### -- Begin Page N --\` and \`### -- End --\` markers around each page's content in your output.
-7. **No Skipping**: Format the entire input text completely from the beginning to the end.
-`;
-            
-            requests.push({
-                contents: [
-                    {
-                        role: "user",
-                        parts: [
-                            { text: prompt },
-                            { text: "--- RAW OCR TEXT START ---\n" + combinedNdlocrText + "\n--- RAW OCR TEXT END ---" }
-                        ]
-                    }
-                ]
-            });
-        } else {
+            const hasTextForAllPages = batch.every(pNum => pageTextMap.has(pNum));
+
+            if (hasTextForAllPages) {
+                requests.push(createRawTextRequest(batch, pageTextMap, contextInstruction));
+                batchMetadata.push({ startPage: batch[0], numPages: batch.length, pages: batch });
+                continue;
+            }
+
+            if (useNdlocr) {
+                const fallbackTextMap = new Map();
+                for (const pNum of batch) {
+                    fallbackTextMap.set(pNum, pageTextMap.get(pNum) || "[未検出]");
+                }
+                requests.push(createRawTextRequest(batch, fallbackTextMap, contextInstruction));
+                batchMetadata.push({ startPage: batch[0], numPages: batch.length, pages: batch });
+                continue;
+            }
+
+            const newDoc = await PDFDocument.create();
+            for (const pNum of batch) {
+                const [copiedPage] = await newDoc.copyPages(srcDoc, [pNum - 1]);
+                newDoc.addPage(copiedPage);
+            }
+
+            const batchPdfBytes = await newDoc.save();
+
             requests.push(createOcrRequest(Buffer.from(batchPdfBytes), batch.length, contextInstruction));
-        }
-        
-        batchMetadata.push({ startPage: batch[0], numPages: batch.length, pages: batch });
-    }
-
-    // 2. Run Batch(es) with Retry Logic
-    const batchProcessor = aiProvider === 'claude' ? null : new GeminiBatchProcessor();
-    let pendingIndices = requests.map((_, i) => i);
-    let retryCount = 0;
-    const MAX_RETRIES = 3;
-
-    const progressState = {
-        completed: 0,
-        total: requests.length,
-        startTime: Date.now()
-    };
-
-    while (pendingIndices.length > 0) {
-        if (retryCount >= MAX_RETRIES) {
-            console.error(`[エラー] リトライ上限に達しました。${pendingIndices.length} 件のバッチが失敗しました。`);
-            break;
-        }
-        
-        if (retryCount > 0) {
-            console.log(`[情報] ${pendingIndices.length} 件のバッチをリトライ中 (試行 ${retryCount}/${MAX_RETRIES})...`);
-        }
-
-        const currentRequests = pendingIndices.map(i => requests[i]);
-        const currentMetadata = pendingIndices.map(i => batchMetadata[i]);
-        
-        let batchResults;
-        if (aiProvider === 'claude') {
-            batchResults = await runClaudeBatch(currentRequests, progressState, processMode);
-        } else {
-            // Resilience: Use a persistence file for the batch state
-            const persistenceFile = `${pdfPath}.batch_state.txt`;
-            batchResults = await runBatches(currentRequests, currentMetadata, batchProcessor, progressState, persistenceFile, processMode);
-        }
-
-        const nextPendingIndices = [];
-
-        for (let i = 0; i < batchResults.length; i++) {
-            const originalIndex = pendingIndices[i];
-            const result = batchResults[i];
-            const meta = batchMetadata[originalIndex];
             
-            let success = false;
-            let text = "";
-
-            if (!result.error && result.response?.candidates?.[0]?.content?.parts) {
-                text = result.response.candidates[0].content.parts.map(p => p.text).join('');
-                
-                // Validation
-                const beginCount = (text.match(/### -- Begin Page \d+/g) || []).length;
-                const endCount = (text.match(/### -- End/g) || []).length;
-
-                if (beginCount === meta.numPages && endCount === meta.numPages) {
-                    success = true;
-                } else {
-                    console.warn(`[警告] バッチ ${originalIndex} (ページ ${meta.pages.join(',')}) の検証に失敗しました。期待されるマーカー数: ${meta.numPages}, 実際: 開始:${beginCount}, 終了:${endCount}。`);
-                }
-            } else {
-                console.warn(`[警告] バッチ ${originalIndex} APIエラー: ${JSON.stringify(result.error || "内容なし")}`);
-            }
-
-            if (success) {
-                // Fix page numbers (Relative -> Absolute)
-                const absoluteText = text.replace(/### -- Begin Page (\d+)/g, (match, p1) => {
-                    const relativePage = parseInt(p1, 10);
-                    const absolutePage = meta.pages[relativePage - 1];
-                    return `### -- Begin Page ${absolutePage}`;
-                });
-                
-                const batchPages = extractPagesFromMarkdown(absoluteText);
-                for (const [pNum, pContent] of batchPages) {
-                    pageMap.set(pNum, pContent);
-                }
-            } else {
-                nextPendingIndices.push(originalIndex);
-            }
+            batchMetadata.push({ startPage: batch[0], numPages: batch.length, pages: batch });
         }
 
-        pendingIndices = nextPendingIndices;
-        retryCount++;
+        // 2. Run Batch(es) with Retry Logic
+        const batchProcessor = aiProvider === 'claude' ? null : new GeminiBatchProcessor();
+        let pendingIndices = requests.map((_, i) => i);
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+
+        const progressState = {
+            completed: 0,
+            total: requests.length,
+            startTime: Date.now()
+        };
+
+        while (pendingIndices.length > 0) {
+            if (retryCount >= MAX_RETRIES) {
+                console.error(`[エラー] リトライ上限に達しました。${pendingIndices.length} 件のバッチが失敗しました。`);
+                break;
+            }
+            
+            if (retryCount > 0) {
+                console.log(`[情報] ${pendingIndices.length} 件のバッチをリトライ中 (試行 ${retryCount}/${MAX_RETRIES})...`);
+            }
+
+            const currentRequests = pendingIndices.map(i => requests[i]);
+            const currentMetadata = pendingIndices.map(i => batchMetadata[i]);
+            
+            let batchResults;
+            if (aiProvider === 'claude') {
+                batchResults = await runClaudeBatch(currentRequests, progressState, processMode);
+            } else {
+                // Resilience: Use a persistence file for the batch state
+                const persistenceFile = `${pdfPath}.batch_state.txt`;
+                batchResults = await runBatches(currentRequests, currentMetadata, batchProcessor, progressState, persistenceFile, processMode);
+            }
+
+            const nextPendingIndices = [];
+
+            for (let i = 0; i < batchResults.length; i++) {
+                const originalIndex = pendingIndices[i];
+                const result = batchResults[i];
+                const meta = batchMetadata[originalIndex];
+                
+                let success = false;
+                let text = "";
+
+                if (!result.error && result.response?.candidates?.[0]?.content?.parts) {
+                    text = result.response.candidates[0].content.parts.map(p => p.text).join('');
+                    
+                    // Validation
+                    const beginCount = (text.match(/### -- Begin Page \d+/g) || []).length;
+                    const endCount = (text.match(/### -- End/g) || []).length;
+
+                    if (beginCount === meta.numPages && endCount === meta.numPages) {
+                        success = true;
+                    } else {
+                        console.warn(`[警告] バッチ ${originalIndex} (ページ ${meta.pages.join(',')}) の検証に失敗しました。期待されるマーカー数: ${meta.numPages}, 実際: 開始:${beginCount}, 終了:${endCount}。`);
+                    }
+                } else {
+                    console.warn(`[警告] バッチ ${originalIndex} APIエラー: ${JSON.stringify(result.error || "内容なし")}`);
+                }
+
+                if (success) {
+                    // Fix page numbers (Relative -> Absolute)
+                    const absoluteText = text.replace(/### -- Begin Page (\d+)/g, (match, p1) => {
+                        const relativePage = parseInt(p1, 10);
+                        const absolutePage = meta.pages[relativePage - 1];
+                        return `### -- Begin Page ${absolutePage}`;
+                    });
+                    
+                    const batchPages = extractPagesFromMarkdown(absoluteText);
+                    for (const [pNum, pContent] of batchPages) {
+                        pageMap.set(pNum, pContent);
+                    }
+                } else {
+                    nextPendingIndices.push(originalIndex);
+                }
+            }
+
+            pendingIndices = nextPendingIndices;
+            retryCount++;
+        }
     }
 
     // 3. Assemble results
     let allMarkdown = "";
     let hasError = false;
-    for (let i = startPage; i <= actualEndPage; i++) {
-        if (pageMap.has(i)) {
-            allMarkdown += pageMap.get(i) + "\n\n";
-        } else {
-            allMarkdown += `### -- Begin Page ${i} --\n\n[ERROR: OCR Failed for page ${i}]\n\n`;
-            hasError = true;
+
+    if (ndlocrOnly) {
+        for (let i = startPage; i <= actualEndPage; i++) {
+            if (pageMap.has(i)) {
+                allMarkdown += `----- Page ${i} -----\n${pageMap.get(i)}\n\n`;
+            } else {
+                allMarkdown += `----- Page ${i} -----\n[ERROR: OCR Failed for page ${i}]\n\n`;
+                hasError = true;
+            }
+        }
+    } else {
+        for (let i = startPage; i <= actualEndPage; i++) {
+            if (pageMap.has(i)) {
+                allMarkdown += pageMap.get(i) + "\n\n";
+            } else {
+                allMarkdown += `### -- Begin Page ${i} --\n\n[ERROR: OCR Failed for page ${i}]\n\n`;
+                hasError = true;
+            }
         }
     }
 

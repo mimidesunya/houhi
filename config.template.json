@@ -21,7 +21,8 @@
     },
     "ndlocrLite": {
         "pythonPath": "python",
-        "repoPath": "PATH_TO_NDLOCR_LITE_REPO"
+        "repoPath": "PATH_TO_NDLOCR_LITE_REPO",
+        "parallelJobs": "auto"
     },
     "copper": {
         "serverUri": "ctip://cti.li/",

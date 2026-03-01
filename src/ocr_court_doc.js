@@ -33,6 +33,8 @@ async function main() {
     let aiProvider = 'gemini';
     let processMode = 'batch';
     let useNdlocr = false;
+    let ndlocrOnly = false;
+    let preferPdfText = false;
 
     for (let i = 0; i < args.length; i++) {
         if (args[i] === "--batch_size") batchSize = parseInt(args[++i]);
@@ -42,6 +44,8 @@ async function main() {
         else if (args[i] === "--ai") aiProvider = args[++i];
         else if (args[i] === "--mode") processMode = args[++i];
         else if (args[i] === "--ndlocr") useNdlocr = true;
+        else if (args[i] === "--ndlocr_only") ndlocrOnly = true;
+        else if (args[i] === "--prefer_pdf_text") preferPdfText = true;
         else inputPaths.push(args[i]);
     }
 
@@ -55,7 +59,7 @@ async function main() {
     if (inputPaths.length === 0) {
         console.log("-------------------------------------------------------");
         console.log(" PDF/Wordファイルまたはフォルダをドロップしてください。");
-        console.log(" 使い方: node ocr_court_doc.js <input_path...> [--batch_size <n>] [--ai gemini|claude] [--mode batch|sync] [--ndlocr]");
+        console.log(" 使い方: node ocr_court_doc.js <input_path...> [--batch_size <n>] [--ai gemini|claude] [--mode batch|sync] [--ndlocr] [--ndlocr_only] [--prefer_pdf_text]");
         console.log("-------------------------------------------------------");
         return;
     }
@@ -81,11 +85,17 @@ async function main() {
         const ext = path.extname(filePath).toLowerCase();
         if (ext === ".pdf") {
             console.log(`\n[PDF 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode}, Pre-OCR: ${useNdlocr})`);
-            await pdfToText(filePath, batchSize, startPage, endPage, COURT_DOC_STYLE, aiProvider, processMode, useNdlocr);
+            await pdfToText(filePath, batchSize, startPage, endPage, COURT_DOC_STYLE, aiProvider, processMode, useNdlocr, ndlocrOnly, preferPdfText);
         } else if (ext === ".docx") {
+            if (ndlocrOnly) {
+                throw new Error("ndlocr-only モードは現在 PDF のみ対応です");
+            }
             console.log(`\n[Word 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
             await docxToText(filePath, COURT_DOC_STYLE, aiProvider, processMode);
         } else if (ext === ".doc") {
+            if (ndlocrOnly) {
+                throw new Error("ndlocr-only モードは現在 PDF のみ対応です");
+            }
             console.log(`\n[Word(doc) 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
             await docToText(filePath, COURT_DOC_STYLE, aiProvider, processMode);
         } else {
