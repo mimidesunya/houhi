@@ -42,7 +42,7 @@
         }
 
         .header {
-            padding: 15px 20px;
+            padding: 6px 20px;
             -webkit-app-region: drag;
             text-align: center;
         }
@@ -58,7 +58,7 @@
         /* Tool Selection Grid */
         .tools-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 8px;
             padding: 0 20px;
             margin-bottom: 15px;
@@ -215,7 +215,6 @@
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
         }
 
-
         .tool-card {
             background: var(--card-color);
             border: 1px solid rgba(255, 255, 255, 0.05);
@@ -315,8 +314,7 @@
             min-height: 100px;
             max-height: 200px;
             background: #111;
-            margin: 0 20px 40px 20px;
-            /* Extra bottom margin */
+            margin: 0 20px 10px 20px;
             border-radius: 6px;
             padding: 10px;
             font-family: 'Consolas', monospace;
@@ -416,9 +414,9 @@
                 <div class="tool-icon">🔴</div>
                 <div class="tool-name">号証スタンプ</div>
             </div>
-            <div class="tool-card" data-script="fax_pdf">
-                <div class="tool-icon">📠</div>
-                <div class="tool-name">FAX PDF化</div>
+            <div class="tool-card" data-script="fax_send">
+                <div class="tool-icon">📨</div>
+                <div class="tool-name">FAX送信</div>
             </div>
         </div>
 
@@ -440,14 +438,15 @@
                     <div class="ai-toggle ai-toggle-provider">
                         <button class="ai-option active" data-ai="gemini">Gemini</button>
                         <button class="ai-option" data-ai="claude">Claude</button>
+                        <button class="ai-option" data-ai="openai">OpenAI</button>
                     </div>
                 </div>
 
                 <div class="selector-group">
                     <span class="ai-selector-label mode-label">Mode:</span>
                     <div class="ai-toggle mode-toggle">
-                        <button class="mode-option active" data-mode="batch">バッチ</button>
-                        <button class="mode-option" data-mode="sync">同期</button>
+                        <button class="mode-option" data-mode="batch">バッチ</button>
+                        <button class="mode-option active" data-mode="sync">同期</button>
                     </div>
                 </div>
 

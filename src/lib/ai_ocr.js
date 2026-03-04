@@ -6,6 +6,7 @@ const AdminZip = require('adm-zip');
 const WordExtractor = require('word-extractor');
 const GeminiBatchProcessor = require('./gemini_batch');
 const { ClaudeOcrProcessor } = require('./claude_client');
+const { OpenAIOcrProcessor } = require('./openai_client.js');
 const os = require('os');
 const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const { extractPdfToImages } = require('./pdf_to_image.js');
@@ -193,10 +194,19 @@ async function runClaudeBatch(requests, progressState, processMode = 'batch') {
     }
 }
 
+async function runOpenAIBatch(requests, progressState) {
+    const processor = new OpenAIOcrProcessor();
+    console.log(`[OpenAI] ${requests.length} 件のリクエストを処理中...`);
+    return await processor.runBatch(requests, progressState, 3);
+}
+
 // 単一または少数のリクエスト用ヘルパー（Word文書用）
 async function runSingleBatch(requests, batchProcessor, progressState, displayName, persistenceFile, aiProvider = 'gemini', processMode = 'batch') {
     if (aiProvider === 'claude') {
         return await runClaudeBatch(requests, progressState, processMode);
+    }
+    if (aiProvider === 'openai') {
+        return await runOpenAIBatch(requests, progressState);
     }
     
     if (processMode === 'sync') {
@@ -686,6 +696,8 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
             let batchResults;
             if (aiProvider === 'claude') {
                 batchResults = await runClaudeBatch(currentRequests, progressState, processMode);
+            } else if (aiProvider === 'openai') {
+                batchResults = await runOpenAIBatch(currentRequests, progressState);
             } else {
                 // Resilience: Use a persistence file for the batch state
                 const persistenceFile = `${pdfPath}.batch_state.txt`;

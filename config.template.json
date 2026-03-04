@@ -31,5 +31,26 @@
         "properties": {
             "output.pdf.version": "1.4A-1"
         }
+    },
+    "mail": {
+        "smtp": {
+            "host": "YOUR_MAIL_SERVER",
+            "port": 465,
+            "secure": true,
+            "tlsMinVersion": "TLSv1.2"
+        },
+        "imap": {
+            "host": "YOUR_MAIL_SERVER",
+            "port": 993,
+            "secure": true,
+            "tlsMinVersion": "TLSv1.2"
+        },
+        "user": "YOUR_MAIL_ADDRESS",
+        "password": "YOUR_MAIL_PASSWORD"
+    },
+    "mfax": {
+        "sendPassword": "YOUR_MFAX_SEND_PASSWORD",
+        "fromAddress": "YOUR_FROM_ADDRESS",
+        "selfFax": "自分のFAX番号（数字のみ。送付書への記載分を除外するために利用）"
     }
 }

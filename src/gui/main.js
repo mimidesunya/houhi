@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 
@@ -7,8 +7,8 @@ let consoleWindows = new Map();
 
 function createWindow() {
     const win = new BrowserWindow({
-        width: 600,
-        height: 600,
+        width: 480,
+        height: 730,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -82,7 +82,7 @@ const SCRIPTS = {
     'renumber': { path: 'src/renumber_markdown.js', name: 'Markdown番号振直' },
     'ai_archive': { path: 'src/archive_for_ai.js', name: 'AI分析用アーカイブ作成' },
     'stamp': { path: 'src/stamp_evidence_number.js', name: '号証スタンプ' },
-    'fax_pdf': { path: 'src/fax_prepare_pdf.js', name: 'FAX送信用PDF変換' }
+    'fax_send': { path: 'src/fax_send.js', name: 'mfax FAX送信' }
 };
 
 ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvider, processMode, ocrMode, preferPdfText }) => {
@@ -100,7 +100,7 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvide
     const ndlocrOnly = selectedOcrMode === 'ndlocr_only';
     let scriptArgs = [...filePaths];
     if (isOcrScript) {
-        scriptArgs = ['--ai', aiProvider || 'gemini', '--mode', processMode || 'batch', ...filePaths];
+        scriptArgs = ['--ai', aiProvider || 'gemini', '--mode', processMode || 'sync', ...filePaths];
         if (ndlocrOnly) {
             scriptArgs.unshift('--ndlocr_only');
         } else if (useNdlocr) {
@@ -169,27 +169,50 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvide
         };
 
         // Stream stdout in real-time
-        childProcess.stdout.on('data', (data) => {
+        let lineBuffer = '';
+        childProcess.stdout.on('data', async (data) => {
             const text = data.toString();
             stdout += text;
+            lineBuffer += text;
+
+            // 完結行単位で処理（部分行は次のデータまで保留）
+            const lines = lineBuffer.split('\n');
+            lineBuffer = lines.pop();
             
             // Send each line to console window
-            text.split('\n').forEach(line => {
-                if (line.trim()) {
-                    // Detect different types of messages
-                    if (line.includes('エラー') || line.includes('Error') || line.includes('error')) {
-                        safeSend('console-error', line);
-                    } else if (line.includes('警告') || line.includes('Warning') || line.includes('warning')) {
-                        safeSend('console-warning', line);
-                    } else if (line.includes('完了') || line.includes('成功') || line.includes('Success')) {
-                        safeSend('console-success', line);
-                    } else if (line.includes('処理中') || line.includes('開始') || line.includes('...')) {
-                        safeSend('console-info', line);
-                    } else {
-                        safeSend('console-log', line);
-                    }
+            for (const line of lines) {
+                if (!line.trim()) continue;
+
+                // [CONFIRM] マーカはネイティブダイアログに変換
+                if (line.startsWith('[CONFIRM]')) {
+                    const raw = line.replace('[CONFIRM]', '').trim().replace(/\\n/g, '\n');
+                    const [firstLine, ...rest] = raw.split('\n');
+                    const result = await dialog.showMessageBox(consoleWin && !consoleWin.isDestroyed() ? consoleWin : null, {
+                        type: 'question',
+                        buttons: ['送信する', 'キャンセル'],
+                        defaultId: 0,
+                        cancelId: 1,
+                        title: 'FAX送信確認',
+                        message: firstLine,
+                        detail: rest.join('\n')
+                    });
+                    childProcess.stdin.write(result.response === 0 ? 'y\n' : 'n\n');
+                    continue;
                 }
-            });
+
+                // Detect different types of messages
+                if (line.includes('エラー') || line.includes('Error') || line.includes('error')) {
+                    safeSend('console-error', line);
+                } else if (line.includes('警告') || line.includes('Warning') || line.includes('warning')) {
+                    safeSend('console-warning', line);
+                } else if (line.includes('完了') || line.includes('成功') || line.includes('Success')) {
+                    safeSend('console-success', line);
+                } else if (line.includes('処理中') || line.includes('開始') || line.includes('...')) {
+                    safeSend('console-info', line);
+                } else {
+                    safeSend('console-log', line);
+                }
+            }
         });
 
         // Stream stderr in real-time

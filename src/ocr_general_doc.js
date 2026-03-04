@@ -23,7 +23,7 @@ async function main() {
     let endPage = null;
     let showPrompt = false;
     let aiProvider = 'gemini';
-    let processMode = 'batch';
+    let processMode = 'sync';
     let useNdlocr = false;
     let ndlocrOnly = false;
     let preferPdfText = false;
@@ -51,7 +51,7 @@ async function main() {
     if (inputPaths.length === 0) {
         console.log("-------------------------------------------------------");
         console.log(" PDFファイルまたはフォルダをドロップしてください。");
-        console.log(" 使い方: node ocr_general_doc.js <input_path...> [--batch_size <n>] [--ai gemini|claude] [--mode batch|sync] [--ndlocr] [--ndlocr_only] [--prefer_pdf_text]");
+        console.log(" 使い方: node ocr_general_doc.js <input_path...> [--batch_size <n>] [--ai gemini|claude|openai] [--mode batch|sync] [--ndlocr] [--ndlocr_only] [--prefer_pdf_text]");
         console.log("-------------------------------------------------------");
         return;
     }
