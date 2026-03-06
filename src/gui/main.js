@@ -200,6 +200,61 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvide
                     continue;
                 }
 
+                // [PROMPT] マーカはテキスト入力ダイアログに変換
+                if (line.startsWith('[PROMPT]')) {
+                    const raw = line.replace('[PROMPT]', '').trim().replace(/\\n/g, '\n');
+                    const parentWin = consoleWin && !consoleWin.isDestroyed() ? consoleWin : null;
+                    // Electron には入力ダイアログがないので BrowserWindow で実装
+                    const inputValue = await new Promise((resolveInput) => {
+                        const inputWin = new BrowserWindow({
+                            width: 420,
+                            height: 180,
+                            parent: parentWin,
+                            modal: true,
+                            resizable: false,
+                            minimizable: false,
+                            maximizable: false,
+                            webPreferences: {
+                                nodeIntegration: false,
+                                contextIsolation: true,
+                                preload: path.join(__dirname, 'console_preload.js')
+                            },
+                            backgroundColor: '#1a1a2e',
+                            show: false
+                        });
+                        inputWin.setMenuBarVisibility(false);
+                        const escaped = raw.replace(/'/g, '&#39;').replace(/\n/g, '<br>');
+                        inputWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+body{margin:0;padding:20px;font-family:'Segoe UI',system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;flex-direction:column;gap:12px}
+label{font-size:14px}
+input{padding:8px 12px;font-size:16px;border:1px solid #444;border-radius:6px;background:#2a2a3e;color:#e0e0e0;outline:none;width:100%;box-sizing:border-box}
+input:focus{border-color:#64b5f6}
+.btns{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+button{padding:6px 20px;border:none;border-radius:6px;font-size:14px;cursor:pointer}
+.ok{background:#64b5f6;color:#1a1a2e;font-weight:bold}
+.cancel{background:#444;color:#e0e0e0}
+</style></head><body>
+<label>${escaped}</label>
+<input id="v" autofocus>
+<div class="btns"><button class="cancel" onclick="require=null;window.close()">キャンセル</button><button class="ok" onclick="document.title=document.getElementById('v').value;window.close()">OK</button></div>
+<script>document.getElementById('v').addEventListener('keydown',e=>{if(e.key==='Enter'){document.title=document.getElementById('v').value;window.close();}if(e.key==='Escape')window.close();});</script>
+</body></html>`)}`);
+                        inputWin.once('ready-to-show', () => inputWin.show());
+                        inputWin.on('closed', () => {
+                            const title = inputWin.getTitle ? null : null; // already closed
+                            resolveInput(null);
+                        });
+                        inputWin.on('page-title-updated', (ev, title) => {
+                            ev.preventDefault();
+                            resolveInput(title);
+                            inputWin.close();
+                        });
+                    });
+                    childProcess.stdin.write((inputValue || '') + '\n');
+                    continue;
+                }
+
                 // Detect different types of messages
                 if (line.includes('エラー') || line.includes('Error') || line.includes('error')) {
                     safeSend('console-error', line);

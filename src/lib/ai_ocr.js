@@ -194,10 +194,15 @@ async function runClaudeBatch(requests, progressState, processMode = 'batch') {
     }
 }
 
-async function runOpenAIBatch(requests, progressState) {
+async function runOpenAIBatch(requests, progressState, processMode = 'batch', persistencePath = null) {
     const processor = new OpenAIOcrProcessor();
-    console.log(`[OpenAI] ${requests.length} 件のリクエストを処理中...`);
-    return await processor.runBatch(requests, progressState, 3);
+    if (processMode === 'sync') {
+        console.log(`[OpenAI] ${requests.length} 件のリクエストを同期モードで処理中...`);
+        return await processor.runSync(requests, progressState, 1);
+    } else {
+        console.log(`[OpenAI バッチ] ${requests.length} 件のリクエストをBatch APIで処理中...`);
+        return await processor.runFileBatch(requests, progressState, persistencePath);
+    }
 }
 
 // 単一または少数のリクエスト用ヘルパー（Word文書用）
@@ -206,7 +211,7 @@ async function runSingleBatch(requests, batchProcessor, progressState, displayNa
         return await runClaudeBatch(requests, progressState, processMode);
     }
     if (aiProvider === 'openai') {
-        return await runOpenAIBatch(requests, progressState);
+        return await runOpenAIBatch(requests, progressState, processMode, persistenceFile);
     }
     
     if (processMode === 'sync') {
@@ -680,6 +685,21 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
             startTime: Date.now()
         };
 
+        // ページマップの中間結果をディスクに保存するヘルパー
+        const saveIntermediateResults = () => {
+            if (pageMap.size === 0) return;
+            let tmpMarkdown = "";
+            for (let i = startPage; i <= actualEndPage; i++) {
+                if (pageMap.has(i)) {
+                    tmpMarkdown += pageMap.get(i) + "\n\n";
+                } else {
+                    tmpMarkdown += `### -- Begin Page ${i} --\n\n[ERROR: OCR Failed for page ${i}]\n\n`;
+                }
+            }
+            fs.writeFileSync(errorPath, tmpMarkdown, 'utf-8');
+            console.log(`[情報] 中間結果を ${errorPath} に保存しました (${pageMap.size} ページ完了)`);
+        };
+
         while (pendingIndices.length > 0) {
             if (retryCount >= MAX_RETRIES) {
                 console.error(`[エラー] リトライ上限に達しました。${pendingIndices.length} 件のバッチが失敗しました。`);
@@ -694,14 +714,23 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
             const currentMetadata = pendingIndices.map(i => batchMetadata[i]);
             
             let batchResults;
-            if (aiProvider === 'claude') {
-                batchResults = await runClaudeBatch(currentRequests, progressState, processMode);
-            } else if (aiProvider === 'openai') {
-                batchResults = await runOpenAIBatch(currentRequests, progressState);
-            } else {
-                // Resilience: Use a persistence file for the batch state
-                const persistenceFile = `${pdfPath}.batch_state.txt`;
-                batchResults = await runBatches(currentRequests, currentMetadata, batchProcessor, progressState, persistenceFile, processMode);
+            try {
+                if (aiProvider === 'claude') {
+                    batchResults = await runClaudeBatch(currentRequests, progressState, processMode);
+                } else if (aiProvider === 'openai') {
+                    const persistenceFile = `${pdfPath}.batch_state.txt`;
+                    batchResults = await runOpenAIBatch(currentRequests, progressState, processMode, persistenceFile);
+                } else {
+                    // Resilience: Use a persistence file for the batch state
+                    const persistenceFile = `${pdfPath}.batch_state.txt`;
+                    batchResults = await runBatches(currentRequests, currentMetadata, batchProcessor, progressState, persistenceFile, processMode);
+                }
+            } catch (batchError) {
+                console.error(`[エラー] バッチAPI呼び出しが失敗しました: ${batchError.message}`);
+                // バッチ全体が失敗した場合、中間結果を保存してリトライを続行
+                saveIntermediateResults();
+                retryCount++;
+                continue;
             }
 
             const nextPendingIndices = [];
@@ -749,6 +778,11 @@ async function pdfToText(pdfPath, batchSize = 5, startPage = 1, endPage = null, 
 
             pendingIndices = nextPendingIndices;
             retryCount++;
+
+            // リトライ間で中間結果を保存（クラッシュ耐性）
+            if (pendingIndices.length > 0 && pageMap.size > 0) {
+                saveIntermediateResults();
+            }
         }
     }
 

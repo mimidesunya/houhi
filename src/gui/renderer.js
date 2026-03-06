@@ -77,8 +77,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (currentAiProvider === 'claude' || currentAiProvider === 'openai') {
-            // Claude/OpenAI don't support batch API — force sync and disable toggle
+        if (currentAiProvider === 'claude') {
+            // Claude doesn't support batch API — force sync and disable toggle
             modeToggle.classList.add('disabled');
             modeLabel.classList.add('disabled');
             modeOptions.forEach(o => {

@@ -3,11 +3,12 @@
  *
  * 使い方:
  *   node src/fax_send.js <YYYY-MM-DD-送付書.md> <添付PDF>
+ *   node src/fax_send.js <添付PDF>              ← 送付書なし（FAX番号を手入力）
  *
  * 動作:
- *   1. 送付書.mdをPDF化
- *   2. 送付書PDF + 添付PDFを結合
- *   3. 送付書.mdからFAX番号を抽出 (FAX XXXXXXXXXX)
+ *   1. 送付書.mdをPDF化（送付書がある場合）
+ *   2. 送付書PDF + 添付PDFを結合（送付書がある場合）
+ *   3. 送付書.mdからFAX番号を抽出 (FAX XXXXXXXXXX)、または手入力
  *   4. {FAX番号}@mfax.jp 宛にメール送信（本文空、PDFを添付）
  *   5. 送信済みメールをIMAPのSentフォルダに保存
  */
@@ -248,6 +249,38 @@ function askConfirm(question) {
     }
 }
 
+/**
+ * ユーザーにテキスト入力を求める（GUI/CLI両対応）
+ */
+function askPrompt(question) {
+    if (process.stdin.isTTY) {
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        return new Promise(resolve => {
+            rl.question(question + ': ', answer => {
+                rl.close();
+                resolve(answer.trim());
+            });
+        });
+    } else {
+        const encoded = question.replace(/\n/g, '\\n');
+        process.stdout.write(`[PROMPT] ${encoded}\n`);
+        return new Promise(resolve => {
+            let buf = '';
+            const onData = (chunk) => {
+                buf += chunk.toString();
+                if (buf.includes('\n')) {
+                    process.stdin.removeListener('data', onData);
+                    process.stdin.pause();
+                    resolve(buf.trim());
+                }
+            };
+            process.stdin.resume();
+            process.stdin.setEncoding('utf-8');
+            process.stdin.on('data', onData);
+        });
+    }
+}
+
 // ─── IMAP Sent 保存 ───────────────────────────────────────────
 
 async function saveToSent(rawMessage, mailConfig) {
@@ -292,11 +325,13 @@ async function saveToSent(rawMessage, mailConfig) {
 async function main() {
     const args = process.argv.slice(2);
 
-    if (args.length < 2) {
+    if (args.length < 1) {
         console.log('-------------------------------------------------------');
         console.log(' mfax FAX送信ツール');
         console.log(' 使い方: node fax_send.js <送付書.md> <添付PDF>');
+        console.log('         node fax_send.js <添付PDF>  (送付書なし)');
         console.log(' ドロップ: YYYY-MM-DD-送付書.md と 送付するPDF をペアでドロップ');
+        console.log('           または PDF のみドロップ（FAX番号を手入力）');
         console.log('-------------------------------------------------------');
         return;
     }
@@ -319,12 +354,8 @@ async function main() {
         }
     }
 
-    if (!mdFile) {
-        console.error('[エラー] 送付書の .md ファイルが見つかりません。');
-        return;
-    }
     if (!attachPdf) {
-        console.error('[エラー] 添付する PDF ファイルが見つかりません。');
+        console.error('[エラー] 送信する PDF ファイルが見つかりません。');
         return;
     }
 
@@ -345,18 +376,36 @@ async function main() {
     const sendPassword = mfaxConfig.sendPassword;
 
     // ─ FAX番号抽出 ─
-    const mdContent = fs.readFileSync(mdFile, 'utf-8');
-    const faxNumbers = extractFaxNumbers(mdContent);
-    if (faxNumbers.length === 0) {
-        console.error('[エラー] 送付書.mdからFAX番号を抽出できませんでした。');
-        console.error('         "(FAX XXXXXXXXXX)" という形式の番号が必要です。');
-        return;
+    let faxNumbers = [];
+    if (mdFile) {
+        const mdContent = fs.readFileSync(mdFile, 'utf-8');
+        faxNumbers = extractFaxNumbers(mdContent);
+        if (faxNumbers.length === 0) {
+            console.error('[エラー] 送付書.mdからFAX番号を抽出できませんでした。');
+            console.error('         "(FAX XXXXXXXXXX)" という形式の番号が必要です。');
+            return;
+        }
+    } else {
+        // 送付書なし: ユーザーにFAX番号を入力してもらう
+        console.log('[FAX] 送付書が指定されていないため、FAX番号を手動入力します。');
+        const faxInput = await askPrompt('送信先FAX番号を入力してください（例: 03-1234-5678）');
+        if (!faxInput) {
+            console.error('[エラー] FAX番号が入力されませんでした。');
+            return;
+        }
+        const faxNum = faxInput.replace(/[^\d]/g, '');
+        if (faxNum.length < 10) {
+            console.error(`[エラー] FAX番号が短すぎます: ${faxInput}`);
+            return;
+        }
+        faxNumbers.push({ label: '手動入力', name: faxInput, number: faxNum });
     }
     console.log('');
     console.log('┌─────────────────────────────────────────────┐');
     console.log('│  FAX送信確認                                │');
     console.log('├─────────────────────────────────────────────┤');
-    console.log(`│  送付書: ${path.basename(mdFile).padEnd(36)}│`);
+    const coverLabel = mdFile ? path.basename(mdFile) : '（なし）';
+    console.log(`│  送付書: ${coverLabel.padEnd(36)}│`);
     console.log(`│  添付:   ${path.basename(attachPdf).padEnd(36)}│`);
     console.log('│  送信先:                                    │');
     for (let i = 0; i < faxNumbers.length; i++) {
@@ -386,15 +435,20 @@ async function main() {
     const faxPdfPath    = path.join(tmpDir, 'fax_binarized.pdf');
 
     try {
-        console.log(`[FAX] 送付書PDFを生成中: ${path.basename(mdFile)}`);
-        await convertMdToPdf(mdFile, coverPdfPath);
-        if (!fs.existsSync(coverPdfPath)) {
-            throw new Error('送付書PDFの生成に失敗しました。');
-        }
+        if (mdFile) {
+            console.log(`[FAX] 送付書PDFを生成中: ${path.basename(mdFile)}`);
+            await convertMdToPdf(mdFile, coverPdfPath);
+            if (!fs.existsSync(coverPdfPath)) {
+                throw new Error('送付書PDFの生成に失敗しました。');
+            }
 
-        // ─ PDF結合（送付書 + 添付PDF）─
-        console.log(`[FAX] PDFを結合中...`);
-        await mergePdfs([coverPdfPath, attachPdf], mergedPdfPath);
+            // ─ PDF結合（送付書 + 添付PDF）─
+            console.log(`[FAX] PDFを結合中...`);
+            await mergePdfs([coverPdfPath, attachPdf], mergedPdfPath);
+        } else {
+            // 送付書なし: 添付PDFをそのまま使用
+            fs.copyFileSync(attachPdf, mergedPdfPath);
+        }
 
         // ─ 二値化 ─
         console.log(`[FAX] FAX用に二値化中 (${FAX_DPI}dpi, threshold=${FAX_THRESHOLD})...`);
