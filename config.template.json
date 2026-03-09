@@ -8,8 +8,7 @@
     },
     "gemini": {
         "apiKey": "YOUR_GEMINI_API_KEY",
-        "textModel": "gemini-3-flash-preview",
-        "imageModel": "gemini-3-pro-image-preview",
+        "chatModel": "gemini-3-flash-preview",
         "maxRetries": 3
     },
     "claude": {

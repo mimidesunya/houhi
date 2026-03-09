@@ -30,8 +30,22 @@ function getApiKey() {
     return process.env.GEMINI_API_KEY;
 }
 
+function getGeminiChatModel() {
+    const config = loadConfig();
+    if (config && config.gemini) {
+        if (config.gemini.chatModel) {
+            return config.gemini.chatModel;
+        }
+    }
+    if (process.env.GEMINI_CHAT_MODEL) {
+        return process.env.GEMINI_CHAT_MODEL;
+    }
+    throw new Error('Gemini chat model is not configured. Set gemini.chatModel in config.json or GEMINI_CHAT_MODEL.');
+}
+
 module.exports = {
     getProjectRoot,
     loadConfig,
-    getApiKey
+    getApiKey,
+    getGeminiChatModel
 };

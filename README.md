@@ -103,7 +103,7 @@ AI機能やカスタムPDFサーバーを使用する場合は、`config.templat
 {
     "gemini": {
         "apiKey": "YOUR_GEMINI_API_KEY",
-        "textModel": "gemini-2.0-flash-exp"
+        "chatModel": "gemini-2.0-flash-exp"
     },
     "copper": {
         "serverUri": "ctip://cti.li/",

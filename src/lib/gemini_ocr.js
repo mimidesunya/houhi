@@ -6,8 +6,7 @@ const AdminZip = require('adm-zip');
 const WordExtractor = require('word-extractor');
 const GeminiBatchProcessor = require('./gemini_batch');
 const { ClaudeOcrProcessor } = require('./claude_client');
-
-const MODEL_ID = "gemini-3-flash-preview"; 
+const { getGeminiChatModel } = require('./gemini_client.js');
 
 function formatTime(ms) {
     const seconds = Math.floor(ms / 1000);
@@ -153,9 +152,10 @@ function createOcrRequest(pdfBytes, numPages, contextInstruction = "") {
 }
 
 async function runBatches(requests, metadata, batchProcessor, progressState, persistenceFile, processMode = 'batch') {
+    const modelId = getGeminiChatModel();
     if (processMode === 'sync') {
         console.log(`[同期] ${requests.length} 件のリクエストを同期モードで処理中...`);
-        return await batchProcessor.runSync(requests, MODEL_ID, progressState);
+        return await batchProcessor.runSync(requests, modelId, progressState);
     }
     
     // リクエストサイズを見積もり、閾値に応じてインラインかファイルバッチを選択
@@ -168,11 +168,11 @@ async function runBatches(requests, metadata, batchProcessor, progressState, per
     
     if (payloadEstimate < INLINE_THRESHOLD) {
         console.log(`[バッチ] インラインバッチを使用 (高速モード)`);
-        const results = await batchProcessor.runInlineBatch(requests, MODEL_ID, progressState, "ocr-batch-job");
+        const results = await batchProcessor.runInlineBatch(requests, modelId, progressState, "ocr-batch-job");
         return results;
     } else {
         console.log(`[バッチ] ファイルバッチを使用 (大容量モード)`);
-        const results = await batchProcessor.runFileBatch(requests, MODEL_ID, progressState, "ocr-batch-job", persistenceFile);
+        const results = await batchProcessor.runFileBatch(requests, modelId, progressState, "ocr-batch-job", persistenceFile);
         return results;
     }
 }
@@ -186,13 +186,14 @@ async function runClaudeBatch(requests, progressState, processMode = 'batch') {
 
 // 単一または少数のリクエスト用ヘルパー（Word文書用）
 async function runSingleBatch(requests, batchProcessor, progressState, displayName, persistenceFile, aiProvider = 'gemini', processMode = 'batch') {
+    const modelId = getGeminiChatModel();
     if (aiProvider === 'claude') {
         return await runClaudeBatch(requests, progressState, processMode);
     }
     
     if (processMode === 'sync') {
         console.log(`[同期] リクエストを同期モードで処理中...`);
-        return await batchProcessor.runSync(requests, MODEL_ID, progressState);
+        return await batchProcessor.runSync(requests, modelId, progressState);
     }
     
     const INLINE_THRESHOLD = 15 * 1024 * 1024; // 15MB
@@ -204,10 +205,10 @@ async function runSingleBatch(requests, batchProcessor, progressState, displayNa
     
     if (payloadEstimate < INLINE_THRESHOLD) {
         console.log(`[バッチ] インラインバッチを使用 (高速モード)`);
-        return await batchProcessor.runInlineBatch(requests, MODEL_ID, progressState, displayName);
+        return await batchProcessor.runInlineBatch(requests, modelId, progressState, displayName);
     } else {
         console.log(`[バッチ] ファイルバッチを使用 (大容量モード)`);
-        return await batchProcessor.runFileBatch(requests, MODEL_ID, progressState, displayName, persistenceFile);
+        return await batchProcessor.runFileBatch(requests, modelId, progressState, displayName, persistenceFile);
     }
 }
 
