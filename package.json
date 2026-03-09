@@ -2,9 +2,12 @@
   "name": "houhi",
   "version": "1.0.0",
   "description": "Court document generation system",
-  "main": "src/gui/main.js",
+  "main": "dist/src/gui/main.js",
   "scripts": {
-    "gui": "electron src/gui/main.js"
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p . && copyfiles -u 1 \"src/**/*.html\" \"src/**/*.css\" \"src/**/*.md\" dist/src",
+    "gui": "npm run build && electron dist/src/gui/main.js",
+    "setup": "npm run build && node dist/setup.js",
+    "test": "npm run build && node --test tests"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.67.0",
@@ -21,6 +24,9 @@
     "word-extractor": "^1.0.4"
   },
   "devDependencies": {
-    "electron": "^40.0.0"
+    "@types/node": "^24.0.0",
+    "copyfiles": "^2.4.1",
+    "electron": "^40.0.0",
+    "typescript": "^5.8.2"
   }
 }

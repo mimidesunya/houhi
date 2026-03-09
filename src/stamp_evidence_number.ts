@@ -128,7 +128,12 @@ function naturalSortKey(filepath) {
 /**
  * PDFに証拠番号スタンプを追加し、スタンプ済みPDFDocumentを返す
  */
-async function stampPdf(inputPath, outputPath, evidenceNumber, font, options = {}) {
+type StampOptions = {
+    allPages?: boolean;
+    fontSize?: number;
+};
+
+async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: StampOptions = {}) {
     const { allPages = false, fontSize = DEFAULT_FONT_SIZE } = options;
     const stampText = `${evidenceNumber}${STAMP_SUFFIX}`;
 

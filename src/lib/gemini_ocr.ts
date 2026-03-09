@@ -6,7 +6,7 @@ const AdminZip = require('adm-zip');
 const WordExtractor = require('word-extractor');
 const GeminiBatchProcessor = require('./gemini_batch');
 const { ClaudeOcrProcessor } = require('./claude_client');
-const { getGeminiChatModel } = require('./gemini_client.js');
+const { getGeminiChatModel } = require('./gemini_client');
 
 function formatTime(ms) {
     const seconds = Math.floor(ms / 1000);

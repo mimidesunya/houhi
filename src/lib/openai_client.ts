@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { extractPdfToImages } = require('./pdf_to_image.js');
-const { loadConfig } = require('./gemini_client.js');
+const { extractPdfToImages } = require('./pdf_to_image');
+const { loadConfig } = require('./gemini_client');
 
 function formatTime(ms) {
     if (isNaN(ms) || ms < 0) return "00:00:00";
@@ -22,6 +22,12 @@ function getOpenAIConfig() {
  * PDFはページ画像に変換してから送信（OpenAIはPDFを直接受け付けないため）
  */
 class OpenAIClient {
+    apiKey;
+    baseUrl;
+    model;
+    timeoutMs;
+    maxRetries;
+
     constructor() {
         const config = getOpenAIConfig();
         if (!config || !config.apiKey) throw new Error("OpenAI API Key not found in config.json");
@@ -124,6 +130,11 @@ class OpenAIClient {
  * ClaudeOcrProcessor と同等のインターフェース + OpenAI Batch API 対応
  */
 class OpenAIOcrProcessor {
+    client;
+    apiKey;
+    apiBaseUrl;
+    model;
+
     constructor() {
         this.client = new OpenAIClient();
         const config = getOpenAIConfig();

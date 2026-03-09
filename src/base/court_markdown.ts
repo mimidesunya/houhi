@@ -589,7 +589,7 @@ function convertMarkdownToCourtHtml(markdown) {
  */
 async function renderMarkdown() {
     const preElements = document.querySelectorAll('pre');
-    for (const pre of preElements) {
+    for (const pre of Array.from(preElements)) {
         let markdown = pre.textContent;
         const src = pre.getAttribute('data-src');
         

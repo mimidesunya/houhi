@@ -12,8 +12,8 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const clipboardy = require('clipboardy');
-const { convertHtmlToPdf } = require('./lib/pdf_converter.js');
-const { renderPreTags } = require('./lib/markdown_renderer.js');
+const { convertHtmlToPdf } = require('./lib/pdf_converter');
+const { renderPreTags } = require('./lib/markdown_renderer');
 
 // 設定
 const BASE_DIR = __dirname;

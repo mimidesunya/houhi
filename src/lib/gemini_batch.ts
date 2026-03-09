@@ -7,6 +7,9 @@ const { Readable } = require("stream");
 const readline = require("readline");
 
 class GeminiBatchProcessor {
+  apiKey;
+  ai;
+
   constructor() {
     const apiKey = getApiKey();
     if (!apiKey) throw new Error("API Key not found");

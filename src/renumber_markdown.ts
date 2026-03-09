@@ -62,13 +62,6 @@ function renumberLines(lines) {
     const outputLines = [];
 
     for (let line of lines) {
-        // Strip newline chars for processing, but we'll add them back or join later
-        // In python I did rstrip. Here split by newline usually gives lines without \n (except maybe the last one).
-        // Let's assume input is array of strings without newlines.
-        
-        // We'll handle the actual string content.
-        const originalLine = line; // keep ref if needed? No, we reconstruct.
-        
         let matchedLevel = -1;
         let matchResult = null;
 
@@ -101,11 +94,6 @@ function renumberLines(lines) {
                 case 7: newMarker = `(${getAlphabet(currentNum)})`; break;
             }
 
-            // Reconstruct
-            // Group 1: Prefix (matchResult[1]) - "## " or empty
-            // Group 2: Marker (matchResult[2]) - replaced with newMarker
-            // Group 3: Suffix (matchResult[3]) - rest of line
-            
             const prefix = matchResult[1] || "";
             const suffix = matchResult[3] || "";
             
@@ -138,13 +126,7 @@ function main() {
         const content = fs.readFileSync(inputPath, 'utf8');
         // split by regex to handle \r\n, \n, \r
         const lines = content.split(/\r?\n/);
-        
-        // If the last line is empty (caused by trailing newline), pop it to avoid double newline issues? 
-        // Or just re-join with initial platform style?
-        // Let's keep it simple. split might imply an empty string at the end if file ends with newline.
-        
         const renumbered = renumberLines(lines);
-
         const outputContent = renumbered.join('\n');
         
         fs.writeFileSync(outputPath, outputContent, 'utf8');
@@ -192,3 +174,10 @@ function main() {
 if (require.main === module) {
     main();
 }
+
+module.exports = {
+    getKatakana,
+    getAlphabet,
+    renumberLines,
+    main
+};

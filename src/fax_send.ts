@@ -23,9 +23,9 @@ const { ImapFlow } = require('imapflow');
 const { PDFDocument } = require('pdf-lib');
 const { createCanvas, registerFont } = require('canvas');
 const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
-const { loadConfig } = require('./lib/gemini_client.js');
-const { convertHtmlToPdf } = require('./lib/pdf_converter.js');
-const { renderPreTags } = require('./lib/markdown_renderer.js');
+const { loadConfig } = require('./lib/gemini_client');
+const { convertHtmlToPdf } = require('./lib/pdf_converter');
+const { renderPreTags } = require('./lib/markdown_renderer');
 
 const BASE_DIR = __dirname;
 const DEFAULT_TEMPLATE_DIR = path.join(BASE_DIR, 'base');
@@ -159,14 +159,6 @@ async function binarizePdfForFax(inputPath, outputPath) {
 // ─── FAX番号抽出 ──────────────────────────────────────────────
 
 /**
- * 送付書MD内の全 (FAX ...) を抽出し、selfFax を除いたユニーク番号配列を返す
- * 例: "(FAX 06-6948-6103)" → "0669486103"
- */
-/**
- * 送付書MD内の全 (FAX ...) を行単位で走査し、直前の有効行を宛先名として
- * {name, number} のペア配列を返す。selfFax に一致する番号は除外。
- */
-/**
  * 送付書MDから送信先2件を確定的に抽出する。
  *   1. 相手方: 文書冒頭の最初の「### --左」ブロック内の最初の (FAX ...)
  *   2. 裁判所: 「# 受領書」以降の最初の「### --左」ブロック内の最初の (FAX ...)
@@ -252,7 +244,7 @@ function askConfirm(question) {
 /**
  * ユーザーにテキスト入力を求める（GUI/CLI両対応）
  */
-function askPrompt(question) {
+function askPrompt(question): Promise<string> {
     if (process.stdin.isTTY) {
         const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
         return new Promise(resolve => {

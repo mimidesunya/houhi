@@ -1,16 +1,40 @@
 const fs = require('fs');
 const path = require('path');
 
+function findConfigPath() {
+    const startDirs = [process.cwd(), __dirname, path.dirname(process.execPath)].filter(Boolean);
+    const visited = new Set();
+
+    for (const startDir of startDirs) {
+        let currentDir = path.resolve(startDir);
+        while (!visited.has(currentDir)) {
+            visited.add(currentDir);
+            const configPath = path.join(currentDir, 'config.json');
+            if (fs.existsSync(configPath)) {
+                return configPath;
+            }
+            const parentDir = path.dirname(currentDir);
+            if (parentDir === currentDir) {
+                break;
+            }
+            currentDir = parentDir;
+        }
+    }
+
+    return null;
+}
+
 function getProjectRoot() {
-    // src/lib/gemini_client.js -> src/lib -> src -> root
-    return path.dirname(path.dirname(path.dirname(__filename)));
+    const configPath = findConfigPath();
+    if (configPath) {
+        return path.dirname(configPath);
+    }
+    return process.cwd();
 }
 
 function loadConfig() {
-    const root = getProjectRoot();
-    const configPath = path.join(root, 'config.json');
-    
-    if (!fs.existsSync(configPath)) {
+    const configPath = findConfigPath();
+    if (!configPath || !fs.existsSync(configPath)) {
         return null;
     }
     try {
@@ -44,6 +68,7 @@ function getGeminiChatModel() {
 }
 
 module.exports = {
+    findConfigPath,
     getProjectRoot,
     loadConfig,
     getApiKey,

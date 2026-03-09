@@ -1,18 +1,26 @@
 /**
- * Gemini APIを使用して一般文書PDFのOCRを行い、Markdownを出力するプログラム。
+ * Gemini APIを使用して裁判文書PDFのOCRを行い、Markdownを出力するプログラム。
  * 
  * 使い方:
- *   node src/ocr_general_doc.js <PDFファイルパス または ディレクトリパス> [--batch_size <枚数>] [--start_page <開始ページ>] [--end_page <終了ページ>]
+ *   node src/ocr_court_doc.js <PDFファイルパス または ディレクトリパス> [--batch_size <枚数>] [--start_page <開始ページ>] [--end_page <終了ページ>]
  */
 const fs = require('fs');
 const path = require('path');
-const { pdfToText, docToText, docxToText, odtToText, pptxToText, getOcrPrompt } = require('./lib/ai_ocr.js');
+const { pdfToText, docToText, docxToText, getOcrPrompt } = require('./lib/ai_ocr');
 
-const GENERAL_DOC_STYLE = `
-# CONTEXT: General Document
-- **Format**: Standard Japanese document.
-- **Line Breaks**: Merge lines within paragraphs.
-- **Headings**: Use standard Markdown headings (#, ##, ###) based on the document structure.
+const samplePath = path.join(__dirname, 'base', 'sample.md');
+let sampleContent = "";
+try {
+    sampleContent = fs.readFileSync(samplePath, 'utf-8');
+} catch (e) {
+    console.warn(`[警告] ${samplePath} の sample.md を読み込めませんでした: ${e.message}`);
+}
+
+const COURT_DOC_STYLE = `
+# TARGET OUTPUT STYLE
+Follow the structure and formatting of this example:
+
+${sampleContent}
 `;
 
 async function main() {
@@ -43,15 +51,15 @@ async function main() {
 
     if (showPrompt) {
         console.log("\n--- Gemini OCR プロンプトテンプレート ---");
-        console.log(getOcrPrompt(batchSize, GENERAL_DOC_STYLE));
+        console.log(getOcrPrompt(batchSize, COURT_DOC_STYLE));
         console.log("----------------------------------\n");
         return;
     }
 
     if (inputPaths.length === 0) {
         console.log("-------------------------------------------------------");
-        console.log(" PDFファイルまたはフォルダをドロップしてください。");
-        console.log(" 使い方: node ocr_general_doc.js <input_path...> [--batch_size <n>] [--ai gemini|claude|openai] [--mode batch|sync] [--ndlocr] [--ndlocr_only] [--prefer_pdf_text]");
+        console.log(" PDF/Wordファイルまたはフォルダをドロップしてください。");
+        console.log(" 使い方: node ocr_court_doc.js <input_path...> [--batch_size <n>] [--ai gemini|claude|openai] [--mode batch|sync] [--ndlocr] [--ndlocr_only] [--prefer_pdf_text]");
         console.log("-------------------------------------------------------");
         return;
     }
@@ -77,31 +85,19 @@ async function main() {
         const ext = path.extname(filePath).toLowerCase();
         if (ext === ".pdf") {
             console.log(`\n[PDF 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode}, Pre-OCR: ${useNdlocr})`);
-            await pdfToText(filePath, batchSize, startPage, endPage, GENERAL_DOC_STYLE, aiProvider, processMode, useNdlocr, ndlocrOnly, preferPdfText);
+            await pdfToText(filePath, batchSize, startPage, endPage, COURT_DOC_STYLE, aiProvider, processMode, useNdlocr, ndlocrOnly, preferPdfText);
         } else if (ext === ".docx") {
             if (ndlocrOnly) {
                 throw new Error("ndlocr-only モードは現在 PDF のみ対応です");
             }
             console.log(`\n[Word 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
-            await docxToText(filePath, GENERAL_DOC_STYLE, aiProvider, processMode);
+            await docxToText(filePath, COURT_DOC_STYLE, aiProvider, processMode);
         } else if (ext === ".doc") {
             if (ndlocrOnly) {
                 throw new Error("ndlocr-only モードは現在 PDF のみ対応です");
             }
             console.log(`\n[Word(doc) 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
-            await docToText(filePath, GENERAL_DOC_STYLE, aiProvider, processMode);
-        } else if (ext === ".odt") {
-            if (ndlocrOnly) {
-                throw new Error("ndlocr-only モードは現在 PDF のみ対応です");
-            }
-            console.log(`\n[ODT 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
-            await odtToText(filePath, GENERAL_DOC_STYLE, aiProvider, processMode);
-        } else if (ext === ".pptx") {
-            if (ndlocrOnly) {
-                throw new Error("ndlocr-only モードは現在 PDF のみ対応です");
-            }
-            console.log(`\n[PowerPoint 処理] 開始: ${path.basename(filePath)} (AI: ${aiProvider}, モード: ${processMode})`);
-            await pptxToText(filePath, GENERAL_DOC_STYLE, aiProvider, processMode);
+            await docToText(filePath, COURT_DOC_STYLE, aiProvider, processMode);
         } else {
             console.warn(`[警告] 未対応のファイル形式です: ${path.basename(filePath)}`);
         }
@@ -134,7 +130,7 @@ async function main() {
         const files = fs.readdirSync(absPath)
             .filter(f => {
                 const ext = f.toLowerCase();
-                return ext.endsWith(".pdf") || ext.endsWith(".docx") || ext.endsWith(".doc") || ext.endsWith(".odt") || ext.endsWith(".pptx");
+                return ext.endsWith(".pdf") || ext.endsWith(".docx") || ext.endsWith(".doc");
             })
             .sort();
 

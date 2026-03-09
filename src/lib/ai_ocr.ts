@@ -6,12 +6,12 @@ const AdminZip = require('adm-zip');
 const WordExtractor = require('word-extractor');
 const GeminiBatchProcessor = require('./gemini_batch');
 const { ClaudeOcrProcessor } = require('./claude_client');
-const { OpenAIOcrProcessor } = require('./openai_client.js');
+const { OpenAIOcrProcessor } = require('./openai_client');
 const os = require('os');
 const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
-const { extractPdfToImages } = require('./pdf_to_image.js');
-const { runNdlocr } = require('./ndlocr_runner.js');
-const { loadConfig, getGeminiChatModel } = require('./gemini_client.js');
+const { extractPdfToImages } = require('./pdf_to_image');
+const { runNdlocr } = require('./ndlocr_runner');
+const { loadConfig, getGeminiChatModel } = require('./gemini_client');
 
 function formatTime(ms) {
     const seconds = Math.floor(ms / 1000);

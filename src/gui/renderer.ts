@@ -1,10 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const dropZone = document.getElementById('dropZone');
-    const consoleOutput = document.getElementById('consoleOutput');
-    const toolCards = document.querySelectorAll('.tool-card');
-    const progressBar = document.getElementById('progressBar');
+    const dropZone = document.getElementById('dropZone') as HTMLElement;
+    const consoleOutput = document.getElementById('consoleOutput') as HTMLElement;
+    const toolCards = document.querySelectorAll<HTMLElement>('.tool-card');
+    const progressBar = document.getElementById('progressBar') as HTMLElement;
     
-    let currentScript = 'pdf'; // Default
+    let currentScript: ScriptKey = 'pdf'; // Default
     let currentAiProvider = 'gemini'; // Default AI provider
     let currentProcessMode = 'sync'; // Default process mode
     let currentOcrMode = 'ai'; // ai | ndlocr_ai | ndlocr_only
@@ -12,6 +12,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const AI_TOOLS = new Set(['ocr_general', 'ocr_court']);
     const isAiTool = (scriptKey) => AI_TOOLS.has(scriptKey);
+    const dropText = document.querySelector('.drop-text') as HTMLElement;
+    const dropSubtext = document.querySelector('.drop-subtext') as HTMLElement;
+    const getScriptKey = (element: HTMLElement): ScriptKey => {
+        const script = element.dataset.script as ScriptKey | undefined;
+        return script || 'pdf';
+    };
 
     const toolDescriptions = {
         'pdf': 'Markdown/HTMLをPDFへ変換',
@@ -26,16 +32,16 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Tool Selection Logic
     toolCards.forEach(card => {
-        const script = card.dataset.script;
+           const script = getScriptKey(card);
         
         card.addEventListener('mouseenter', () => {
-             document.querySelector('.drop-text').innerText = toolDescriptions[script] || 'ここにファイルをドロップ';
-             document.querySelector('.drop-subtext').innerText = '';
+               dropText.innerText = toolDescriptions[script] || 'ここにファイルをドロップ';
+               dropSubtext.innerText = '';
         });
 
         card.addEventListener('mouseleave', () => {
-             document.querySelector('.drop-text').innerText = 'ここにファイルをドロップ';
-             document.querySelector('.drop-subtext').innerText = 'または クリックして選択';
+               dropText.innerText = 'ここにファイルをドロップ';
+               dropSubtext.innerText = 'または クリックして選択';
         });
 
         card.addEventListener('click', () => {
@@ -44,27 +50,27 @@ document.addEventListener('DOMContentLoaded', () => {
             // Add active to clicked
             card.classList.add('active');
             // Update current script
-            currentScript = card.dataset.script;
-            log(`ツール変更: ${card.querySelector('.tool-name').innerText}`);
+            currentScript = getScriptKey(card);
+            log(`ツール変更: ${(card.querySelector('.tool-name') as HTMLElement).innerText}`);
 
             applyAiUiConstraints();
         });
     });
 
     // AI Provider Selection
-    const aiOptions = document.querySelectorAll('.ai-option');
-    const modeToggle = document.querySelector('.mode-toggle');
-    const modeLabel = document.querySelector('.mode-label');
-    const aiToggle = document.querySelector('.ai-toggle-provider');
+    const aiOptions = document.querySelectorAll<HTMLElement>('.ai-option');
+    const modeToggle = document.querySelector('.mode-toggle') as HTMLElement;
+    const modeLabel = document.querySelector('.mode-label') as HTMLElement;
+    const aiToggle = document.querySelector('.ai-toggle-provider') as HTMLElement | null;
     
     // Ndlocr Selection
-    const ndlocrOptions = document.querySelectorAll('.ndlocr-option');
-    const ndlocrToggle = document.querySelector('.ndlocr-toggle');
-    const ndlocrLabel = document.querySelector('.ndlocr-label');
-    const modeOptions = document.querySelectorAll('.mode-option');
-    const pdfTextOptions = document.querySelectorAll('.pdftext-option');
-    const pdfTextToggle = document.querySelector('.pdftext-toggle');
-    const pdfTextLabel = document.querySelector('.pdftext-label');
+    const ndlocrOptions = document.querySelectorAll<HTMLElement>('.ndlocr-option');
+    const ndlocrToggle = document.querySelector('.ndlocr-toggle') as HTMLElement | null;
+    const ndlocrLabel = document.querySelector('.ndlocr-label') as HTMLElement | null;
+    const modeOptions = document.querySelectorAll<HTMLElement>('.mode-option');
+    const pdfTextOptions = document.querySelectorAll<HTMLElement>('.pdftext-option');
+    const pdfTextToggle = document.querySelector('.pdftext-toggle') as HTMLElement | null;
+    const pdfTextLabel = document.querySelector('.pdftext-label') as HTMLElement | null;
 
     function updateModeToggleState() {
         // Tool-level disable takes precedence (e.g. PDF作成など)
@@ -86,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 o.classList.add('disabled');
             });
             // Force sync mode
-            const syncBtn = document.querySelector('.mode-option[data-mode="sync"]');
+            const syncBtn = document.querySelector('.mode-option[data-mode="sync"]') as HTMLElement | null;
             if (syncBtn) {
                 syncBtn.classList.add('active');
                 syncBtn.classList.remove('disabled');
@@ -136,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             aiOptions.forEach(o => o.classList.remove('active'));
             option.classList.add('active');
-            currentAiProvider = option.dataset.ai;
+            currentAiProvider = option.dataset.ai || 'gemini';
             log(`AIプロバイダー変更: ${currentAiProvider}`);
             updateModeToggleState();
         });
@@ -182,7 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             modeOptions.forEach(o => o.classList.remove('active'));
             option.classList.add('active');
-            currentProcessMode = option.dataset.mode;
+            currentProcessMode = option.dataset.mode || 'sync';
             log(`処理モード変更: ${currentProcessMode === 'sync' ? '同期' : 'バッチ'}`);
         });
     });
@@ -235,7 +241,8 @@ document.addEventListener('DOMContentLoaded', () => {
         input.type = 'file';
         input.multiple = true;
         input.onchange = async (e) => {
-            const files = Array.from(e.target.files).map(f => window.electronAPI.getPathForFile(f));
+            const target = e.target as HTMLInputElement | null;
+            const files = Array.from(target?.files || []).map(f => window.electronAPI.getPathForFile(f));
             if(files.length > 0) {
                 log(`${files.length} 個のファイルを処理中 (${currentScript})...`);
                 setLoading(true);
@@ -274,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Handling newlines for better readable output
         message.split('\n').forEach(subMsg => {
             if(subMsg.trim() !== '') {
-                const subLine = line.cloneNode();
+                const subLine = line.cloneNode() as HTMLElement;
                 subLine.innerText = subMsg;
                 consoleOutput.appendChild(subLine);
             }

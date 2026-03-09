@@ -1,22 +1,5 @@
-const fs = require('fs');
-const path = require('path');
 const Anthropic = require('@anthropic-ai/sdk');
-
-function getProjectRoot() {
-    return path.dirname(path.dirname(path.dirname(__filename)));
-}
-
-function loadConfig() {
-    const root = getProjectRoot();
-    const configPath = path.join(root, 'config.json');
-    if (!fs.existsSync(configPath)) return null;
-    try {
-        return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    } catch (err) {
-        console.error(`Config load error: ${err}`);
-        return null;
-    }
-}
+const { loadConfig } = require('./gemini_client');
 
 function getClaudeConfig() {
     const config = loadConfig();
@@ -43,6 +26,13 @@ function normalizeAnthropicBaseUrl(baseUrl) {
  * Claude API クライアント
  */
 class ClaudeClient {
+    apiKey;
+    baseUrl;
+    model;
+    timeoutMs;
+    maxRetries;
+    client;
+
     constructor() {
         const config = getClaudeConfig();
         if (!config || !config.apiKey) throw new Error("Claude API Key not found in config.json");
@@ -127,6 +117,8 @@ class ClaudeClient {
  * GeminiBatchProcessor と同等のインターフェースで、リクエストを並行処理する
  */
 class ClaudeOcrProcessor {
+    client;
+
     constructor() {
         this.client = new ClaudeClient();
     }

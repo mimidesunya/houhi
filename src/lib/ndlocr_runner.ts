@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { loadConfig } = require('./gemini_client.js');
+const { loadConfig } = require('./gemini_client');
 
 /**
  * Executes ndlocr-lite on a given image file or directory.

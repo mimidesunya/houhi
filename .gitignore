@@ -28,6 +28,7 @@ output/*
 !output/.gitkeep
 copper_drivers/
 *.zip
+dist/
 
 # OS
 .DS_Store
