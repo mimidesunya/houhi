@@ -1,9 +1,27 @@
+/**
+ * 裁判文書向けMarkdownの項番を階層ごとに振り直すツール。
+ * 文書中の既存番号を無視して、出現順に連番を再構成します。
+ *
+ * 対象階層:
+ *   第1 / 1 / (1) / ア / (ア) / a / (a)
+ *
+ * 入力:
+ * - Markdown ファイル 1 件
+ *
+ * 出力:
+ * - 出力パス未指定時は `<元ファイル名>_renumbered<拡張子>` を作成します。
+ * - 出力パス指定時はその場所へ保存します。
+ *
+ * 補足:
+ * - `## 第1` のような見出し行も対象にします。
+ * - Windows / macOS では、変換後テキストのクリップボードコピーを試みます。
+ *
+ * 使い方:
+ *   node src/renumber_markdown.js <入力ファイル> [出力ファイル]
+ */
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-
-// SAIBAN Markdown Renumbering Tool (JS Port)
-// Corrects numbering inconsistencies in legal markdown documents.
 
 const KATAKANA = [
     'ア', 'イ', 'ウ', 'エ', 'オ',

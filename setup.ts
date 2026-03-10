@@ -6,11 +6,31 @@ const path = require('path');
  * src/base/sample.md および src/templates/*.md の内容を挿入し、
  * instructions/ フォルダに保存するスクリプト。
  */
+function findProjectRoot(startDir) {
+    let currentDir = path.resolve(startDir);
+
+    while (true) {
+        const packageJsonPath = path.join(currentDir, 'package.json');
+        const baseRulesPath = path.join(currentDir, 'src', 'base', 'court_doc_rules.md');
+        if (fs.existsSync(packageJsonPath) && fs.existsSync(baseRulesPath)) {
+            return currentDir;
+        }
+
+        const parentDir = path.dirname(currentDir);
+        if (parentDir === currentDir) {
+            throw new Error('プロジェクトルートを特定できませんでした。');
+        }
+        currentDir = parentDir;
+    }
+}
+
 function setup() {
-    const baseDir = path.join(__dirname, 'src', 'base');
-    const templatesDir = path.join(__dirname, 'src', 'templates');
+    const projectRoot = findProjectRoot(__dirname);
+    const baseDir = path.join(projectRoot, 'src', 'base');
+    const templatesDir = path.join(projectRoot, 'src', 'templates');
     const instructionPath = path.join(baseDir, 'court_doc_rules.md');
-    const outputDir = path.join(__dirname, 'instructions');
+    const outputDir = path.join(projectRoot, 'instructions');
+    const staleDistOutputDir = path.join(projectRoot, 'dist', 'instructions');
 
     if (!fs.existsSync(instructionPath)) {
         console.error(`Error: ${instructionPath} が見つかりません。`);
@@ -22,6 +42,15 @@ function setup() {
 
     if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    if (fs.existsSync(staleDistOutputDir)) {
+        try {
+            fs.rmSync(staleDistOutputDir, { recursive: true, force: true });
+            console.log(`情報: 重複していた ${staleDistOutputDir} を削除しました。`);
+        } catch (err) {
+            console.warn(`警告: ${staleDistOutputDir} の削除に失敗しました: ${err}`);
+        }
     }
 
     // 処理対象のファイルリストを作成

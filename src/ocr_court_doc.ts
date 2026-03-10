@@ -1,8 +1,34 @@
 /**
- * Gemini APIを使用して裁判文書PDFのOCRを行い、Markdownを出力するプログラム。
+ * 裁判文書の PDF / Word ファイルをOCR・テキスト抽出し、Markdown化するプログラム。
+ * AIプロバイダーとして Gemini / Claude / OpenAI を利用できます。
+ * `src/base/sample.md` を読み込み、裁判文書向けの出力スタイルを強く誘導します。
+ *
+ * 入力:
+ * - `.pdf`
+ * - `.docx`
+ * - `.doc`
+ * - 上記ファイルを含むディレクトリ
+ *
+ * 出力:
+ * - PDF は主に `<元ファイル名>_paged.md` を作成します。
+ * - 途中失敗時は `<元ファイル名>_ERROR_paged.md` を使って再開します。
+ * - Word は対応する Markdown を同じ場所に出力します。
+ *
+ * オプション:
+ * - `--batch_size <n>`: PDF を何ページ単位で処理するか指定します。
+ * - `--start_page <n>` / `--end_page <n>`: 対象ページ範囲を制限します。
+ * - `--show_prompt`: 実際に使うOCRプロンプトを表示して終了します。
+ * - `--ai gemini|claude|openai`: AI プロバイダーを指定します。
+ * - `--mode batch|sync`: バッチ処理または同期処理を指定します。
+ * - `--ndlocr`: ndlocr を前処理として使います。
+ * - `--ndlocr_only`: ndlocr のみで処理します（現状 PDF のみ対応）。
+ * - `--prefer_pdf_text`: 埋め込みテキストがある PDF では OCR よりテキスト抽出を優先します。
+ *
+ * 補足:
+ * - ディレクトリ指定時は `.pdf` / `.docx` / `.doc` のみを走査します。
  * 
  * 使い方:
- *   node src/ocr_court_doc.js <PDFファイルパス または ディレクトリパス> [--batch_size <枚数>] [--start_page <開始ページ>] [--end_page <終了ページ>]
+ *   node src/ocr_court_doc.js <入力ファイルパス または ディレクトリパス> [--batch_size <枚数>] [--start_page <開始ページ>] [--end_page <終了ページ>]
  */
 const fs = require('fs');
 const path = require('path');

@@ -4,10 +4,11 @@
   "description": "Court document generation system",
   "main": "dist/src/gui/main.js",
   "scripts": {
-    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p . && copyfiles -u 1 \"src/**/*.html\" \"src/**/*.css\" \"src/**/*.md\" dist/src",
+    "build": "node scripts/clean_dist.js && tsc -p . && copyfiles -u 1 \"src/**/*.html\" \"src/**/*.css\" \"src/**/*.md\" dist/src",
     "gui": "npm run build && electron dist/src/gui/main.js",
     "setup": "npm run build && node dist/setup.js",
-    "test": "npm run build && node --test tests"
+    "test": "npm run build && node --test tests",
+    "docs:tools": "node scripts/generate_tool_docs.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.67.0",
