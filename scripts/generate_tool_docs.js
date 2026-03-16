@@ -10,18 +10,12 @@ const DISPLAY_NAMES = {
     convert_to_pdf: 'PDF変換',
     fax_prepare_pdf: 'FAX PDF化',
     fax_send: 'mfax FAX送信',
-    ocr_court_doc: '裁判OCR',
-    ocr_general_doc: '一般OCR',
-    ocr_merge_pages: 'ページ結合',
     renumber_markdown: '番号振直',
     stamp_evidence_number: '号証スタンプ'
 };
 
 const ORDER = [
     'convert_to_pdf',
-    'ocr_general_doc',
-    'ocr_court_doc',
-    'ocr_merge_pages',
     'renumber_markdown',
     'archive_for_ai',
     'stamp_evidence_number',

@@ -29,6 +29,8 @@ output/*
 copper_drivers/
 *.zip
 dist/
+src/launcher/bin/
+src/launcher/obj/
 
 # OS
 .DS_Store

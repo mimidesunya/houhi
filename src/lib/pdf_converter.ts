@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { get_session } = require('copper-cti');
-const { loadConfig } = require('./gemini_client');
+const { loadConfig } = require('./config_loader');
 
 /**
  * HTMLファイルをPDFに変換します（Node.js版ドライバを使用）。

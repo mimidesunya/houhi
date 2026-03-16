@@ -1,28 +1,4 @@
 {
-    "openai": {
-        "apiKey": "YOUR_OPENAI_API_KEY",
-        "baseUrl": "https://api.openai.com/v1/chat/completions",
-        "chatModel": "gpt-5.1",
-        "timeoutMs": 300000,
-        "maxRetries": 3
-    },
-    "gemini": {
-        "apiKey": "YOUR_GEMINI_API_KEY",
-        "chatModel": "gemini-3-flash-preview",
-        "maxRetries": 3
-    },
-    "claude": {
-        "apiKey": "YOUR_CLAUDE_API_KEY",
-        "baseUrl": "https://api.anthropic.com/v1/messages",
-        "chatModel": "claude-opus-4-6",
-        "timeoutMs": 300000,
-        "maxRetries": 3
-    },
-    "ndlocrLite": {
-        "pythonPath": "python",
-        "repoPath": "PATH_TO_NDLOCR_LITE_REPO",
-        "parallelJobs": "auto"
-    },
     "copper": {
         "serverUri": "ctip://cti.li/",
         "user": "user",

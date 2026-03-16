@@ -43,7 +43,7 @@ const { ImapFlow } = require('imapflow');
 const { PDFDocument } = require('pdf-lib');
 const { createCanvas, registerFont } = require('canvas');
 const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
-const { loadConfig } = require('./lib/gemini_client');
+const { loadConfig } = require('./lib/config_loader');
 const { convertHtmlToPdf } = require('./lib/pdf_converter');
 const { renderPreTags } = require('./lib/markdown_renderer');
 

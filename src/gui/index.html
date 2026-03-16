@@ -64,157 +64,6 @@
             margin-bottom: 15px;
         }
 
-        /* AI Provider Selector */
-        .ai-selector {
-            display: flex;
-            flex-direction: column;
-            align-items: stretch;
-            padding: 0 20px;
-            margin-bottom: 8px;
-            gap: 6px;
-        }
-
-        .selector-row {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        .selector-group {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .ai-selector-label {
-            font-size: 0.75rem;
-            color: var(--secondary-text-color);
-        }
-
-        .ai-toggle {
-            display: flex;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 6px;
-            padding: 2px;
-            gap: 2px;
-        }
-
-        .ai-option {
-            padding: 4px 10px;
-            font-size: 0.75rem;
-            cursor: pointer;
-            color: rgba(255, 255, 255, 0.35);
-            transition: all 0.2s ease;
-            border: none;
-            background: transparent;
-            border-radius: 4px;
-            font-family: inherit;
-        }
-
-        .ai-option:hover {
-            color: rgba(255, 255, 255, 0.6);
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .ai-option.disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-
-        .ai-toggle.disabled {
-            opacity: 0.4;
-        }
-
-        .ai-option.active,
-        .mode-option.active {
-            color: #fff;
-            background: var(--accent-color);
-            font-weight: 600;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-        }
-
-        .mode-option {
-            padding: 4px 10px;
-            font-size: 0.75rem;
-            cursor: pointer;
-            color: rgba(255, 255, 255, 0.35);
-            transition: all 0.2s ease;
-            border: none;
-            background: transparent;
-            border-radius: 4px;
-            font-family: inherit;
-        }
-
-        .mode-option:hover {
-            color: rgba(255, 255, 255, 0.6);
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .mode-option.disabled,
-        .ndlocr-option.disabled,
-        .pdftext-option.disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
-
-        .mode-toggle.disabled,
-        .ndlocr-toggle.disabled,
-        .pdftext-toggle.disabled {
-            opacity: 0.4;
-        }
-
-        .ndlocr-option {
-            padding: 4px 10px;
-            font-size: 0.75rem;
-            cursor: pointer;
-            color: rgba(255, 255, 255, 0.35);
-            transition: all 0.2s ease;
-            border: none;
-            background: transparent;
-            border-radius: 4px;
-            font-family: inherit;
-        }
-
-        .ndlocr-option:hover {
-            color: rgba(255, 255, 255, 0.6);
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .ndlocr-option.active {
-            color: #fff;
-            background: var(--accent-color);
-            font-weight: 600;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-        }
-
-        .pdftext-option {
-            padding: 4px 10px;
-            font-size: 0.75rem;
-            cursor: pointer;
-            color: rgba(255, 255, 255, 0.35);
-            transition: all 0.2s ease;
-            border: none;
-            background: transparent;
-            border-radius: 4px;
-            font-family: inherit;
-        }
-
-        .pdftext-option:hover {
-            color: rgba(255, 255, 255, 0.6);
-            background: rgba(255, 255, 255, 0.05);
-        }
-
-        .pdftext-option.active {
-            color: #fff;
-            background: var(--accent-color);
-            font-weight: 600;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-        }
-
         .tool-card {
             background: var(--card-color);
             border: 1px solid rgba(255, 255, 255, 0.05);
@@ -379,28 +228,15 @@
 </head>
 
 <body>
-    <div class="app-container">
+        <div class="app-container">
         <div class="header">
-            <!-- <h1>Sousei</h1> -->
-            <!-- Only Drag Region -->
+            <h1>法匪</h1>
         </div>
 
         <div class="tools-grid">
             <div class="tool-card active" data-script="pdf">
                 <div class="tool-icon">📄</div>
                 <div class="tool-name">PDF作成</div>
-            </div>
-            <div class="tool-card" data-script="ocr_general">
-                <div class="tool-icon">🔍</div>
-                <div class="tool-name">一般OCR</div>
-            </div>
-            <div class="tool-card" data-script="ocr_court">
-                <div class="tool-icon">⚖️</div>
-                <div class="tool-name">裁判OCR</div>
-            </div>
-            <div class="tool-card" data-script="ocr_merge">
-                <div class="tool-icon">📑</div>
-                <div class="tool-name">ページ結合</div>
             </div>
             <div class="tool-card" data-script="renumber">
                 <div class="tool-icon">🔢</div>
@@ -417,46 +253,6 @@
             <div class="tool-card" data-script="fax_send">
                 <div class="tool-icon">📨</div>
                 <div class="tool-name">FAX送信</div>
-            </div>
-        </div>
-
-        <div class="ai-selector">
-            <div class="selector-row">
-                <div class="selector-group">
-                    <span class="ai-selector-label ndlocr-label">OCR:</span>
-                    <div class="ai-toggle ndlocr-toggle">
-                        <button class="ndlocr-option active" data-ocr-mode="ai">AIのみ</button>
-                        <button class="ndlocr-option" data-ocr-mode="ndlocr_ai">ndlocr+AI</button>
-                        <button class="ndlocr-option" data-ocr-mode="ndlocr_only">ndlocr-only</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="selector-row">
-                <div class="selector-group">
-                    <span class="ai-selector-label">AI:</span>
-                    <div class="ai-toggle ai-toggle-provider">
-                        <button class="ai-option active" data-ai="gemini">Gemini</button>
-                        <button class="ai-option" data-ai="claude">Claude</button>
-                        <button class="ai-option" data-ai="openai">OpenAI</button>
-                    </div>
-                </div>
-
-                <div class="selector-group">
-                    <span class="ai-selector-label mode-label">Mode:</span>
-                    <div class="ai-toggle mode-toggle">
-                        <button class="mode-option" data-mode="batch">バッチ</button>
-                        <button class="mode-option active" data-mode="sync">同期</button>
-                    </div>
-                </div>
-
-                <div class="selector-group">
-                    <span class="ai-selector-label pdftext-label">PDFテキスト:</span>
-                    <div class="ai-toggle pdftext-toggle">
-                        <button class="pdftext-option active" data-pdftext="false">Off</button>
-                        <button class="pdftext-option" data-pdftext="true">優先</button>
-                    </div>
-                </div>
             </div>
         </div>
 

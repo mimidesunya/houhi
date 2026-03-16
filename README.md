@@ -7,21 +7,20 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 ## 特徴
 
 1. **Markdown特化**: 裁判所提出文書向けの書式（インデント・表・右寄せなど）をテキストで管理できます。
-2. **AI連携前提**: OCR結果や証拠資料をチャットAIへ渡し、書面起案を補助させます。
-3. **実務向け自動化**: 号証スタンプ・ページ結合・FAX送信などの周辺作業をまとめて処理できます。
+2. **AI連携前提**: `mimi-ocr` で作成したOCR結果や証拠資料をチャットAIへ渡し、書面起案を補助させます。
+3. **実務向け自動化**: 号証スタンプ・番号振直・FAX送信などの周辺作業をまとめて処理できます。
 
 ## 主な機能
 
 | ツール名 | 機能概要 | 対応形式 |
 | :--- | :--- | :--- |
 | **PDF変換** | Markdownを裁判所提出用PDF（CSS組版）に変換します。 | `.md`, `.html` |
-| **一般OCR** | 証拠資料（PDF / Word / ODT / PowerPoint）をOCRしてMarkdown化します。 | `.pdf`, `.docx`, `.doc`, `.odt`, `.pptx` |
-| **裁判OCR** | 相手方書面・判決文（PDF / Word）をOCRして引用しやすいMarkdownに変換します。 | `.pdf`, `.docx`, `.doc` |
-| **ページ結合** | OCRで分割されたMarkdownファイルを1つに結合します。 | `.md` |
 | **番号振直** | ズレた項番（第1、1、(1)...）を階層ごとに自動修正します。 | `.md` |
 | **AIアーカイブ** | フォルダ内の `.md` / `.txt` を収集してZIPアーカイブを作成します（主にChatGPT向け）。 | フォルダ |
 | **号証スタンプ** | 証拠PDFの右上に「甲第〇号証」などの証拠番号を赤文字で追記します。 | `.pdf` |
 | **mfax FAX送信** | 送付書Markdownと添付PDFを結合し、メールFAXとして送信します。 | `.pdf`, `.md` |
+
+OCR は [`mimi-ocr`](../mimi-ocr/README.md) に移管しました。OCR・ページ結合は `mimi-ocr` 側を使用してください。
 
 各ツールの詳細は [docs/ツール詳細.md](docs/%E3%83%84%E3%83%BC%E3%83%AB%E8%A9%B3%E7%B4%B0.md) を参照してください。
 
@@ -35,10 +34,11 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 ### 操作の流れ
 
 1. 上部のツールカードから使いたい機能を選びます。
-2. OCR系ツールでは、必要に応じて AI プロバイダーや処理モードを切り替えます。
-3. 対象ファイル（またはフォルダ）を中央のドロップゾーンへドラッグ＆ドロップします。
-4. 処理ログは画面下部または別ウィンドウに表示されます。
-5. 出力ファイルは、多くの場合、入力ファイルと同じ場所に生成されます。
+2. 対象ファイル（またはフォルダ）を中央のドロップゾーンへドラッグ＆ドロップします。
+3. 処理ログは画面下部または別ウィンドウに表示されます。
+4. 出力ファイルは、多くの場合、入力ファイルと同じ場所に生成されます。
+
+OCR が必要な場合は、先に `mimi-ocr` で Markdown 化してから `houhi` に渡します。
 
 Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%BB%95%E6%A7%98%E6%9B%B8.md) を参照してください。
 
@@ -59,15 +59,16 @@ Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%B
 ```
 
 資料の渡し方:
+
 - 短いメモや要約はチャット欄へ直接記載
 - OCR結果ファイルはそのままドロップ
 - 複数の資料をまとめて渡す場合は **AIアーカイブ** ツールでZIP化してから添付（主にChatGPT向け）
 
 ### 典型的なワークフロー
 
-```
+```text
 証拠資料（PDF / 画像）
-    ↓ 一般OCR
+    ↓ mimi-ocr
 証拠のMarkdown化
     ↓ AIアーカイブ（大量資料をChatGPTへ渡す場合）
 チャットAIに instructions/*.md + 事実関係を添えて起案を依頼
@@ -102,16 +103,12 @@ npm run setup
 sh ./setup.sh
 ```
 
-### AI・サーバーの設定
+### 設定ファイル
 
 `config.template.json` を `config.json` にコピーして編集します。
 
 ```json
 {
-    "gemini": {
-        "apiKey": "YOUR_GEMINI_API_KEY",
-        "chatModel": "gemini-2.0-flash-exp"
-    },
     "copper": {
         "serverUri": "ctip://cti.li/",
         "user": "user",
@@ -120,15 +117,28 @@ sh ./setup.sh
 }
 ```
 
+OCR 用の AI / `ndlocr-lite` 設定は `houhi` ではなく `mimi-ocr` 側の `config.json` で管理します。
+FAX送信を使う場合は、上記に加えて `mail` と `mfax` の設定も必要です。
+
 ### 開発者向けコマンド
 
 | コマンド | 内容 |
 | :--- | :--- |
 | `npm run gui` | TypeScript をビルドして GUI を起動 |
 | `npm run build` | TypeScript をビルド（`dist/` に出力） |
+| `npm run build:launcher` | Windows 用ランチャー `bin/法匪.exe` をアイコン付きで再生成 |
 | `npm run setup` | ビルド後に指示書と初期設定を生成 |
 | `npm test` | ビルド後にユニットテストを実行 |
 | `npm run docs:tools` | ツールコメントから `docs/ツール詳細.md` を再生成 |
+
+### Windows ランチャーのアイコン
+
+`bin/法匪.exe` のアイコンは [src/launcher/app.ico](src/launcher/app.ico) を使って埋め込んでいます。  
+アイコンやランチャー本体を更新した場合は、次のコマンドで再生成してください。
+
+```bash
+npm run build:launcher
+```
 
 ## Markdown 記法の概要
 
@@ -161,7 +171,7 @@ sh ./setup.sh
 ├── src/                        # TypeScript ソースコード
 │   ├── base/                   # 文書書式（CSS/HTML）定義・サンプル
 │   ├── gui/                    # GUI アプリケーション
-│   ├── lib/                    # 共通ライブラリ（AI クライアント含む）
+│   ├── lib/                    # 共通ライブラリ（設定読込・PDF変換など）
 │   ├── templates/              # 書面テンプレート
 │   └── *.ts                    # 各ツールスクリプト
 ├── tests/                      # ユニットテスト
@@ -174,6 +184,6 @@ sh ./setup.sh
 
 - **言語**: Node.js / TypeScript
 - **UI**: Electron
-- **AI**: Google Gemini API（OCR・起案補助）
 - **PDF生成**: Copper PDF (CTI)
+- **OCR**: `mimi-ocr` を別プロジェクトとして利用
 - **マークアップ**: HTML5 + CSS 2.1

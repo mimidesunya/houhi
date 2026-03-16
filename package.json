@@ -5,24 +5,22 @@
   "main": "dist/src/gui/main.js",
   "scripts": {
     "build": "node scripts/clean_dist.js && tsc -p . && copyfiles -u 1 \"src/**/*.html\" \"src/**/*.css\" \"src/**/*.md\" dist/src",
+    "build:launcher": "dotnet publish src/launcher/Launcher.csproj -c Release -p:PublishDir=../../bin/",
     "gui": "npm run build && electron dist/src/gui/main.js",
     "setup": "npm run build && node dist/setup.js",
     "test": "npm run build && node --test tests",
     "docs:tools": "node scripts/generate_tool_docs.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.67.0",
-    "@google/genai": "^1.34.0",
-    "@google/generative-ai": "^0.24.1",
     "@pdf-lib/fontkit": "^1.1.1",
     "adm-zip": "^0.5.16",
+    "canvas": "^2.11.2",
     "clipboardy": "^2.3.0",
     "copper-cti": "github:zamasoftnet/cti.nodejs",
     "imapflow": "^1.2.11",
     "nodemailer": "^8.0.1",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^3.11.174",
-    "word-extractor": "^1.0.4"
+    "pdfjs-dist": "^3.11.174"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

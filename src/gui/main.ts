@@ -1,14 +1,24 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-// Store console windows
-let consoleWindows = new Map();
+function resolveAppIconPath() {
+    const candidates = [
+        path.resolve(__dirname, '../../../src/launcher/app.ico'),
+        path.resolve(process.cwd(), 'src', 'launcher', 'app.ico')
+    ];
+
+    return candidates.find(candidate => fs.existsSync(candidate));
+}
+
+const appIconPath = resolveAppIconPath();
 
 function createWindow() {
     const win = new BrowserWindow({
         width: 480,
         height: 730,
+        icon: appIconPath,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -28,10 +38,11 @@ function createWindow() {
     // win.webContents.openDevTools(); // For debugging
 }
 
-function createConsoleWindow(taskName, fileCount) {
+function createConsoleWindow() {
     const consoleWin = new BrowserWindow({
         width: 800,
         height: 500,
+        icon: appIconPath,
         webPreferences: {
             preload: path.join(__dirname, 'console_preload.js'),
             nodeIntegration: false,
@@ -58,6 +69,10 @@ function createConsoleWindow(taskName, fileCount) {
 }
 
 app.whenReady().then(() => {
+    if (process.platform === 'win32') {
+        app.setAppUserModelId('jp.mimidesunya.houhi');
+    }
+
     createWindow();
 
     app.on('activate', () => {
@@ -76,44 +91,24 @@ app.on('window-all-closed', () => {
 // Script definitions
 const SCRIPTS = {
     'pdf': { path: 'src/convert_to_pdf.js', name: '裁判文書PDF作成' },
-    'ocr_general': { path: 'src/ocr_general_doc.js', name: '一般文書OCR' },
-    'ocr_court': { path: 'src/ocr_court_doc.js', name: '裁判文書OCR' },
-    'ocr_merge': { path: 'src/ocr_merge_pages.js', name: 'OCRページ結合' },
     'renumber': { path: 'src/renumber_markdown.js', name: 'Markdown番号振直' },
     'ai_archive': { path: 'src/archive_for_ai.js', name: 'AI分析用アーカイブ作成' },
     'stamp': { path: 'src/stamp_evidence_number.js', name: '号証スタンプ' },
     'fax_send': { path: 'src/fax_send.js', name: 'mfax FAX送信' }
 };
 
-ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvider, processMode, ocrMode, preferPdfText }) => {
+ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
     if (!SCRIPTS[scriptKey]) {
         throw new Error('Invalid script key');
     }
 
     const script = SCRIPTS[scriptKey];
     const scriptPath = path.resolve(__dirname, '../../', script.path);
-    
-    // Build script arguments: add --ai, --mode, and ndlocr flags for OCR scripts
-    const isOcrScript = scriptKey === 'ocr_general' || scriptKey === 'ocr_court';
-    const selectedOcrMode = ocrMode || 'ai';
-    const useNdlocr = selectedOcrMode === 'ndlocr_ai' || selectedOcrMode === 'ndlocr_only';
-    const ndlocrOnly = selectedOcrMode === 'ndlocr_only';
-    let scriptArgs = [...filePaths];
-    if (isOcrScript) {
-        scriptArgs = ['--ai', aiProvider || 'gemini', '--mode', processMode || 'sync', ...filePaths];
-        if (ndlocrOnly) {
-            scriptArgs.unshift('--ndlocr_only');
-        } else if (useNdlocr) {
-            scriptArgs.unshift('--ndlocr');
-        }
-        if (preferPdfText) {
-            scriptArgs.unshift('--prefer_pdf_text');
-        }
-    }
-    
+    const scriptArgs = [...filePaths];
+
     // Create console window for this task
-    const consoleWin = createConsoleWindow(script.name, filePaths.length);
-    
+    const consoleWin = createConsoleWindow();
+
     // Wait for console window to be ready
     await new Promise(resolve => {
         consoleWin.webContents.once('did-finish-load', () => {
@@ -130,20 +125,10 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, aiProvide
 
     // Log command to console window
     const quotedPaths = filePaths.map(p => `"${p}"`).join(' ');
-    const aiFlag = isOcrScript && aiProvider ? ` --ai ${aiProvider}` : '';
-    const modeFlag = isOcrScript && processMode ? ` --mode ${processMode}` : '';
-    const ndlocrFlag = isOcrScript
-        ? (ndlocrOnly ? ' --ndlocr_only' : (useNdlocr ? ' --ndlocr' : ''))
-        : '';
-    const pdfTextFlag = isOcrScript && preferPdfText ? ' --prefer_pdf_text' : '';
-    const command = `node "${scriptPath}"${ndlocrFlag}${pdfTextFlag}${aiFlag}${modeFlag} ${quotedPaths}`;
-    consoleWin.webContents.send('console-command', `実行コマンド: node ${path.basename(scriptPath)}${ndlocrFlag}${pdfTextFlag}${aiFlag}${modeFlag} ...`);
+    const command = `node "${scriptPath}" ${quotedPaths}`.trim();
+    consoleWin.webContents.send('console-command', `実行コマンド: node ${path.basename(scriptPath)} ...`);
     consoleWin.webContents.send('console-info', `作業ディレクトリ: ${path.resolve(__dirname, '../../')}`);
-    if (isOcrScript) {
-        const ocrModeLabel = ndlocrOnly ? 'ndlocr-only' : (useNdlocr ? 'ndlocr+AI' : 'AIのみ');
-        consoleWin.webContents.send('console-info', `AIプロバイダー: ${aiProvider || 'gemini'} / モード: ${processMode === 'sync' ? '同期' : 'バッチ'} / OCRエンジン: ${ocrModeLabel} / PDFテキスト優先: ${preferPdfText ? 'On' : 'Off'}`);
-    }
-    
+
     // Also send to main window
     event.sender.send('script-log', `実行コマンド: ${command}\n`);
 

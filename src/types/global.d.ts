@@ -1,14 +1,10 @@
 declare module 'adm-zip';
-declare module 'word-extractor';
 declare module 'pdfjs-dist/legacy/build/pdf.js';
 declare module 'canvas';
 
 declare global {
     type ScriptKey =
         | 'pdf'
-        | 'ocr_general'
-        | 'ocr_court'
-        | 'ocr_merge'
         | 'renumber'
         | 'ai_archive'
         | 'stamp'
@@ -30,11 +26,7 @@ declare global {
     interface ElectronAPI {
         executeScript(
             scriptKey: ScriptKey,
-            filePaths: string[],
-            aiProvider?: string,
-            processMode?: string,
-            ocrMode?: string,
-            preferPdfText?: boolean
+            filePaths: string[]
         ): Promise<ScriptExecutionResult>;
         onLog(callback: (value: string) => void): void;
         onError(callback: (value: string) => void): void;
