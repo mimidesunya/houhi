@@ -168,6 +168,80 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
             for (const line of lines) {
                 if (!line.trim()) continue;
 
+                // [PREVIEW] マーカはプレビューウィンドウに変換
+                if (line.startsWith('[PREVIEW]')) {
+                    const raw = line.replace('[PREVIEW]', '').trim();
+                    const previewData = JSON.parse(raw);
+                    const previewDir = path.dirname(previewData.images[0]);
+
+                    // HTML エスケープ
+                    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+                    const faxHtml = previewData.faxNumbers.map((f, i) =>
+                        `<div class="fax-entry">${i+1}. <span class="fax-label">[${esc(f.label)}]</span> ${esc(f.name)} <span class="fax-number">${esc(f.number)}</span></div>`
+                    ).join('');
+
+                    const imgHtml = previewData.images.map((imgPath, i) =>
+                        `<div class="page"><div class="page-header">ページ ${i+1}</div><img src="${path.basename(imgPath)}" /></div>`
+                    ).join('');
+
+                    const previewHtmlContent = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+body{margin:0;padding:0;background:#1a1a2e;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-serif}
+.header{position:sticky;top:0;background:#1a1a2e;padding:16px 20px;border-bottom:1px solid #333;z-index:10}
+h2{margin:0 0 12px 0;font-size:18px;color:#64b5f6}
+.fax-entry{margin:4px 0;font-size:14px}.fax-label{color:#ff9800;font-weight:bold}
+.fax-number{color:#aaa;font-family:monospace;margin-left:8px}
+.pages{padding:16px;padding-bottom:80px}
+.page{margin-bottom:16px;background:#222;border-radius:8px;overflow:hidden}
+.page-header{padding:8px 12px;background:#2a2a3e;font-size:13px;color:#888}
+.page img{width:100%;display:block}
+.footer{position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;border-top:1px solid #333;padding:12px 20px;display:flex;justify-content:flex-end;gap:10px}
+button{padding:8px 24px;border:none;border-radius:6px;font-size:14px;cursor:pointer}
+.btn-send{background:#4caf50;color:white;font-weight:bold}.btn-send:hover{background:#45a049}
+.btn-cancel{background:#444;color:#e0e0e0}.btn-cancel:hover{background:#555}
+</style></head><body>
+<div class="header"><h2>FAX送信プレビュー</h2>${faxHtml}</div>
+<div class="pages">${imgHtml}</div>
+<div class="footer">
+<button class="btn-cancel" onclick="document.title='__CANCEL__'">キャンセル</button>
+<button class="btn-send" onclick="document.title='__CONFIRM__'">送信する</button>
+</div></body></html>`;
+
+                    const previewHtmlPath = path.join(previewDir, '_preview.html');
+                    fs.writeFileSync(previewHtmlPath, previewHtmlContent, 'utf-8');
+
+                    const parentWin = consoleWin && !consoleWin.isDestroyed() ? consoleWin : null;
+                    const previewWin = new BrowserWindow({
+                        width: 720,
+                        height: 860,
+                        parent: parentWin,
+                        modal: true,
+                        webPreferences: { nodeIntegration: false, contextIsolation: true },
+                        backgroundColor: '#1a1a2e',
+                        show: false
+                    });
+                    previewWin.setMenuBarVisibility(false);
+                    previewWin.loadFile(previewHtmlPath);
+                    previewWin.once('ready-to-show', () => previewWin.show());
+
+                    let previewConfirmed = false;
+                    previewWin.on('page-title-updated', (ev, title) => {
+                        ev.preventDefault();
+                        if (title === '__CONFIRM__') previewConfirmed = true;
+                        if (title === '__CONFIRM__' || title === '__CANCEL__') {
+                            previewWin.close();
+                        }
+                    });
+
+                    await new Promise(resolve => {
+                        previewWin.on('closed', resolve);
+                    });
+
+                    childProcess.stdin.write(previewConfirmed ? 'y\n' : 'n\n');
+                    continue;
+                }
+
                 // [CONFIRM] マーカはネイティブダイアログに変換
                 if (line.startsWith('[CONFIRM]')) {
                     const raw = line.replace('[CONFIRM]', '').trim().replace(/\\n/g, '\n');

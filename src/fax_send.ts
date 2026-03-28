@@ -129,13 +129,18 @@ class SafeCanvasFactory {
 function toFaxBinary(imageData, threshold) {
     const px = imageData.data;
     for (let i = 0; i < px.length; i += 4) {
-        const v = (0.299 * px[i] + 0.587 * px[i+1] + 0.114 * px[i+2]) >= threshold ? 255 : 0;
+        const r = px[i], g = px[i+1], b = px[i+2];
+        // 赤色検出: R成分がG/Bより十分に高いピクセルは印影とみなし黒にする
+        const isRedInk = (r - Math.min(g, b)) > 30 && r > 60;
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        const v = isRedInk ? 0 : (lum >= threshold ? 255 : 0);
         px[i] = px[i+1] = px[i+2] = v; px[i+3] = 255;
     }
 }
 
-async function binarizePdfForFax(inputPath, outputPath) {
+async function binarizePdfForFax(inputPath, outputPath, previewDir) {
     const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
+    const previewPaths = [];
     const pdfBytes = fs.readFileSync(inputPath);
     const src = await pdfjsLib.getDocument({
         data: new Uint8Array(pdfBytes),
@@ -165,7 +170,13 @@ async function binarizePdfForFax(inputPath, outputPath) {
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         toFaxBinary(imgData, FAX_THRESHOLD);
         ctx.putImageData(imgData, 0, 0);
-        const img = await out.embedPng(canvas.toBuffer('image/png'));
+        const pngBuf = canvas.toBuffer('image/png');
+        if (previewDir) {
+            const pp = path.join(previewDir, `preview_${n}.png`);
+            fs.writeFileSync(pp, pngBuf);
+            previewPaths.push(pp);
+        }
+        const img = await out.embedPng(pngBuf);
         const p = out.addPage([vpOrig.width, vpOrig.height]);
         p.drawImage(img, { x: 0, y: 0, width: vpOrig.width, height: vpOrig.height });
         console.log(`[二値化] ${n}/${src.numPages} ページ`);
@@ -174,53 +185,101 @@ async function binarizePdfForFax(inputPath, outputPath) {
     if (typeof src.cleanup === 'function') src.cleanup();
 
     fs.writeFileSync(outputPath, await out.save({ useObjectStreams: false }));
+    return previewPaths;
 }
 
 // ─── FAX番号抽出 ──────────────────────────────────────────────
 
 /**
- * 送付書MDから送信先2件を確定的に抽出する。
- *   1. 相手方: 文書冒頭の最初の「### --左」ブロック内の最初の (FAX ...)
- *   2. 裁判所: 「# 受領書」以降の最初の「### --左」ブロック内の最初の (FAX ...)
+ * 送付書MDから送信先FAX番号を抽出する。
+ *
+ * fromReceipt=false（送付書.md）:
+ *   1. 相手方: 受領書見出しより前の全「### --左」ブロック内の (FAX ...) を収集
+ *   2. 裁判所: 受領書見出し以降の最初の「### --左」ブロック内の最初の (FAX ...)
+ *
+ * fromReceipt=true（_paged.md = 受領した文書）:
+ *   受領書セクション内のすべての (FAX ...) を送信先として抽出
  */
-function extractFaxNumbers(mdContent) {
+function extractFaxNumbers(mdContent, { fromReceipt = false } = {}) {
     const lines = mdContent.split('\n').map(l => l.trim());
     const results = [];
+    const seen = new Set();
 
-    // ブロック内の最初のFAX番号と直前ラベルを取得するヘルパー
-    function firstFaxInBlock(startIdx) {
+    // ブロック内のすべてのFAX番号を取得するヘルパー
+    // FAX番号と同一行の前半テキスト（御中, 宛 等）も名前として取得
+    function allFaxInBlock(startIdx) {
+        const found = [];
         let lastLabel = '';
         for (let i = startIdx; i < lines.length; i++) {
             const line = lines[i];
-            if (line.startsWith('### --')) break; // ブロック終端
-            const m = line.match(/\(FAX\s+([\d\-\(\)\s]+)\)/);
+            if (line.startsWith('### --')) break;
+            const m = line.match(/[\(（]FAX\s+([\d\-\(\)\s]+)[\)）]/);
             if (m) {
                 const num = m[1].replace(/[^\d]/g, '');
-                if (num) return { name: lastLabel, number: num };
+                const prefix = line.substring(0, m.index).trim();
+                const name = prefix || lastLabel;
+                if (num) found.push({ name, number: num });
             } else if (line !== '') {
                 lastLabel = line;
             }
         }
-        return null;
+        return found;
     }
 
-    // 1. 相手方: 最初の「### --左」ブロック
+    // 受領書見出しの行番号を特定（「# ...受領書」にマッチ）
+    let receiptLine = -1;
     for (let i = 0; i < lines.length; i++) {
-        if (lines[i] === '### --左') {
-            const hit = firstFaxInBlock(i + 1);
-            if (hit) { results.push({ label: '相手方', ...hit }); }
+        if (/^#\s+.*受領書/.test(lines[i])) {
+            receiptLine = i;
             break;
         }
     }
 
-    // 2. 裁判所: 「# 受領書」以降の最初の「### --左」ブロック
-    let inReceipt = false;
-    for (let i = 0; i < lines.length; i++) {
-        if (!inReceipt && lines[i] === '# 受領書') { inReceipt = true; continue; }
-        if (inReceipt && lines[i] === '### --左') {
-            const hit = firstFaxInBlock(i + 1);
-            if (hit) { results.push({ label: '裁判所', ...hit }); }
-            break;
+    if (fromReceipt) {
+        // _paged.md モード: 受領書セクション内のすべてのFAX番号を抽出
+        if (receiptLine < 0) return results;
+        for (let i = receiptLine; i < lines.length; i++) {
+            if (lines[i] === '### --左' || lines[i] === '### --右') {
+                for (const hit of allFaxInBlock(i + 1)) {
+                    if (!seen.has(hit.number)) {
+                        seen.add(hit.number);
+                        const label = hit.name.includes('裁判所') ? '裁判所' : '相手方';
+                        results.push({ label, ...hit });
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
+    // 送付書.md モード
+    const boundary = receiptLine >= 0 ? receiptLine : lines.length;
+
+    // 1. 相手方: 受領書より前のすべての「### --左」ブロックからFAX番号を収集
+    for (let i = 0; i < boundary; i++) {
+        if (lines[i] === '### --左') {
+            for (const hit of allFaxInBlock(i + 1)) {
+                if (!seen.has(hit.number)) {
+                    seen.add(hit.number);
+                    results.push({ label: '相手方', ...hit });
+                }
+            }
+        }
+    }
+
+    // 2. 裁判所: 受領書以降の最初の「### --左」ブロックから最初のFAX番号（重複除外）
+    if (receiptLine >= 0) {
+        for (let i = receiptLine; i < lines.length; i++) {
+            if (lines[i] === '### --左') {
+                for (const hit of allFaxInBlock(i + 1)) {
+                    if (!seen.has(hit.number)) {
+                        seen.add(hit.number);
+                        results.push({ label: '裁判所', ...hit });
+                    }
+                    break;
+                }
+                break;
+            }
         }
     }
 
@@ -284,6 +343,39 @@ function askPrompt(question): Promise<string> {
                     process.stdin.removeListener('data', onData);
                     process.stdin.pause();
                     resolve(buf.trim());
+                }
+            };
+            process.stdin.resume();
+            process.stdin.setEncoding('utf-8');
+            process.stdin.on('data', onData);
+        });
+    }
+}
+
+// ─── プレビュー確認 ──────────────────────────────────────────
+
+function askPreviewConfirm(faxNumbers, previewPaths) {
+    const faxList = faxNumbers.map((e, i) => `  ${i + 1}. [${e.label}] ${e.name}  (${e.number})`).join('\n');
+
+    if (process.stdin.isTTY) {
+        console.log('\n二値化プレビュー画像:');
+        previewPaths.forEach((p, i) => console.log(`  ${i + 1}ページ: ${p}`));
+        console.log('');
+        return askConfirm(`以下の宛先に FAX 送信しますか？\n${faxList}`);
+    } else {
+        const payload = JSON.stringify({
+            faxNumbers: faxNumbers.map(f => ({ label: f.label, name: f.name, number: f.number })),
+            images: previewPaths,
+        });
+        process.stdout.write(`[PREVIEW] ${payload}\n`);
+        return new Promise(resolve => {
+            let buf = '';
+            const onData = (chunk) => {
+                buf += chunk.toString();
+                if (buf.includes('\n')) {
+                    process.stdin.removeListener('data', onData);
+                    process.stdin.pause();
+                    resolve(buf.trim().toLowerCase() === 'y');
                 }
             };
             process.stdin.resume();
@@ -371,6 +463,17 @@ async function main() {
         return;
     }
 
+    // ─ _paged.md 自動検出 ─
+    // PDFのみドロップ時: {basename}_paged.md があればFAX番号抽出に使用
+    let pagedMdFile = null;
+    if (!mdFile) {
+        const candidate = attachPdf.replace(/\.pdf$/i, '') + '_paged.md';
+        if (fs.existsSync(candidate)) {
+            pagedMdFile = candidate;
+            console.log(`[FAX] _paged.md を検出: ${path.basename(candidate)}`);
+        }
+    }
+
     // ─ 設定読み込み ─
     const config = loadConfig();
     const mailConfig = config?.mail;
@@ -389,11 +492,12 @@ async function main() {
 
     // ─ FAX番号抽出 ─
     let faxNumbers = [];
-    if (mdFile) {
-        const mdContent = fs.readFileSync(mdFile, 'utf-8');
-        faxNumbers = extractFaxNumbers(mdContent);
+    const faxMdSource = mdFile || pagedMdFile;
+    if (faxMdSource) {
+        const mdContent = fs.readFileSync(faxMdSource, 'utf-8');
+        faxNumbers = extractFaxNumbers(mdContent, { fromReceipt: !!pagedMdFile && !mdFile });
         if (faxNumbers.length === 0) {
-            console.error('[エラー] 送付書.mdからFAX番号を抽出できませんでした。');
+            console.error('[エラー] MDファイルからFAX番号を抽出できませんでした。');
             console.error('         "(FAX XXXXXXXXXX)" という形式の番号が必要です。');
             return;
         }
@@ -412,31 +516,6 @@ async function main() {
         }
         faxNumbers.push({ label: '手動入力', name: faxInput, number: faxNum });
     }
-    console.log('');
-    console.log('┌─────────────────────────────────────────────┐');
-    console.log('│  FAX送信確認                                │');
-    console.log('├─────────────────────────────────────────────┤');
-    const coverLabel = mdFile ? path.basename(mdFile) : '（なし）';
-    console.log(`│  送付書: ${coverLabel.padEnd(36)}│`);
-    console.log(`│  添付:   ${path.basename(attachPdf).padEnd(36)}│`);
-    console.log('│  送信先:                                    │');
-    for (let i = 0; i < faxNumbers.length; i++) {
-        const { label, name, number } = faxNumbers[i];
-        const nameLine = `│    ${i + 1}. [${label}] ${name}`;
-        console.log(nameLine.padEnd(45) + '│');
-        const numLine  = `│       ${number}`;
-        console.log(numLine.padEnd(45) + '│');
-    }
-    console.log('└─────────────────────────────────────────────┘');
-    console.log('');
-
-    const faxList = faxNumbers.map((e, i) => `  ${i + 1}. [${e.label}] ${e.name}  (${e.number})`).join('\n');
-    const confirmed = await askConfirm(`以下の宛先に FAX 送信しますか？\n${faxList}`);
-    if (!confirmed) {
-        console.log('キャンセルしました。');
-        return;
-    }
-    console.log('');
 
     // ─ 送付書MD→PDF変換 ─
     registerJapaneseFonts();
@@ -464,7 +543,14 @@ async function main() {
 
         // ─ 二値化 ─
         console.log(`[FAX] FAX用に二値化中 (${FAX_DPI}dpi, threshold=${FAX_THRESHOLD})...`);
-        await binarizePdfForFax(mergedPdfPath, faxPdfPath);
+        const previewPaths = await binarizePdfForFax(mergedPdfPath, faxPdfPath, tmpDir);
+
+        // ─ プレビュー＋送信確認 ─
+        const confirmed = await askPreviewConfirm(faxNumbers, previewPaths);
+        if (!confirmed) {
+            console.log('キャンセルしました。');
+            return;
+        }
 
         const mergedPdfBytes = fs.readFileSync(faxPdfPath);
         const attachFilename = path.basename(attachPdf);

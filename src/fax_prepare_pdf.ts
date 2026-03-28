@@ -133,8 +133,10 @@ function toFaxBinary(imageData, threshold) {
         const green = pixels[position + 1];
         const blue = pixels[position + 2];
 
+        // 赤色検出: R成分がG/Bより十分に高いピクセルは印影とみなし黒にする
+        const isRedInk = (red - Math.min(green, blue)) > 30 && red > 60;
         const luminance = 0.299 * red + 0.587 * green + 0.114 * blue;
-        const binary = luminance >= threshold ? 255 : 0;
+        const binary = isRedInk ? 0 : (luminance >= threshold ? 255 : 0);
 
         pixels[position] = binary;
         pixels[position + 1] = binary;
