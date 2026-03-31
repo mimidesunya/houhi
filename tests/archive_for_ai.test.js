@@ -1,0 +1,157 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+
+const { getDirectoryStructure, hasTargetFiles } = require('../dist/src/archive_for_ai.js');
+
+// ─── テスト用一時ディレクトリ ────────────────────────────────
+
+function createTempDir() {
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-test-'));
+}
+
+function cleanup(dir) {
+    fs.rmSync(dir, { recursive: true, force: true });
+}
+
+// ─── hasTargetFiles ─────────────────────────────────────────
+
+test('hasTargetFiles: returns true for dir with .md file', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'test.md'), '# test');
+        assert.equal(hasTargetFiles(dir), true);
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('hasTargetFiles: returns true for dir with .txt file', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'note.txt'), 'hello');
+        assert.equal(hasTargetFiles(dir), true);
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('hasTargetFiles: returns false for empty dir', () => {
+    const dir = createTempDir();
+    try {
+        assert.equal(hasTargetFiles(dir), false);
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('hasTargetFiles: returns false for dir with only non-target files', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'image.png'), Buffer.alloc(10));
+        fs.writeFileSync(path.join(dir, 'data.json'), '{}');
+        assert.equal(hasTargetFiles(dir), false);
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('hasTargetFiles: returns true for nested .md file', () => {
+    const dir = createTempDir();
+    try {
+        const sub = path.join(dir, 'sub');
+        fs.mkdirSync(sub);
+        fs.writeFileSync(path.join(sub, 'deep.md'), '# deep');
+        assert.equal(hasTargetFiles(dir), true);
+    } finally {
+        cleanup(dir);
+    }
+});
+
+// ─── getDirectoryStructure ──────────────────────────────────
+
+test('getDirectoryStructure: shows .md files with 📄 emoji', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'file.md'), '# test');
+        const result = getDirectoryStructure(dir, dir);
+        assert.ok(result.includes('📄 file.md'));
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('getDirectoryStructure: shows .txt files with 📄 emoji', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'notes.txt'), 'hello');
+        const result = getDirectoryStructure(dir, dir);
+        assert.ok(result.includes('📄 notes.txt'));
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('getDirectoryStructure: excludes non-target files', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'image.png'), Buffer.alloc(10));
+        fs.writeFileSync(path.join(dir, 'doc.md'), '# doc');
+        const result = getDirectoryStructure(dir, dir);
+        assert.ok(!result.includes('image.png'));
+        assert.ok(result.includes('doc.md'));
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('getDirectoryStructure: shows folders with 📁 emoji', () => {
+    const dir = createTempDir();
+    try {
+        const sub = path.join(dir, 'subdir');
+        fs.mkdirSync(sub);
+        fs.writeFileSync(path.join(sub, 'file.md'), '# hi');
+        const result = getDirectoryStructure(dir, dir);
+        assert.ok(result.includes('📁 subdir/'));
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('getDirectoryStructure: indents nested items', () => {
+    const dir = createTempDir();
+    try {
+        const sub = path.join(dir, 'nested');
+        fs.mkdirSync(sub);
+        fs.writeFileSync(path.join(sub, 'inner.md'), '# inner');
+        const result = getDirectoryStructure(dir, dir);
+        assert.ok(result.includes('  📄 inner.md'));
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('getDirectoryStructure: returns empty for empty dir', () => {
+    const dir = createTempDir();
+    try {
+        const result = getDirectoryStructure(dir, dir);
+        assert.equal(result, '');
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('getDirectoryStructure: skips folders without target files', () => {
+    const dir = createTempDir();
+    try {
+        const sub = path.join(dir, 'images');
+        fs.mkdirSync(sub);
+        fs.writeFileSync(path.join(sub, 'photo.png'), Buffer.alloc(10));
+        const result = getDirectoryStructure(dir, dir);
+        assert.ok(!result.includes('images'));
+    } finally {
+        cleanup(dir);
+    }
+});

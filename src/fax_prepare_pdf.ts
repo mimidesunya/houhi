@@ -273,7 +273,7 @@ function toFaxBinary(imageData, threshold) {
 
 // module.exports for testing
 if (typeof module !== 'undefined') {
-    module.exports = { computeLuminanceData, otsuThreshold, detectPhotoContent, toFaxBinaryAuto, toFaxBinary };
+    module.exports = { computeLuminanceData, otsuThreshold, detectPhotoContent, toFaxBinaryAuto, toFaxBinary, parseArgs };
 }
 
 async function convertPdfForFax(inputPath, options) {

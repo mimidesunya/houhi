@@ -701,9 +701,17 @@ async function main() {
     }
 }
 
-main().then(() => {
-    process.exit(0);
-}).catch(err => {
-    console.error(`[エラー] ${err.message}`);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().then(() => {
+        process.exit(0);
+    }).catch(err => {
+        console.error(`[エラー] ${err.message}`);
+        process.exit(1);
+    });
+}
+
+module.exports = {
+    wrapMarkdownInHtml,
+    extractFaxNumbers,
+    mergePdfs,
+};
