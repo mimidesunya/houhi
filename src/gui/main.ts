@@ -97,14 +97,15 @@ const SCRIPTS = {
     'fax_send': { path: 'src/fax_send.js', name: 'mfax FAX送信' }
 };
 
-ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
+ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, options }) => {
     if (!SCRIPTS[scriptKey]) {
         throw new Error('Invalid script key');
     }
 
     const script = SCRIPTS[scriptKey];
     const scriptPath = path.resolve(__dirname, '../../', script.path);
-    const scriptArgs = [...filePaths];
+    const extraArgs = Array.isArray(options) ? options : [];
+    const scriptArgs = [...extraArgs, ...filePaths];
 
     // Create console window for this task
     const consoleWin = createConsoleWindow();
@@ -155,6 +156,7 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
 
         // Stream stdout in real-time
         let lineBuffer = '';
+        let activePreviewWin = null;
         childProcess.stdout.on('data', async (data) => {
             const text = data.toString();
             stdout += text;
@@ -168,45 +170,104 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths }) => {
             for (const line of lines) {
                 if (!line.trim()) continue;
 
+                // [REGEN_DONE] マーカ: プレビューウィンドウの画像を更新
+                if (line.startsWith('[REGEN_DONE]') && activePreviewWin && !activePreviewWin.isDestroyed()) {
+                    const pageNum = parseInt(line.replace('[REGEN_DONE]', '').trim());
+                    activePreviewWin.webContents.executeJavaScript(`reloadPage(${pageNum})`);
+                    continue;
+                }
+
                 // [PREVIEW] マーカはプレビューウィンドウに変換
                 if (line.startsWith('[PREVIEW]')) {
                     const raw = line.replace('[PREVIEW]', '').trim();
                     const previewData = JSON.parse(raw);
                     const previewDir = path.dirname(previewData.images[0]);
+                    const ditherStatus = previewData.ditherStatus || [];
 
-                    // HTML エスケープ
-                    const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                    const faxJsonEsc = JSON.stringify(previewData.faxNumbers).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
-                    const faxHtml = previewData.faxNumbers.map((f, i) =>
-                        `<div class="fax-entry">${i+1}. <span class="fax-label">[${esc(f.label)}]</span> ${esc(f.name)} <span class="fax-number">${esc(f.number)}</span></div>`
-                    ).join('');
-
-                    const imgHtml = previewData.images.map((imgPath, i) =>
-                        `<div class="page"><div class="page-header">ページ ${i+1}</div><img src="${path.basename(imgPath)}" /></div>`
-                    ).join('');
+                    const imgHtml = previewData.images.map((imgPath, i) => {
+                        const dithered = ditherStatus[i] ? 'true' : 'false';
+                        const btnLabel = ditherStatus[i] ? 'ディザリング: ON' : 'ディザリング: OFF';
+                        return `<div class="page"><div class="page-header"><span>ページ ${i+1}</span><button class="btn-dither${ditherStatus[i] ? ' active' : ''}" id="dither-${i+1}" data-dithered="${dithered}" onclick="toggleDither(${i+1})">${btnLabel}</button></div><img id="img-${i+1}" src="${path.basename(imgPath)}" /></div>`;
+                    }).join('');
 
                     const previewHtmlContent = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
 body{margin:0;padding:0;background:#1a1a2e;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-serif}
 .header{position:sticky;top:0;background:#1a1a2e;padding:16px 20px;border-bottom:1px solid #333;z-index:10}
 h2{margin:0 0 12px 0;font-size:18px;color:#64b5f6}
-.fax-entry{margin:4px 0;font-size:14px}.fax-label{color:#ff9800;font-weight:bold}
-.fax-number{color:#aaa;font-family:monospace;margin-left:8px}
+.fax-section{margin-bottom:8px}
+.fax-row{display:flex;gap:8px;align-items:center;margin:4px 0;font-size:13px}
+.fax-row input{background:#2a2a3e;border:1px solid #444;border-radius:4px;padding:4px 8px;color:#e0e0e0;font-size:13px}
+.fax-row input.fax-label-input{width:80px}
+.fax-row input.fax-name-input{width:120px}
+.fax-row input.fax-number-input{width:160px;font-family:monospace}
+.fax-row .fax-remove{background:#c62828;color:white;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px}
+.fax-row .fax-remove:hover{background:#e53935}
+.fax-add{background:#1565c0;color:white;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;margin-top:4px}
+.fax-add:hover{background:#1976d2}
+.fax-error{color:#ef5350;font-size:12px;margin-top:4px;display:none}
 .pages{padding:16px;padding-bottom:80px}
 .page{margin-bottom:16px;background:#222;border-radius:8px;overflow:hidden}
-.page-header{padding:8px 12px;background:#2a2a3e;font-size:13px;color:#888}
+.page-header{padding:8px 12px;background:#2a2a3e;font-size:13px;color:#888;display:flex;justify-content:space-between;align-items:center}
 .page img{width:100%;display:block}
+.btn-dither{padding:4px 12px;border:1px solid #555;border-radius:4px;font-size:12px;cursor:pointer;background:#333;color:#aaa;transition:all .2s}
+.btn-dither.active{background:#2e7d32;border-color:#4caf50;color:#fff}
+.btn-dither:hover:not(:disabled){background:#444}
+.btn-dither.active:hover:not(:disabled){background:#388e3c}
+.btn-dither:disabled{opacity:0.5;cursor:wait}
 .footer{position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;border-top:1px solid #333;padding:12px 20px;display:flex;justify-content:flex-end;gap:10px}
 button{padding:8px 24px;border:none;border-radius:6px;font-size:14px;cursor:pointer}
 .btn-send{background:#4caf50;color:white;font-weight:bold}.btn-send:hover{background:#45a049}
 .btn-cancel{background:#444;color:#e0e0e0}.btn-cancel:hover{background:#555}
 </style></head><body>
-<div class="header"><h2>FAX送信プレビュー</h2>${faxHtml}</div>
+<div class="header">
+<h2>FAX送信プレビュー</h2>
+<div class="fax-section">
+<div id="fax-list"></div>
+<button class="fax-add" onclick="addFaxRow('','','')">＋ 宛先を追加</button>
+<div class="fax-error" id="fax-error">FAX番号を1件以上入力してください。</div>
+</div>
+</div>
 <div class="pages">${imgHtml}</div>
 <div class="footer">
 <button class="btn-cancel" onclick="document.title='__CANCEL__'">キャンセル</button>
-<button class="btn-send" onclick="document.title='__CONFIRM__'">送信する</button>
-</div></body></html>`;
+<button class="btn-send" onclick="confirmSend()">送信する</button>
+</div>
+<script>
+var faxData = JSON.parse('${faxJsonEsc}');
+function renderFaxList(){
+  var el=document.getElementById('fax-list');
+  el.innerHTML='';
+  faxData.forEach(function(f,i){
+    var row=document.createElement('div');row.className='fax-row';
+    row.innerHTML='<span>'+(i+1)+'.</span>'
+      +'<input class="fax-label-input" placeholder="ラベル" value="'+escAttr(f.label)+'" onchange="faxData['+i+'].label=this.value">'
+      +'<input class="fax-name-input" placeholder="名前" value="'+escAttr(f.name)+'" onchange="faxData['+i+'].name=this.value">'
+      +'<input class="fax-number-input" placeholder="FAX番号" value="'+escAttr(f.number)+'" onchange="faxData['+i+'].number=this.value">'
+      +'<button class="fax-remove" onclick="removeFax('+i+')">✕</button>';
+    el.appendChild(row);
+  });
+}
+function escAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function addFaxRow(label,name,number){faxData.push({label:label||'',name:name||'',number:number||''});renderFaxList();document.getElementById('fax-error').style.display='none';}
+function removeFax(i){faxData.splice(i,1);renderFaxList();}
+function confirmSend(){
+  var valid=[];
+  for(var i=0;i<faxData.length;i++){
+    var num=faxData[i].number.replace(/[^0-9]/g,'');
+    if(num.length>=10){valid.push({label:faxData[i].label,name:faxData[i].name,number:num});}
+  }
+  if(valid.length===0){document.getElementById('fax-error').style.display='block';return;}
+  document.title='__CONFIRM_FAX_'+JSON.stringify(valid)+'__';
+}
+renderFaxList();
+if(faxData.length===0){addFaxRow('','','');}
+function toggleDither(n){var b=document.getElementById('dither-'+n);var d=b.dataset.dithered==='true';var m=d?'nodither':'dither';b.disabled=true;b.textContent='処理中...';document.title='__REGEN_'+n+'_'+m+'__';}
+function reloadPage(n){var img=document.getElementById('img-'+n);img.src=img.src.split('?')[0]+'?t='+Date.now();var b=document.getElementById('dither-'+n);var was=b.dataset.dithered==='true';b.dataset.dithered=was?'false':'true';b.textContent=was?'ディザリング: OFF':'ディザリング: ON';if(was){b.classList.remove('active')}else{b.classList.add('active')}b.disabled=false;}
+</script>
+</body></html>`;
 
                     const previewHtmlPath = path.join(previewDir, '_preview.html');
                     fs.writeFileSync(previewHtmlPath, previewHtmlContent, 'utf-8');
@@ -221,16 +282,29 @@ button{padding:8px 24px;border:none;border-radius:6px;font-size:14px;cursor:poin
                         backgroundColor: '#1a1a2e',
                         show: false
                     });
+                    activePreviewWin = previewWin;
                     previewWin.setMenuBarVisibility(false);
                     previewWin.loadFile(previewHtmlPath);
                     previewWin.once('ready-to-show', () => previewWin.show());
 
-                    let previewConfirmed = false;
+                    let confirmedFaxJson = '';
                     previewWin.on('page-title-updated', (ev, title) => {
                         ev.preventDefault();
-                        if (title === '__CONFIRM__') previewConfirmed = true;
-                        if (title === '__CONFIRM__' || title === '__CANCEL__') {
+                        const confirmFaxMatch = title.match(/^__CONFIRM_FAX_(.+)__$/);
+                        if (confirmFaxMatch) {
+                            confirmedFaxJson = confirmFaxMatch[1];
+                            activePreviewWin = null;
                             previewWin.close();
+                            return;
+                        }
+                        if (title === '__CANCEL__') {
+                            activePreviewWin = null;
+                            previewWin.close();
+                            return;
+                        }
+                        const regenMatch = title.match(/^__REGEN_(\d+)_(dither|nodither)__$/);
+                        if (regenMatch) {
+                            childProcess.stdin.write(`REGEN ${regenMatch[1]} ${regenMatch[2]}\n`);
                         }
                     });
 
@@ -238,7 +312,11 @@ button{padding:8px 24px;border:none;border-radius:6px;font-size:14px;cursor:poin
                         previewWin.on('closed', resolve);
                     });
 
-                    childProcess.stdin.write(previewConfirmed ? 'y\n' : 'n\n');
+                    if (confirmedFaxJson) {
+                        childProcess.stdin.write(`CONFIRM_FAX ${confirmedFaxJson}\n`);
+                    } else {
+                        childProcess.stdin.write('n\n');
+                    }
                     continue;
                 }
 

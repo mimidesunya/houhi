@@ -206,6 +206,29 @@
             background: rgba(255, 255, 255, 0.3);
         }
 
+        /* Options Bar */
+        .options-bar {
+            padding: 4px 20px 8px;
+            display: flex;
+            gap: 16px;
+        }
+
+        .option-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: var(--secondary-text-color);
+            cursor: pointer;
+        }
+
+        .option-toggle input[type="checkbox"] {
+            accent-color: var(--accent-color);
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+        }
+
         /* Status Indicator */
         .status-bar {
             position: absolute;
@@ -262,6 +285,17 @@
                 <div class="drop-text">ここにファイルをドロップ</div>
                 <div class="drop-subtext">または クリックして選択</div>
             </div>
+        </div>
+
+        <div class="options-bar" id="optionsBar" style="display:none;">
+            <label class="option-toggle">
+                <input type="checkbox" id="optNoBlankPages">
+                <span>空白ページなし（FAX向け）</span>
+            </label>
+            <label class="option-toggle">
+                <input type="checkbox" id="optNoDither">
+                <span>ディザリングOFF（写真なし文書向け）</span>
+            </label>
         </div>
 
         <div class="console-container" id="consoleOutput">

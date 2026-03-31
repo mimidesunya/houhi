@@ -1,10 +1,11 @@
 /**
  * 証拠番号スタンプツール
- * PDFファイル名から証拠番号（甲XX）を抽出し、各ページの右上に赤文字でスタンプする。
+ * PDF／画像ファイル名から証拠番号（甲XX）を抽出し、各ページの右上に赤文字でスタンプする。
  * 出力先: 入力ディレクトリ内の stamped/ フォルダ
  *
  * 入力:
- * - PDF ファイルを 1 件以上指定できます。
+ * - PDF または画像ファイル（JPG, PNG）を 1 件以上指定できます。
+ * - 画像ファイルは自動的にA4サイズのPDFに変換してから処理します。
  * - ファイル名先頭の `甲1`, `乙2-1` などから証拠番号を抽出します。
  *
  * 出力:
@@ -21,11 +22,12 @@
  * - 複数PDF結合時は、両面印刷向けに必要な空白ページを補います。
  *
  * 使い方:
- *   node src/stamp_evidence_number.js <PDFファイルパス...>
+ *   node src/stamp_evidence_number.js <PDF/画像ファイルパス...>
  *
  * オプション:
  *   --all-pages   全ページにスタンプ（デフォルトは1ページ目のみ）
  *   --font-size N フォントサイズ指定（デフォルト: 20）
+ *   --no-blank-pages 結合時に空白ページを挿入しない（FAX向け）
  */
 const fs = require('fs');
 const path = require('path');
@@ -39,6 +41,8 @@ const MARGIN_TOP = 12;     // 上余白 (pt)
 const STAMP_SUFFIX = '号証';
 const A4_WIDTH = 595.28;   // A4 幅 (pt)
 const A4_HEIGHT = 841.89;  // A4 高さ (pt)
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png'];
+const IMAGE_MARGIN = 36;   // 画像PDF変換時の余白 (pt)
 
 // 日本語フォント候補（TTFを優先、TTC は pdf-lib で扱えないため避ける）
 const FONT_CANDIDATES = [
@@ -124,10 +128,56 @@ async function ensureA4Pages(pdfBytes) {
 }
 
 /**
- * ファイル名から証拠番号を抽出（枝番対応: 甲4-1 など）
+ * 画像ファイルかどうか判定
+ */
+function isImageFile(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    return IMAGE_EXTENSIONS.includes(ext);
+}
+
+/**
+ * 画像ファイルをA4サイズのPDFに変換する
+ * 画像はアスペクト比を維持しつつA4に収まるようにリサイズし中央配置する
+ */
+async function convertImageToPdf(imagePath) {
+    const imageBytes = fs.readFileSync(imagePath);
+    const ext = path.extname(imagePath).toLowerCase();
+
+    const pdfDoc = await PDFDocument.create();
+    let image;
+    if (ext === '.png') {
+        image = await pdfDoc.embedPng(imageBytes);
+    } else {
+        image = await pdfDoc.embedJpg(imageBytes);
+    }
+
+    const { width: imgW, height: imgH } = image;
+
+    // 画像の向きに応じてA4の縦横を決定
+    const isLandscape = imgW > imgH;
+    const [pageW, pageH] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+
+    const page = pdfDoc.addPage([pageW, pageH]);
+
+    // 余白を除いた描画領域にフィットさせる
+    const maxW = pageW - IMAGE_MARGIN * 2;
+    const maxH = pageH - IMAGE_MARGIN * 2;
+    const scale = Math.min(maxW / imgW, maxH / imgH, 1); // 拡大はしない
+    const drawW = imgW * scale;
+    const drawH = imgH * scale;
+    const x = (pageW - drawW) / 2;
+    const y = (pageH - drawH) / 2;
+
+    page.drawImage(image, { x, y, width: drawW, height: drawH });
+
+    return await pdfDoc.save();
+}
+
+/**
+ * ファイル名から証拠番号を抽出（枝番対応: 甲4-1, 乙1の1 など）
  */
 function extractEvidenceNumber(filename) {
-    const match = filename.match(/^([甲乙丙丁戊証疎]\d+(?:-\d+)?)/);
+    const match = filename.match(/^([甲乙丙丁戊証疎]\d+(?:[\-の]\d+)?)/);
     return match ? match[1] : null;
 }
 
@@ -137,7 +187,7 @@ function extractEvidenceNumber(filename) {
  */
 function naturalSortKey(filepath) {
     const name = path.basename(filepath);
-    const match = name.match(/[甲乙丙丁戊証疎](\d+)(?:-(\d+))?/);
+    const match = name.match(/[甲乙丙丁戊証疎](\d+)(?:[\-の](\d+))?/);
     if (!match) return [0, 0];
     return [parseInt(match[1], 10), match[2] ? parseInt(match[2], 10) : 0];
 }
@@ -207,7 +257,7 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
 /**
  * 複数のスタンプ済みPDFを結合（両面印刷対応：奇数ページの文書の後に空白ページ挿入）
  */
-async function mergeStampedPdfs(stampedPdfBytesList, outputPath) {
+async function mergeStampedPdfs(stampedPdfBytesList, outputPath, { insertBlankPages = true } = {}) {
     const mergedDoc = await PDFDocument.create();
     let totalPages = 0;
     let blankPages = 0;
@@ -224,7 +274,7 @@ async function mergeStampedPdfs(stampedPdfBytesList, outputPath) {
 
         // 両面印刷対応: 奇数ページの場合、次の文書のために空白ページを挿入
         // （最後の文書には不要）
-        if (copiedPages.length % 2 !== 0 && i < stampedPdfBytesList.length - 1) {
+        if (insertBlankPages && copiedPages.length % 2 !== 0 && i < stampedPdfBytesList.length - 1) {
             // 最後のページと同じサイズの空白ページを追加
             const lastPage = copiedPages[copiedPages.length - 1];
             const { width, height } = lastPage.getSize();
@@ -247,6 +297,7 @@ async function main() {
 
     // オプション解析
     const allPages = args.includes('--all-pages');
+    const noBlankPages = args.includes('--no-blank-pages');
     let fontSize = DEFAULT_FONT_SIZE;
     const fontSizeIdx = args.indexOf('--font-size');
     if (fontSizeIdx !== -1 && args[fontSizeIdx + 1]) {
@@ -257,7 +308,7 @@ async function main() {
     const filePaths = args.filter(a => !a.startsWith('--') && !(args[args.indexOf(a) - 1] === '--font-size'));
 
     if (filePaths.length === 0) {
-        console.error('使い方: node stamp_evidence_number.js <PDFファイル...>');
+        console.error('使い方: node stamp_evidence_number.js <PDF/画像ファイル...>');
         process.exit(1);
     }
 
@@ -289,9 +340,10 @@ async function main() {
     });
 
     const stampMode = allPages ? '全ページ' : '1ページ目のみ';
+    const blankMode = noBlankPages ? '空白ページなし' : '両面印刷対応';
     console.log(`対象: ${sortedPaths.length} ファイル`);
     console.log(`出力: ${outputDir}`);
-    console.log(`モード: ${stampMode} / フォントサイズ: ${fontSize}pt`);
+    console.log(`モード: ${stampMode} / フォントサイズ: ${fontSize}pt / ${blankMode}`);
     console.log('─'.repeat(50));
 
     let okCount = 0;
@@ -308,9 +360,30 @@ async function main() {
             return null;
         }
 
-        const outputPath = path.join(outputDir, filename);
+        // 画像ファイルの場合、PDFに変換してから処理
+        let inputForStamp = filePath;
+        let tempPdfPath: string | null = null;
+        if (isImageFile(filePath)) {
+            console.log(`  変換  ${filename} → PDF`);
+            try {
+                const pdfBytes = await convertImageToPdf(filePath);
+                tempPdfPath = path.join(outputDir, path.basename(filename, path.extname(filename)) + '.pdf');
+                fs.writeFileSync(tempPdfPath, pdfBytes);
+                inputForStamp = tempPdfPath;
+            } catch (err) {
+                console.error(`  変換エラー ${filename}: ${err.message}`);
+                return { success: false };
+            }
+        }
+
+        const outputFilename = path.basename(filename, path.extname(filename)) + '.pdf';
+        const outputPath = path.join(outputDir, outputFilename);
         try {
-            const pdfBytes = await stampPdf(filePath, outputPath, evidenceNum, fontBytes, { allPages, fontSize });
+            const pdfBytes = await stampPdf(inputForStamp, outputPath, evidenceNum, fontBytes, { allPages, fontSize });
+            // 画像→PDF変換の中間ファイルが出力先と異なる場合は削除
+            if (tempPdfPath && tempPdfPath !== outputPath) {
+                try { fs.unlinkSync(tempPdfPath); } catch (_) {}
+            }
             console.log(`  完了  ${evidenceNum}${STAMP_SUFFIX} ← ${filename}`);
             return { success: true, bytes: pdfBytes, evidenceNum };
         } catch (err) {
@@ -339,10 +412,11 @@ async function main() {
     // 結合PDF生成（2ファイル以上の場合）
     if (stampedList.length >= 2) {
         console.log('─'.repeat(50));
-        console.log('結合PDF作成中（両面印刷対応）...');
+        const mergeMode = noBlankPages ? '結合PDF作成中（空白ページなし）...' : '結合PDF作成中（両面印刷対応）...';
+        console.log(mergeMode);
         try {
             const mergedPath = path.join(outputDir, '_結合_号証一式.pdf');
-            const { totalPages, blankPages } = await mergeStampedPdfs(stampedList, mergedPath);
+            const { totalPages, blankPages } = await mergeStampedPdfs(stampedList, mergedPath, { insertBlankPages: !noBlankPages });
             console.log(`  完了  ${stampedList.length} 文書 → ${totalPages} ページ（空白ページ: ${blankPages}）`);
             console.log(`  出力: ${mergedPath}`);
         } catch (err) {

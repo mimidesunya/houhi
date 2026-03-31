@@ -26,7 +26,8 @@ declare global {
     interface ElectronAPI {
         executeScript(
             scriptKey: ScriptKey,
-            filePaths: string[]
+            filePaths: string[],
+            options?: string[]
         ): Promise<ScriptExecutionResult>;
         onLog(callback: (value: string) => void): void;
         onError(callback: (value: string) => void): void;

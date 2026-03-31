@@ -41,7 +41,7 @@ const readline = require('readline');
 const nodemailer = require('nodemailer');
 const { ImapFlow } = require('imapflow');
 const { PDFDocument } = require('pdf-lib');
-const { createCanvas, registerFont } = require('canvas');
+const { createCanvas, registerFont, loadImage } = require('canvas');
 const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const { loadConfig } = require('./lib/config_loader');
 const { convertHtmlToPdf } = require('./lib/pdf_converter');
@@ -103,7 +103,7 @@ async function mergePdfs(pdfPaths, outputPath) {
 // ─── FAX二値化 ───────────────────────────────────────────────
 
 const FAX_DPI = 200;
-const FAX_THRESHOLD = 170;
+const { toFaxBinaryAuto, toFaxBinary, otsuThreshold, computeLuminanceData } = require('./fax_prepare_pdf');
 
 const JAPANESE_FONT_CANDIDATES = [
     { path: 'C:/Windows/Fonts/msgothic.ttc', family: 'MS Gothic' },
@@ -126,21 +126,12 @@ class SafeCanvasFactory {
     destroy(cc) { if (cc) { cc.canvas = null; cc.context = null; } }
 }
 
-function toFaxBinary(imageData, threshold) {
-    const px = imageData.data;
-    for (let i = 0; i < px.length; i += 4) {
-        const r = px[i], g = px[i+1], b = px[i+2];
-        // 赤色検出: R成分がG/Bより十分に高いピクセルは印影とみなし黒にする
-        const isRedInk = (r - Math.min(g, b)) > 30 && r > 60;
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        const v = isRedInk ? 0 : (lum >= threshold ? 255 : 0);
-        px[i] = px[i+1] = px[i+2] = v; px[i+3] = 255;
-    }
-}
-
-async function binarizePdfForFax(inputPath, outputPath, previewDir) {
+async function binarizePdfForFax(inputPath, previewDir, noDither = false) {
     const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
     const previewPaths = [];
+    const rawPaths = [];
+    const ditherStatus = [];
+    const pageDims = [];
     const pdfBytes = fs.readFileSync(inputPath);
     const src = await pdfjsLib.getDocument({
         data: new Uint8Array(pdfBytes),
@@ -154,38 +145,75 @@ async function binarizePdfForFax(inputPath, outputPath, previewDir) {
         isEvalSupported: false,
     }).promise;
 
-    const out = await PDFDocument.create();
     const scale = FAX_DPI / 72;
 
     for (let n = 1; n <= src.numPages; n++) {
         const page = await src.getPage(n);
         const vpOrig = page.getViewport({ scale: 1 });
         const vpRender = page.getViewport({ scale });
+        pageDims.push({ width: vpOrig.width, height: vpOrig.height });
         const canvas = createCanvas(Math.ceil(vpRender.width), Math.ceil(vpRender.height));
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         await page.render({ canvasContext: ctx, viewport: vpRender,
             canvasFactory: new SafeCanvasFactory(), background: 'rgb(255,255,255)' }).promise;
+
+        // 原画像を保存（ページ単位の再生成用）
+        const rawPath = path.join(previewDir, `raw_${n}.png`);
+        fs.writeFileSync(rawPath, canvas.toBuffer('image/png'));
+        rawPaths.push(rawPath);
+
         const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        toFaxBinary(imgData, FAX_THRESHOLD);
-        ctx.putImageData(imgData, 0, 0);
-        const pngBuf = canvas.toBuffer('image/png');
-        if (previewDir) {
-            const pp = path.join(previewDir, `preview_${n}.png`);
-            fs.writeFileSync(pp, pngBuf);
-            previewPaths.push(pp);
+        if (noDither) {
+            const { histogram, totalPixels } = computeLuminanceData(imgData, canvas.width, canvas.height);
+            const thresh = otsuThreshold(histogram, totalPixels);
+            toFaxBinary(imgData, thresh);
+            ditherStatus.push(false);
+            console.log(`  [自動閾値] 閾値=${thresh} (ディザリングOFF)`);
+        } else {
+            const binResult = toFaxBinaryAuto(imgData, canvas.width, canvas.height);
+            ditherStatus.push(binResult.hasPhoto);
+            console.log(`  [自動調整] 閾値=${binResult.threshold}, 写真=${binResult.hasPhoto ? 'あり→ディザリング' : 'なし'} (中間調=${(binResult.midToneRatio * 100).toFixed(1)}%)`);
         }
-        const img = await out.embedPng(pngBuf);
-        const p = out.addPage([vpOrig.width, vpOrig.height]);
-        p.drawImage(img, { x: 0, y: 0, width: vpOrig.width, height: vpOrig.height });
+        ctx.putImageData(imgData, 0, 0);
+        const pp = path.join(previewDir, `preview_${n}.png`);
+        fs.writeFileSync(pp, canvas.toBuffer('image/png'));
+        previewPaths.push(pp);
         console.log(`[二値化] ${n}/${src.numPages} ページ`);
         if (typeof page.cleanup === 'function') page.cleanup();
     }
     if (typeof src.cleanup === 'function') src.cleanup();
 
+    return { previewPaths, rawPaths, ditherStatus, pageDims };
+}
+
+async function regeneratePage(rawPngPath, previewPngPath, useDither) {
+    const img = await loadImage(rawPngPath);
+    const canvas = createCanvas(img.width, img.height);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    if (useDither) {
+        toFaxBinaryAuto(imgData, canvas.width, canvas.height);
+    } else {
+        const { histogram, totalPixels } = computeLuminanceData(imgData, canvas.width, canvas.height);
+        const thresh = otsuThreshold(histogram, totalPixels);
+        toFaxBinary(imgData, thresh);
+    }
+    ctx.putImageData(imgData, 0, 0);
+    fs.writeFileSync(previewPngPath, canvas.toBuffer('image/png'));
+}
+
+async function buildFaxPdf(previewPaths, pageDims, outputPath) {
+    const out = await PDFDocument.create();
+    for (let i = 0; i < previewPaths.length; i++) {
+        const pngBuf = fs.readFileSync(previewPaths[i]);
+        const img = await out.embedPng(pngBuf);
+        const p = out.addPage([pageDims[i].width, pageDims[i].height]);
+        p.drawImage(img, { x: 0, y: 0, width: pageDims[i].width, height: pageDims[i].height });
+    }
     fs.writeFileSync(outputPath, await out.save({ useObjectStreams: false }));
-    return previewPaths;
 }
 
 // ─── FAX番号抽出 ──────────────────────────────────────────────
@@ -354,28 +382,62 @@ function askPrompt(question): Promise<string> {
 
 // ─── プレビュー確認 ──────────────────────────────────────────
 
-function askPreviewConfirm(faxNumbers, previewPaths) {
+function askPreviewConfirm(faxNumbers, previewPaths, rawPaths, ditherStatus): Promise<{ confirmed: boolean; faxNumbers: any[] }> {
     const faxList = faxNumbers.map((e, i) => `  ${i + 1}. [${e.label}] ${e.name}  (${e.number})`).join('\n');
 
     if (process.stdin.isTTY) {
         console.log('\n二値化プレビュー画像:');
         previewPaths.forEach((p, i) => console.log(`  ${i + 1}ページ: ${p}`));
         console.log('');
-        return askConfirm(`以下の宛先に FAX 送信しますか？\n${faxList}`);
+        return askConfirm(`以下の宛先に FAX 送信しますか？\n${faxList}`).then((ok: boolean) => ({
+            confirmed: ok,
+            faxNumbers: ok ? faxNumbers : []
+        }));
     } else {
         const payload = JSON.stringify({
             faxNumbers: faxNumbers.map(f => ({ label: f.label, name: f.name, number: f.number })),
             images: previewPaths,
+            ditherStatus: ditherStatus,
         });
         process.stdout.write(`[PREVIEW] ${payload}\n`);
-        return new Promise(resolve => {
+        return new Promise((resolve) => {
             let buf = '';
             const onData = (chunk) => {
                 buf += chunk.toString();
-                if (buf.includes('\n')) {
-                    process.stdin.removeListener('data', onData);
-                    process.stdin.pause();
-                    resolve(buf.trim().toLowerCase() === 'y');
+                while (buf.includes('\n')) {
+                    const idx = buf.indexOf('\n');
+                    const line = buf.substring(0, idx).trim();
+                    buf = buf.substring(idx + 1);
+                    if (!line) continue;
+
+                    if (line.startsWith('REGEN ')) {
+                        const parts = line.split(' ');
+                        const pageNum = parseInt(parts[1]);
+                        const useDither = parts[2] === 'dither';
+                        regeneratePage(rawPaths[pageNum - 1], previewPaths[pageNum - 1], useDither)
+                            .then(() => {
+                                ditherStatus[pageNum - 1] = useDither;
+                                process.stdout.write(`[REGEN_DONE] ${pageNum}\n`);
+                            });
+                    } else if (line.startsWith('CONFIRM_FAX ')) {
+                        const json = line.substring('CONFIRM_FAX '.length);
+                        try {
+                            const nums = JSON.parse(json);
+                            process.stdin.removeListener('data', onData);
+                            process.stdin.pause();
+                            resolve({ confirmed: true, faxNumbers: nums });
+                        } catch (e) {
+                            process.stdin.removeListener('data', onData);
+                            process.stdin.pause();
+                            resolve({ confirmed: false, faxNumbers: [] });
+                        }
+                        return;
+                    } else if (line.toLowerCase() === 'n') {
+                        process.stdin.removeListener('data', onData);
+                        process.stdin.pause();
+                        resolve({ confirmed: false, faxNumbers: [] });
+                        return;
+                    }
                 }
             };
             process.stdin.resume();
@@ -440,11 +502,22 @@ async function main() {
         return;
     }
 
+    // ─ オプション解析 ─
+    let noDither = false;
+    const fileArgs = [];
+    for (const arg of args) {
+        if (arg === '--no-dither') {
+            noDither = true;
+        } else {
+            fileArgs.push(arg);
+        }
+    }
+
     // ─ ファイル分類 ─
     let mdFile = null;
     let attachPdf = null;
 
-    for (const arg of args) {
+    for (const arg of fileArgs) {
         const abs = path.resolve(arg);
         if (!fs.existsSync(abs)) {
             console.error(`[エラー] ファイルが見つかりません: ${abs}`);
@@ -497,12 +570,10 @@ async function main() {
         const mdContent = fs.readFileSync(faxMdSource, 'utf-8');
         faxNumbers = extractFaxNumbers(mdContent, { fromReceipt: !!pagedMdFile && !mdFile });
         if (faxNumbers.length === 0) {
-            console.error('[エラー] MDファイルからFAX番号を抽出できませんでした。');
-            console.error('         "(FAX XXXXXXXXXX)" という形式の番号が必要です。');
-            return;
+            console.log('[FAX] MDファイルからFAX番号を検出できませんでした。プレビュー画面で入力してください。');
         }
-    } else {
-        // 送付書なし: ユーザーにFAX番号を入力してもらう
+    } else if (process.stdin.isTTY) {
+        // CLIモード: プレビュー画面がないので従来通りプロンプト
         console.log('[FAX] 送付書が指定されていないため、FAX番号を手動入力します。');
         const faxInput = await askPrompt('送信先FAX番号を入力してください（例: 03-1234-5678）');
         if (!faxInput) {
@@ -515,6 +586,9 @@ async function main() {
             return;
         }
         faxNumbers.push({ label: '手動入力', name: faxInput, number: faxNum });
+    } else {
+        // GUIモード: プレビュー画面で入力させる
+        console.log('[FAX] FAX番号はプレビュー画面で入力してください。');
     }
 
     // ─ 送付書MD→PDF変換 ─
@@ -542,15 +616,25 @@ async function main() {
         }
 
         // ─ 二値化 ─
-        console.log(`[FAX] FAX用に二値化中 (${FAX_DPI}dpi, threshold=${FAX_THRESHOLD})...`);
-        const previewPaths = await binarizePdfForFax(mergedPdfPath, faxPdfPath, tmpDir);
+        const modeMsg = noDither ? 'auto (ディザリングOFF)' : 'auto';
+        console.log(`[FAX] FAX用に二値化中 (${FAX_DPI}dpi, mode=${modeMsg})...`);
+        const { previewPaths, rawPaths, ditherStatus, pageDims } = await binarizePdfForFax(mergedPdfPath, tmpDir, noDither);
 
         // ─ プレビュー＋送信確認 ─
-        const confirmed = await askPreviewConfirm(faxNumbers, previewPaths);
-        if (!confirmed) {
-            console.log('キャンセルしました。');
+        const result: { confirmed: boolean; faxNumbers: any[] } = await askPreviewConfirm(faxNumbers, previewPaths, rawPaths, ditherStatus);
+        if (!result.confirmed || result.faxNumbers.length === 0) {
+            if (result.confirmed && result.faxNumbers.length === 0) {
+                console.log('[エラー] FAX番号が指定されていません。');
+            } else {
+                console.log('キャンセルしました。');
+            }
             return;
         }
+        faxNumbers = result.faxNumbers;
+
+        // ─ 確定したプレビューからFAX PDFを生成 ─
+        console.log('[FAX] FAX PDF を生成中...');
+        await buildFaxPdf(previewPaths, pageDims, faxPdfPath);
 
         const mergedPdfBytes = fs.readFileSync(faxPdfPath);
         const attachFilename = path.basename(attachPdf);

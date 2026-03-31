@@ -5,6 +5,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressBar = document.getElementById('progressBar') as HTMLElement;
     const dropText = document.querySelector('.drop-text') as HTMLElement;
     const dropSubtext = document.querySelector('.drop-subtext') as HTMLElement;
+    const optionsBar = document.getElementById('optionsBar') as HTMLElement;
+    const optNoBlankPages = document.getElementById('optNoBlankPages') as HTMLInputElement;
+    const optNoDither = document.getElementById('optNoDither') as HTMLInputElement;
 
     let currentScript: ScriptKey = 'pdf';
 
@@ -19,6 +22,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const getScriptKey = (element: HTMLElement): ScriptKey => {
         const script = element.dataset.script as ScriptKey | undefined;
         return script || 'pdf';
+    };
+
+    const updateOptionsVisibility = (scriptKey: ScriptKey) => {
+        optionsBar.style.display = (scriptKey === 'stamp' || scriptKey === 'fax_send') ? '' : 'none';
+        optNoBlankPages.parentElement!.style.display = scriptKey === 'stamp' ? '' : 'none';
+        optNoDither.parentElement!.style.display = scriptKey === 'fax_send' ? '' : 'none';
+    };
+
+    const getScriptOptions = (): string[] => {
+        const opts: string[] = [];
+        if (currentScript === 'stamp' && optNoBlankPages.checked) {
+            opts.push('--no-blank-pages');
+        }
+        if (currentScript === 'fax_send' && optNoDither.checked) {
+            opts.push('--no-dither');
+        }
+        return opts;
     };
 
     const resetDropMessage = () => {
@@ -36,11 +56,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const options = getScriptOptions();
         log(`${filePaths.length} 個のファイルを処理中 (${currentScript})...`);
         setLoading(true);
 
         try {
-            const result = await window.electronAPI.executeScript(currentScript, filePaths);
+            const result = await window.electronAPI.executeScript(currentScript, filePaths, options);
             if (result.success) {
                 log('処理が正常に完了しました。', 'success');
             } else {
@@ -62,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
             toolCards.forEach(c => c.classList.remove('active'));
             card.classList.add('active');
             currentScript = script;
+            updateOptionsVisibility(script);
             log(`ツール変更: ${(card.querySelector('.tool-name') as HTMLElement).innerText}`);
         });
     });

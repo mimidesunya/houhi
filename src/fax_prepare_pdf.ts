@@ -14,13 +14,17 @@
  * オプション:
  * - `--dpi <72-400>`: 画像化解像度を指定します。
  * - `--threshold <0-255>`: 二値化しきい値を指定します。
+ * - `--auto`: ヒストグラムに基づく自動閾値調整＋写真ディザリングを有効にします。
  *
  * 補足:
  * - PDF 以外はエラーとしてスキップします。
  * - 日本語フォントを探索して登録し、変換ログを表示します。
+ * - `--auto` 指定時は大津の方法で最適閾値を算出し、写真を含むページには
+ *   Floyd-Steinberg ディザリングを適用して階調を保持します。
  *
  * 使い方:
  *   node src/fax_prepare_pdf.js <PDFファイルパス...> [--dpi 200] [--threshold 170]
+ *   node src/fax_prepare_pdf.js <PDFファイルパス...> --auto [--dpi 200]
  */
 const fs = require('fs');
 const path = require('path');
@@ -86,15 +90,137 @@ class SafeCanvasFactory {
     }
 }
 
+function computeLuminanceData(imageData, width, height) {
+    const pixels = imageData.data;
+    const totalPixels = width * height;
+    const isRedInk = new Uint8Array(totalPixels);
+    const histogram = new Uint32Array(256);
+    const luminance = new Float32Array(totalPixels);
+
+    for (let i = 0; i < totalPixels; i++) {
+        const p = i * 4;
+        const r = pixels[p], g = pixels[p + 1], b = pixels[p + 2];
+
+        if ((r - Math.min(g, b)) > 30 && r > 60) {
+            isRedInk[i] = 1;
+        }
+
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        luminance[i] = lum;
+        histogram[Math.min(255, Math.round(lum))]++;
+    }
+
+    return { isRedInk, histogram, luminance, totalPixels };
+}
+
+function otsuThreshold(histogram, totalPixels) {
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * histogram[i];
+
+    let sumB = 0;
+    let wB = 0;
+    let maxVariance = 0;
+    let bestThreshold = 128;
+
+    for (let t = 0; t < 256; t++) {
+        wB += histogram[t];
+        if (wB === 0) continue;
+        const wF = totalPixels - wB;
+        if (wF === 0) break;
+
+        sumB += t * histogram[t];
+        const mB = sumB / wB;
+        const mF = (sum - sumB) / wF;
+        const variance = wB * wF * (mB - mF) * (mB - mF);
+
+        if (variance > maxVariance) {
+            maxVariance = variance;
+            bestThreshold = t;
+        }
+    }
+
+    return bestThreshold;
+}
+
+function detectPhotoContent(histogram, totalPixels) {
+    let midTonePixels = 0;
+    for (let i = 32; i < 224; i++) {
+        midTonePixels += histogram[i];
+    }
+    const midToneRatio = midTonePixels / totalPixels;
+    return { hasPhoto: midToneRatio > 0.15, midToneRatio };
+}
+
+function toFaxBinaryAuto(imageData, width, height) {
+    const pixels = imageData.data;
+    const { isRedInk, histogram, luminance, totalPixels } = computeLuminanceData(imageData, width, height);
+    const threshold = otsuThreshold(histogram, totalPixels);
+    const { hasPhoto, midToneRatio } = detectPhotoContent(histogram, totalPixels);
+
+    if (hasPhoto) {
+        // Floyd-Steinberg ディザリング（写真の階調を保持）
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const idx = y * width + x;
+                if (isRedInk[idx]) continue;
+
+                const oldVal = luminance[idx];
+                const newVal = oldVal >= threshold ? 255 : 0;
+                const error = oldVal - newVal;
+                luminance[idx] = newVal;
+
+                if (x + 1 < width && !isRedInk[idx + 1])
+                    luminance[idx + 1] += error * 7 / 16;
+                if (y + 1 < height) {
+                    const nr = (y + 1) * width;
+                    if (x > 0 && !isRedInk[nr + x - 1])
+                        luminance[nr + x - 1] += error * 3 / 16;
+                    if (!isRedInk[nr + x])
+                        luminance[nr + x] += error * 5 / 16;
+                    if (x + 1 < width && !isRedInk[nr + x + 1])
+                        luminance[nr + x + 1] += error * 1 / 16;
+                }
+            }
+        }
+
+        for (let i = 0; i < totalPixels; i++) {
+            const p = i * 4;
+            const val = isRedInk[i] ? 0 : (luminance[i] >= 128 ? 255 : 0);
+            pixels[p] = val;
+            pixels[p + 1] = val;
+            pixels[p + 2] = val;
+            pixels[p + 3] = 255;
+        }
+    } else {
+        // テキスト主体: 大津の閾値で単純二値化
+        for (let i = 0; i < totalPixels; i++) {
+            const p = i * 4;
+            const val = isRedInk[i] ? 0 : (luminance[i] >= threshold ? 255 : 0);
+            pixels[p] = val;
+            pixels[p + 1] = val;
+            pixels[p + 2] = val;
+            pixels[p + 3] = 255;
+        }
+    }
+
+    return { threshold, hasPhoto, midToneRatio };
+}
+
 function parseArgs(args) {
     const options = {
         dpi: DEFAULT_DPI,
         threshold: DEFAULT_THRESHOLD,
+        auto: false,
         inputFiles: []
     };
 
     for (let index = 0; index < args.length; index++) {
         const token = args[index];
+
+        if (token === '--auto') {
+            options.auto = true;
+            continue;
+        }
 
         if (token === '--dpi') {
             const value = Number(args[index + 1]);
@@ -145,6 +271,11 @@ function toFaxBinary(imageData, threshold) {
     }
 }
 
+// module.exports for testing
+if (typeof module !== 'undefined') {
+    module.exports = { computeLuminanceData, otsuThreshold, detectPhotoContent, toFaxBinaryAuto, toFaxBinary };
+}
+
 async function convertPdfForFax(inputPath, options) {
     const pdfjsPackageDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
     const standardFontDataUrl = path.join(pdfjsPackageDir, 'standard_fonts') + path.sep;
@@ -188,7 +319,12 @@ async function convertPdfForFax(inputPath, options) {
         }).promise;
 
         const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        toFaxBinary(imageData, options.threshold);
+        if (options.auto) {
+            const result = toFaxBinaryAuto(imageData, canvas.width, canvas.height);
+            console.log(`    自動調整: 閾値=${result.threshold}, 写真検出=${result.hasPhoto ? 'あり' : 'なし'} (中間調=${(result.midToneRatio * 100).toFixed(1)}%)${result.hasPhoto ? ' → ディザリング適用' : ''}`);
+        } else {
+            toFaxBinary(imageData, options.threshold);
+        }
         context.putImageData(imageData, 0, 0);
 
         const pngBuffer = canvas.toBuffer('image/png');
@@ -234,17 +370,20 @@ async function main() {
         options = parseArgs(process.argv.slice(2));
     } catch (error) {
         console.error(`引数エラー: ${error.message}`);
-        console.error('使い方: node src/fax_prepare_pdf.js <PDFファイル...> [--dpi 200] [--threshold 170]');
+        console.error('使い方: node src/fax_prepare_pdf.js <PDFファイル...> [--dpi 200] [--threshold 170] [--auto]');
         process.exit(1);
     }
 
     if (options.inputFiles.length === 0) {
-        console.error('使い方: node src/fax_prepare_pdf.js <PDFファイル...> [--dpi 200] [--threshold 170]');
+        console.error('使い方: node src/fax_prepare_pdf.js <PDFファイル...> [--dpi 200] [--threshold 170] [--auto]');
         process.exit(1);
     }
 
     const loadedFonts = registerJapaneseFonts();
-    console.log(`FAX変換を開始します (dpi=${options.dpi}, threshold=${options.threshold})`);
+    const modeLabel = options.auto
+        ? `dpi=${options.dpi}, mode=auto (ヒストグラム自動調整)`
+        : `dpi=${options.dpi}, threshold=${options.threshold}`;
+    console.log(`FAX変換を開始します (${modeLabel})`);
     console.log(`Canvas backend: ${require.resolve('canvas')}`);
     console.log(`Japanese fonts registered: ${loadedFonts}`);
     console.log('─'.repeat(50));
@@ -288,7 +427,9 @@ async function main() {
     }
 }
 
-main().catch((error) => {
-    console.error(`致命的エラー: ${error.message}`);
-    process.exit(1);
-});
+if (require.main === module) {
+    main().catch((error) => {
+        console.error(`致命的エラー: ${error.message}`);
+        process.exit(1);
+    });
+}
