@@ -4,7 +4,8 @@
  * 指定ディレクトリ配下の `.md` / `.txt` を再帰的に収集し、
  * ディレクトリ構造を保った ZIP を作成します。
  * ZIP のルートには、収録ファイル構成を説明する `README.md` を自動生成します。
- * `src/base/sample.md` が存在する場合は、起案参考用として同梱します。
+ * `instructions/` 配下の全テンプレートを同梱し、AI が書面種別ごとの
+ * 生成ルールを参照できるようにします。
  *
  * 入力:
  * - ディレクトリパスを 1 つ以上指定できます。
@@ -22,6 +23,243 @@
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
+
+type InstructionEntry = {
+    archivePath: string;
+    displayPath: string;
+    content: Buffer;
+    isCommonRules: boolean;
+};
+
+function isTargetTextFile(filePath: string) {
+    const ext = path.extname(filePath).toLowerCase();
+    return ext === '.md' || ext === '.txt';
+}
+
+function compareInstructionNames(a: string, b: string) {
+    if (a === 'sample.md') return -1;
+    if (b === 'sample.md') return 1;
+    return a.localeCompare(b, 'ja');
+}
+
+function compareInstructionPaths(a: string, b: string) {
+    const aParts = a.split('/');
+    const bParts = b.split('/');
+    const maxLength = Math.max(aParts.length, bParts.length);
+
+    for (let i = 0; i < maxLength; i++) {
+        const aPart = aParts[i];
+        const bPart = bParts[i];
+
+        if (aPart == null) return -1;
+        if (bPart == null) return 1;
+        if (aPart === bPart) continue;
+
+        return compareInstructionNames(aPart, bPart);
+    }
+
+    return 0;
+}
+
+function findProjectRoot(startDir: string) {
+    let currentDir = path.resolve(startDir);
+
+    while (true) {
+        const packageJsonPath = path.join(currentDir, 'package.json');
+        const instructionsDir = path.join(currentDir, 'instructions');
+
+        if (fs.existsSync(packageJsonPath) && fs.existsSync(instructionsDir)) {
+            return currentDir;
+        }
+
+        const parentDir = path.dirname(currentDir);
+        if (parentDir === currentDir) {
+            return null;
+        }
+
+        currentDir = parentDir;
+    }
+}
+
+function resolveProjectRoots(searchRoots: string[] = [process.cwd(), __dirname]) {
+    const resolvedRoots: string[] = [];
+    const seen = new Set<string>();
+
+    for (const searchRoot of searchRoots) {
+        const projectRoot = findProjectRoot(searchRoot);
+        if (!projectRoot) continue;
+
+        const normalizedRoot = path.resolve(projectRoot);
+        if (seen.has(normalizedRoot)) continue;
+
+        seen.add(normalizedRoot);
+        resolvedRoots.push(normalizedRoot);
+    }
+
+    return resolvedRoots;
+}
+
+function collectTargetFilesRecursively(dir: string, baseDir = dir) {
+    let files: string[] = [];
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+    entries.sort((a, b) => {
+        if (a.isDirectory() && !b.isDirectory()) return -1;
+        if (!a.isDirectory() && b.isDirectory()) return 1;
+        return compareInstructionNames(a.name, b.name);
+    });
+
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            files = files.concat(collectTargetFilesRecursively(fullPath, baseDir));
+            continue;
+        }
+
+        if (isTargetTextFile(entry.name)) {
+            files.push(path.relative(baseDir, fullPath).replace(/\\/g, '/'));
+        }
+    }
+
+    return files;
+}
+
+function buildInstructionEntriesFromInstructionsDir(instructionsDir: string): InstructionEntry[] {
+    if (!fs.existsSync(instructionsDir) || !hasTargetFiles(instructionsDir)) {
+        return [];
+    }
+
+    const relativePaths = collectTargetFilesRecursively(instructionsDir).sort(compareInstructionPaths);
+    return relativePaths.map(relPath => {
+        const fullPath = path.join(instructionsDir, ...relPath.split('/'));
+        return {
+            archivePath: `instructions/${relPath}`,
+            displayPath: `instructions/${relPath}`,
+            content: fs.readFileSync(fullPath),
+            isCommonRules: path.basename(relPath).toLowerCase() === 'sample.md',
+        };
+    });
+}
+
+function loadInstructionEntries(searchRoots: string[] = [process.cwd(), __dirname]) {
+    const projectRoots = resolveProjectRoots(searchRoots);
+
+    for (const projectRoot of projectRoots) {
+        const instructionEntries = buildInstructionEntriesFromInstructionsDir(path.join(projectRoot, 'instructions'));
+        if (instructionEntries.length > 0) {
+            return instructionEntries;
+        }
+    }
+
+    return [];
+}
+
+function buildInstructionStructure(instructionEntries: InstructionEntry[]) {
+    if (instructionEntries.length === 0) {
+        return "";
+    }
+
+    const tree = {};
+    for (const entry of instructionEntries) {
+        const relativePath = entry.displayPath.replace(/^instructions\//, '');
+        const parts = relativePath.split('/');
+        let currentNode = tree;
+
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            const isLastPart = i === parts.length - 1;
+
+            if (isLastPart) {
+                currentNode[part] = null;
+            } else {
+                currentNode[part] = currentNode[part] || {};
+                currentNode = currentNode[part];
+            }
+        }
+    }
+
+    function renderTree(node, indent = "  ") {
+        let structure = "";
+        const entries = Object.keys(node).sort((a, b) => {
+            const aIsDirectory = node[a] !== null;
+            const bIsDirectory = node[b] !== null;
+            if (aIsDirectory && !bIsDirectory) return -1;
+            if (!aIsDirectory && bIsDirectory) return 1;
+            return compareInstructionNames(a, b);
+        });
+
+        for (const entryName of entries) {
+            const childNode = node[entryName];
+            if (childNode === null) {
+                structure += `${indent}📄 ${entryName}\n`;
+            } else {
+                structure += `${indent}📁 ${entryName}/\n`;
+                structure += renderTree(childNode, indent + "  ");
+            }
+        }
+
+        return structure;
+    }
+
+    return `📁 instructions/\n${renderTree(tree)}`;
+}
+
+function buildArchiveReadme(dirName: string, structure: string, instructionEntries: InstructionEntry[]) {
+    const hasInstructions = instructionEntries.length > 0;
+    const instructionsStructure = buildInstructionStructure(instructionEntries);
+
+    let readmeContent = `# Project Archive for AI Analysis
+
+This archive contains ${hasInstructions ? 'two categories' : 'one category'} of files:
+
+- **\`${dirName}/\`** — The user's actual case documents (briefs, evidence lists, transcripts, etc.).
+  These are the files you should read, analyze, and use as source material.
+`;
+
+    if (hasInstructions) {
+        readmeContent += `- **\`instructions/\`** — Bundled drafting instructions.
+  You may use these files as reference material when preparing court documents. Follow the matching instruction file for structure, formatting, and standard phrasing.
+`;
+    }
+
+    readmeContent += `
+## Directory Structure
+
+\`\`\`
+${dirName}/
+${structure}${instructionsStructure}\`\`\`
+`;
+
+    if (hasInstructions) {
+        const instructionList = instructionEntries
+            .map(entry => {
+                const description = entry.isCommonRules
+                    ? 'Common Markdown rules for all document types.'
+                    : 'Reference instruction for the corresponding document type.';
+                return `- \`${entry.displayPath}\` — ${description}`;
+            })
+            .join('\n');
+
+        const hasCommonRules = instructionEntries.some(entry => entry.isCommonRules);
+
+        readmeContent += `
+## Drafting Instructions
+
+The files in \`instructions/\` are included so they can be used as reference material when drafting court documents.
+Use the materials in \`${dirName}/\` for the facts of this case, and use the matching files in \`instructions/\` for writing guidance.
+
+${hasCommonRules ? 'Start with `instructions/sample.md`, then use the document-type instruction that best matches the filing you want to prepare.\n\n' : ''}Available instruction files:
+${instructionList}
+`;
+    }
+
+    readmeContent += `
+---
+Generated by Saiban System Archive Tool
+`;
+
+    return readmeContent;
+}
 
 function getDirectoryStructure(dir, baseDir, indent = "") {
     let structure = "";
@@ -121,43 +359,14 @@ async function main() {
             continue;
         }
 
-        // サンプルの読み込み
-        const baseDir = path.join(__dirname, 'base');
-        const samplePath = path.join(baseDir, 'sample.md');
-        
-        let hasSample = false;
-        if (fs.existsSync(samplePath)) {
-            zip.addFile("sample.md", fs.readFileSync(samplePath));
-            hasSample = true;
+        const instructionEntries = loadInstructionEntries();
+        for (const instructionEntry of instructionEntries) {
+            zip.addFile(instructionEntry.archivePath, instructionEntry.content);
         }
 
         // README.md の作成
         const structure = getDirectoryStructure(targetDir, targetDir);
-        let readmeContent = `# Project Archive for AI Analysis
-
-This archive contains documentation and manuscripts extracted from \`${dirName}\`.
-Only \`.md\` and \`.txt\` files are included to keep the context relevant for AI analysis.
-
-## Directory Structure
-
-\`\`\`
-${dirName}/
-${structure}\`\`\`
-`;
-
-        if (hasSample) {
-            readmeContent += `
-## AI Drafting Reference
-
-The file \`sample.md\` is included in the root of this archive as a concrete example of the target court document format. 
-When you are asked to draft or revise a court document based on the files in this archive, please refer to this sample for formatting and structure.
-`;
-        }
-
-        readmeContent += `
----
-Generated by Saiban System Archive Tool
-`;
+        const readmeContent = buildArchiveReadme(dirName, structure, instructionEntries);
         zip.addFile("README.md", Buffer.from(readmeContent, "utf-8"));
 
         console.log(`[情報] ${fileCount} 個のファイルが見つかりました。ZIP を作成中...`);
@@ -172,6 +381,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+    buildArchiveReadme,
+    findProjectRoot,
     getDirectoryStructure,
     hasTargetFiles,
+    loadInstructionEntries,
 };

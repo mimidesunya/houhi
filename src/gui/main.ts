@@ -200,8 +200,7 @@ h2{margin:0 0 12px 0;font-size:18px;color:#64b5f6}
 .fax-section{margin-bottom:8px}
 .fax-row{display:flex;gap:8px;align-items:center;margin:4px 0;font-size:13px}
 .fax-row input{background:#2a2a3e;border:1px solid #444;border-radius:4px;padding:4px 8px;color:#e0e0e0;font-size:13px}
-.fax-row input.fax-label-input{width:80px}
-.fax-row input.fax-name-input{width:120px}
+.fax-row .fax-meta{min-width:140px;max-width:280px;color:#b0bec5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fax-row input.fax-number-input{width:160px;font-family:monospace}
 .fax-row .fax-remove{background:#c62828;color:white;border:none;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:12px}
 .fax-row .fax-remove:hover{background:#e53935}
@@ -243,14 +242,20 @@ function renderFaxList(){
   faxData.forEach(function(f,i){
     var row=document.createElement('div');row.className='fax-row';
     row.innerHTML='<span>'+(i+1)+'.</span>'
-      +'<input class="fax-label-input" placeholder="ラベル" value="'+escAttr(f.label)+'" onchange="faxData['+i+'].label=this.value">'
-      +'<input class="fax-name-input" placeholder="名前" value="'+escAttr(f.name)+'" onchange="faxData['+i+'].name=this.value">'
+      +'<span class="fax-meta" title="'+escAttr(faxMetaText(f))+'">'+escHtml(faxMetaText(f))+'</span>'
       +'<input class="fax-number-input" placeholder="FAX番号" value="'+escAttr(f.number)+'" onchange="faxData['+i+'].number=this.value">'
       +'<button class="fax-remove" onclick="removeFax('+i+')">✕</button>';
     el.appendChild(row);
   });
 }
+function faxMetaText(f){
+  var parts=[];
+  if(f.label){parts.push('['+f.label+']');}
+  if(f.name){parts.push(f.name);}
+  return parts.length>0 ? parts.join(' ') : '手入力';
+}
 function escAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function addFaxRow(label,name,number){faxData.push({label:label||'',name:name||'',number:number||''});renderFaxList();document.getElementById('fax-error').style.display='none';}
 function removeFax(i){faxData.splice(i,1);renderFaxList();}
 function confirmSend(){

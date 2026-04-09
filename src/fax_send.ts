@@ -86,6 +86,13 @@ async function convertMdToPdf(mdPath, outputPdfPath) {
     }
 }
 
+function formatFaxDestination(entry) {
+    const parts: string[] = [];
+    if (entry?.label) parts.push(`[${entry.label}]`);
+    if (entry?.name) parts.push(entry.name);
+    return parts.length > 0 ? parts.join(' ') : '(手入力)';
+}
+
 // ─── PDF結合 ──────────────────────────────────────────────────
 
 async function mergePdfs(pdfPaths, outputPath) {
@@ -383,7 +390,9 @@ function askPrompt(question): Promise<string> {
 // ─── プレビュー確認 ──────────────────────────────────────────
 
 function askPreviewConfirm(faxNumbers, previewPaths, rawPaths, ditherStatus): Promise<{ confirmed: boolean; faxNumbers: any[] }> {
-    const faxList = faxNumbers.map((e, i) => `  ${i + 1}. [${e.label}] ${e.name}  (${e.number})`).join('\n');
+    const faxList = faxNumbers
+        .map((e, i) => `  ${i + 1}. ${formatFaxDestination(e)}  (${e.number})`)
+        .join('\n');
 
     if (process.stdin.isTTY) {
         console.log('\n二値化プレビュー画像:');
@@ -654,7 +663,7 @@ async function main() {
         for (let i = 0; i < faxNumbers.length; i++) {
             const { label, name, number: faxNum } = faxNumbers[i];
             const toAddress = `${faxNum}@mfax.jp`;
-            console.log(`[FAX ${i + 1}/${faxNumbers.length}] [${label}] ${name} → ${toAddress}`);
+            console.log(`[FAX ${i + 1}/${faxNumbers.length}] ${formatFaxDestination({ label, name })} → ${toAddress}`);
 
             const mailOptions = {
                 from: fromAddress,
@@ -692,7 +701,7 @@ async function main() {
         console.log('\n✅ FAX送信が完了しました。');
         for (let i = 0; i < faxNumbers.length; i++) {
             const { label, name, number } = faxNumbers[i];
-            console.log(`   ${i + 1}. [${label}] ${name}  (${number})`);
+            console.log(`   ${i + 1}. ${formatFaxDestination({ label, name })}  (${number})`);
         }
         console.log(`   添付: ${attachFilename} (${(mergedPdfBytes.length / 1024).toFixed(1)} KB)`);
 

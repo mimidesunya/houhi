@@ -4,7 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const { getDirectoryStructure, hasTargetFiles } = require('../dist/src/archive_for_ai.js');
+const {
+    buildArchiveReadme,
+    getDirectoryStructure,
+    hasTargetFiles,
+    loadInstructionEntries,
+} = require('../dist/src/archive_for_ai.js');
 
 // ─── テスト用一時ディレクトリ ────────────────────────────────
 
@@ -154,4 +159,67 @@ test('getDirectoryStructure: skips folders without target files', () => {
     } finally {
         cleanup(dir);
     }
+});
+
+// ─── instructions の収集 ────────────────────────────────────
+
+test('loadInstructionEntries: loads files from instructions directory when present', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'package.json'), '{}');
+        fs.mkdirSync(path.join(dir, 'instructions', 'nested'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'instructions', 'sample.md'), '# common rules');
+        fs.writeFileSync(path.join(dir, 'instructions', 'nested', 'memo.txt'), 'nested note');
+
+        const entries = loadInstructionEntries([dir]);
+
+        assert.deepEqual(
+            entries.map(entry => entry.displayPath),
+            [
+                'instructions/sample.md',
+                'instructions/nested/memo.txt',
+            ]
+        );
+        assert.equal(entries[0].content.toString('utf-8'), '# common rules');
+        assert.equal(entries[1].content.toString('utf-8'), 'nested note');
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('loadInstructionEntries: returns empty when instructions directory is missing', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'package.json'), '{}');
+
+        const entries = loadInstructionEntries([dir]);
+
+        assert.deepEqual(entries, []);
+    } finally {
+        cleanup(dir);
+    }
+});
+
+// ─── README 生成 ───────────────────────────────────────────
+
+test('buildArchiveReadme: mentions drafting references and lists instruction files', () => {
+    const readme = buildArchiveReadme('case', '📄 facts.md\n', [
+        {
+            archivePath: 'instructions/sample.md',
+            displayPath: 'instructions/sample.md',
+            content: Buffer.from('sample'),
+            isCommonRules: true,
+        },
+        {
+            archivePath: 'instructions/準備書面.md',
+            displayPath: 'instructions/準備書面.md',
+            content: Buffer.from('brief'),
+            isCommonRules: false,
+        },
+    ]);
+
+    assert.ok(readme.includes('reference material when drafting court documents'));
+    assert.ok(readme.includes('Start with `instructions/sample.md`'));
+    assert.ok(readme.includes('- `instructions/sample.md`'));
+    assert.ok(readme.includes('- `instructions/準備書面.md`'));
 });
