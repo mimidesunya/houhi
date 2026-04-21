@@ -47,4 +47,5 @@ config.json
 src/base/preview.html
 src/base/preview.pdf
 temp_rendered.html
+.cache/
 ```

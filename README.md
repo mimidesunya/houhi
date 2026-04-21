@@ -103,6 +103,11 @@ npm run setup
 sh ./setup.sh
 ```
 
+WSL から `wsl ./setup.sh` を実行した場合、Linux 側で `node` を直接実行できなければ、`setup.sh` が公式配布の Linux 版 Node.js を `.cache/tools/` に自動取得して使います。
+Windows と WSL を行き来する場合、`canvas` などのネイティブ依存は初回実行時にその OS 向けへ自動で `npm rebuild` されます。
+自動判定を使わず常に Windows 側で実行したい場合は、`HOUHI_FORCE_WINDOWS_NPM=1 wsl ./setup.sh` を使ってください。
+WSL の Windows interop が無効な環境では、PowerShell で `.\setup.cmd` を直接実行してください。
+
 ### 設定ファイル
 
 `config.template.json` を `config.json` にコピーして編集します。
