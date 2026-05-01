@@ -236,6 +236,7 @@ ol.lvl1 > li:before {
     counter-increment: cnt1;
     content: "第" counter(cnt1);
     display: inline-block; width: 2em;
+    white-space: nowrap;
 }
 
 ol.lvl2 > li {
