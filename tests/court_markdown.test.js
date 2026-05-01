@@ -67,6 +67,40 @@ test('convertMarkdownToCourtHtml: handles page break marker', () => {
     assert.ok(typeof result === 'string');
 });
 
+test('convertMarkdownToCourtHtml: converts image syntax to centered image block', () => {
+    const md = '![本件記事の表示例](images/article.png)';
+    const result = convertMarkdownToCourtHtml(md);
+    assert.ok(result.includes('<div class="image-block"><img src="images/article.png" alt="本件記事の表示例" /></div>'));
+});
+
+test('convertMarkdownToCourtHtml: escapes image attributes', () => {
+    const md = '!["引用" & 説明](images/a&b.png)';
+    const result = convertMarkdownToCourtHtml(md);
+    assert.ok(result.includes('alt="&quot;引用&quot; &amp; 説明"'));
+    assert.ok(result.includes('src="images/a&amp;b.png"'));
+});
+
+test('convertMarkdownToCourtHtml: preserves list hierarchy around images', () => {
+    const md = [
+        '## 第1 見出し',
+        '',
+        '1 小見出し',
+        '',
+        '(1) 画像の前。',
+        '',
+        '![説明](images/test.jpg)',
+        '',
+        '(2) 画像の後。'
+    ].join('\n');
+    const result = convertMarkdownToCourtHtml(md);
+    const imageIndex = result.indexOf('<div class="image-block">');
+    const secondItemIndex = result.indexOf('<p>画像の後。</p>');
+    const closeLevelThreeIndex = result.indexOf('</ol>', imageIndex);
+    assert.ok(imageIndex > -1);
+    assert.ok(secondItemIndex > imageIndex);
+    assert.ok(closeLevelThreeIndex > secondItemIndex);
+});
+
 test('convertMarkdownToCourtHtml: converts table of contents marker', () => {
     const md = [
         '### 目次',

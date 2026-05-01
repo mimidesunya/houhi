@@ -36,6 +36,11 @@ The level is determined by the marker at the start of each line. Use these marke
 - The generated table of contents includes level 1 headings (`第1`, `第2`, etc.) and level 2 title lines (`1`, `2`, etc.).
 - A level 2 marker line is treated as a table-of-contents title only when it does not contain the Japanese full stop `。`; marker lines containing `。` are treated as body text.
 
+### Images
+- Use standard Markdown image syntax: `![description](image-path.png)`.
+- Images are rendered as centered standalone blocks in the document.
+- Prefer relative paths that can be resolved from the Markdown file's directory.
+
 ### Alignment Blocks
 - **### --右**: Starts a right-aligned block (used for dates, signatures, etc.).
 - **### --左**: Starts a left-aligned block (used for case numbers, parties, etc.).

@@ -108,7 +108,7 @@ async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput) {
         filesToDelete.push(htmlToConvert);
         console.log(`HTMLを生成しました: ${htmlToConvert}`);
         outputPdfPath = path.join(outputDir, `${baseFilename}.pdf`);
-        resourceDir = DEFAULT_TEMPLATE_DIR;
+        resourceDir = outputDir;
     }
 
     // PDF変換

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { fileURLToPath } = require('url');
 const { get_session } = require('copper-cti');
 const { loadConfig } = require('./config_loader');
 
@@ -69,22 +70,32 @@ async function convertHtmlToPdf(htmlPath, outputPath, resourceDir, defaultTempla
         session.setResolverFunc(async (uri, resource) => {
             console.log(`リソースを解決中: ${uri}`);
             
-            // URIからファイル名のみを取得（パスが含まれる場合があるため）
-            const fileName = path.basename(uri);
-            
-            // まずresource_dirを探す
-            let localPath = path.join(resourceDir, fileName);
-            
-            // 見つからない場合、デフォルトテンプレートディレクトリを探す
-            if (!fs.existsSync(localPath) && defaultTemplateDir) {
-                const fallbackPath = path.join(defaultTemplateDir, fileName);
-                if (fs.existsSync(fallbackPath)) {
-                    console.log(`  テンプレートディレクトリで見つかりました: ${fallbackPath}`);
-                    localPath = fallbackPath;
+            const candidates = [];
+
+            if (uri.startsWith('file:')) {
+                try {
+                    candidates.push(fileURLToPath(uri));
+                } catch (_e) {
+                    // URIとして解釈できない場合は、下のフォールバック候補で探す
                 }
             }
 
-            if (fs.existsSync(localPath)) {
+            // URIからファイル名のみを取得（テンプレートCSS等のフォールバック用）
+            const fileName = path.basename(uri);
+            candidates.push(path.join(resourceDir, fileName));
+            if (defaultTemplateDir) {
+                candidates.push(path.join(defaultTemplateDir, fileName));
+            }
+
+            let localPath = null;
+            for (const candidate of candidates) {
+                if (candidate && fs.existsSync(candidate)) {
+                    localPath = candidate;
+                    break;
+                }
+            }
+
+            if (localPath) {
                 console.log(`  ローカルファイルを発見: ${localPath}`);
                 
                 // 拡張子からMIMEタイプを簡易判定

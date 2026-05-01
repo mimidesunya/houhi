@@ -20,6 +20,14 @@ function getVisualWidth(text) {
     return width;
 }
 
+function escapeHtmlAttribute(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
 /**
  * Markdownテキストを裁判文書用のHTMLに変換します。
  */
@@ -415,6 +423,26 @@ function convertMarkdownToCourtHtml(markdown) {
         } else if (inSimpleList) {
             html += '</ul>' + nl;
             inSimpleList = false;
+        }
+
+        // 画像の処理: ![説明](画像パス)
+        // 書面では常に中央寄せの独立ブロックとして配置する
+        const imageMatch = trimmedLine.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+        if (imageMatch) {
+            if (inRightBlock || inLeftBlock) {
+                while (lastLevel > 0) {
+                    html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                    lastLevel--;
+                }
+                html += '</div>' + nl;
+                inRightBlock = false;
+                inLeftBlock = false;
+            }
+            const alt = escapeHtmlAttribute(imageMatch[1].trim());
+            const src = escapeHtmlAttribute(imageMatch[2].trim());
+            const currentIndent = indent(lastLevel + (lastLevel > 0 ? 1 : 0));
+            html += currentIndent + `<div class="image-block"><img src="${src}" alt="${alt}" /></div>` + nl;
+            continue;
         }
 
         // 空行（スペーサー）マーカーの処理: ### ...

@@ -177,6 +177,17 @@ hr.separator {
     page-break-after: avoid;
 }
 
+/* 画像 */
+.image-block {
+    text-align: center;
+    margin: 1.618em 0;
+}
+
+.image-block img {
+    max-width: 100%;
+    height: auto;
+}
+
 /* ブロック内のテーブル配置 */
 .right table.info {
     margin-left: auto;
@@ -357,6 +368,10 @@ ol > li.heading-item {
 ol > li.heading-item:before {
     visibility: hidden;
     width: 0;
+}
+
+ol.lvl2 > li.heading-item > ol.lvl3 {
+    margin-left: 1em;
 }
 
 /* =========================================
