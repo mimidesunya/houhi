@@ -28,6 +28,9 @@ async function convertHtmlToPdf(htmlPath, outputPath, resourceDir, defaultTempla
 
     try {
         console.log("セッションを開始しました。");
+
+        const htmlContent = fs.readFileSync(htmlPath);
+        const needsPageReferences = htmlContent.includes('cssj:make-toc');
         
         // 出力先ディレクトリの作成
         const outDir = path.dirname(outputPath);
@@ -50,6 +53,16 @@ async function convertHtmlToPdf(htmlPath, outputPath, resourceDir, defaultTempla
             }
             console.log(`プロパティを設定: ${name} = ${value}`);
             session.setProperty(name, value);
+        }
+
+        if (needsPageReferences) {
+            const configuredPassCount = Number(properties['processing.pass-count'] || 0);
+            const passCount = configuredPassCount > 1 ? configuredPassCount : 2;
+            console.log('目次生成のためページ参照収集を有効化します。');
+            console.log('プロパティを設定: processing.page-references = true');
+            session.setProperty('processing.page-references', 'true');
+            console.log(`プロパティを設定: processing.pass-count = ${passCount}`);
+            session.setProperty('processing.pass-count', String(passCount));
         }
 
         // リソースリゾルバーの設定
@@ -110,7 +123,6 @@ async function convertHtmlToPdf(htmlPath, outputPath, resourceDir, defaultTempla
 
         const writer = session.transcode(baseUri);
         try {
-            const htmlContent = fs.readFileSync(htmlPath);
             writer.write(htmlContent);
         } finally {
             writer.end();

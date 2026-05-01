@@ -46,7 +46,8 @@ p {
 /* =========================================
    タイトル・日付・宛先
    ========================================= */
-h2.doc-title {
+.doc-title,
+.toc-title {
     font-size: 12pt;
     text-align: center;
     margin: 1.618em 0;
@@ -210,14 +211,14 @@ body > ol > li > ol > li > ol > li > ol > li > ol > li > ol {
     margin-left: -1em;
 }
 
-h2 {
+h1, h2, h3, h4, h5, h6 {
     font-size: 12pt;
     font-weight: normal;
     margin: 0;
     display: inline;
 }
 
-h2 + * {
+h1 + *, h2 + *, h3 + *, h4 + *, h5 + *, h6 + * {
     page-break-before: avoid;
 }
 
@@ -250,6 +251,68 @@ ol.lvl2 > li:before {
     position: absolute; left: -.5em; top: 0; width: 1.5em;
 }
 ol.lvl2 > li > h2 { display: block; padding-left: 0; }
+
+/* Copper PDF が <cssj:make-toc> から生成する目次 */
+ul.cssj-toc,
+ul.cssj-toc ul {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+ul.cssj-toc {
+    margin: 1.618em 0;
+}
+
+ul.cssj-toc ul {
+    margin-left: 1.5em;
+}
+
+ul.cssj-toc li {
+    position: relative;
+    margin: 0 0 0.809em 0;
+    min-height: 1.2em;
+}
+
+ul.cssj-toc li:before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0.809em;
+    border-bottom: 0.5pt dotted #000;
+}
+
+ul.cssj-toc a {
+    position: relative;
+    display: block;
+    padding-right: 4em;
+}
+
+ul.cssj-toc span {
+    background-color: #fff;
+    position: relative;
+}
+
+ul.cssj-toc span.cssj-title {
+    padding-right: 0.5em;
+}
+
+ul.cssj-toc span.cssj-page {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    padding-left: 1em;
+}
+
+@media print {
+    ul.cssj-toc a,
+    ul.cssj-toc a:link,
+    ul.cssj-toc a:visited {
+        color: #000;
+        text-decoration: none;
+    }
+}
 
 ol.lvl3 > li { position: relative; padding-left: .5em; }
 ol.lvl3 > li:before {
@@ -284,6 +347,16 @@ ol.lvl7 > li:before {
     counter-increment: cnt7;
     content: "(" counter(cnt7, lower-latin) ") ";
     position: absolute; left: -1.5em; top: 0; width: 2.5em;
+}
+
+ol > li.heading-item {
+    padding-left: 0;
+    text-indent: 0;
+}
+
+ol > li.heading-item:before {
+    visibility: hidden;
+    width: 0;
 }
 
 /* =========================================

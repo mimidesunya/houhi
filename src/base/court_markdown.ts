@@ -41,6 +41,8 @@ function convertMarkdownToCourtHtml(markdown) {
     // インデント用のヘルパー
     const indent = (level) => '    '.repeat(level);
     const nl = '\n';
+    const tocElement = '<cssj:make-toc xmlns:cssj="http://www.cssj.jp/ns/cssjml" counter="page" type="decimal"></cssj:make-toc>';
+    const headingTag = (level) => `h${Math.min(Math.max(level, 1), 6)}`;
 
     // --- 事前スキャン: 各エリアのグローバルな列幅を計算 ---
     const rightColWidths = [];
@@ -423,6 +425,27 @@ function convertMarkdownToCourtHtml(markdown) {
             continue;
         }
 
+        // 目次マーカーの処理: ### 目次
+        // Copper PDF の cssj:make-toc により、文書内の h1-h6 から目次を生成する
+        if (trimmedLine === '### 目次') {
+            if (inRightBlock || inLeftBlock) {
+                while (lastLevel > 0) {
+                    html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                    lastLevel--;
+                }
+                html += '</div>' + nl;
+                inRightBlock = false;
+                inLeftBlock = false;
+            }
+            while (lastLevel > 0) {
+                html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                lastLevel--;
+            }
+            html += '<div class="toc-title">目次</div>' + nl;
+            html += tocElement + nl;
+            continue;
+        }
+
         // 区切り線マーカーの処理: ### ---
         // 改ページはせず、点線（区切り線）を挿入する
         if (trimmedLine === '### ---') {
@@ -463,6 +486,7 @@ function convertMarkdownToCourtHtml(markdown) {
 
         const levelInfo = getLevelInfo(trimmedLine);
         const isHeader = trimmedLine.startsWith('#');
+        const liClass = isHeader && levelInfo ? ' class="heading-item"' : '';
         
         let level, text;
         if (levelInfo) {
@@ -483,7 +507,8 @@ function convertMarkdownToCourtHtml(markdown) {
             } else {
                 lastLevel++;
             }
-            html += indent(lastLevel - 1) + `<ol class="lvl${lastLevel}">` + nl + indent(lastLevel) + '<li>' + nl;
+            const currentLiClass = lastLevel === level ? liClass : '';
+            html += indent(lastLevel - 1) + `<ol class="lvl${lastLevel}">` + nl + indent(lastLevel) + `<li${currentLiClass}>` + nl;
             openedNewLevel = true;
         }
         while (lastLevel > level) {
@@ -492,7 +517,7 @@ function convertMarkdownToCourtHtml(markdown) {
         }
         if (lastLevel === level && levelInfo && !openedNewLevel) {
             // 新しいマーカーがある場合は次の li へ
-            html += indent(lastLevel) + '</li>' + nl + indent(lastLevel) + '<li>' + nl;
+            html += indent(lastLevel) + '</li>' + nl + indent(lastLevel) + `<li${liClass}>` + nl;
         }
 
         const currentIndent = indent(lastLevel + (lastLevel > 0 ? 1 : 0));
@@ -500,14 +525,15 @@ function convertMarkdownToCourtHtml(markdown) {
         if (isHeader) {
             lastHeader = text; // ヘッダテキストを保存
             if (levelInfo) {
-                html += currentIndent + `<h2>${text}</h2>` + nl;
+                const tagName = headingTag(levelInfo.level);
+                html += currentIndent + `<${tagName}>${levelInfo.marker}　${text}</${tagName}>` + nl;
             } else {
-                // マーカーがないヘッダもh2とし、リストの外に出す
+                // マーカーがないヘッダはリストの外に出し、文書タイトルとして扱う
                 while (lastLevel > 0) {
                     html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                     lastLevel--;
                 }
-                html += `<h2 class="doc-title">${text}</h2>` + nl;
+                html += `<div class="doc-title">${text}</div>` + nl;
             }
         } else if (text === '以上') {
             // 「以上」のみの行は特別扱い（リストを閉じて右寄せ）

@@ -67,6 +67,25 @@ test('convertMarkdownToCourtHtml: handles page break marker', () => {
     assert.ok(typeof result === 'string');
 });
 
+test('convertMarkdownToCourtHtml: converts table of contents marker', () => {
+    const md = [
+        '### 目次',
+        '',
+        '## 第1 はじめに',
+        '',
+        '### 1 概要',
+        '',
+        '#### (1) 詳細'
+    ].join('\n');
+    const result = convertMarkdownToCourtHtml(md);
+    assert.ok(result.includes('<div class="toc-title">目次</div>'));
+    assert.ok(result.includes('<cssj:make-toc'));
+    assert.ok(result.includes('<li class="heading-item">'));
+    assert.ok(result.includes('<h1>第1　はじめに</h1>'));
+    assert.ok(result.includes('<h2>1　概要</h2>'));
+    assert.ok(result.includes('<h3>(1)　詳細</h3>'));
+});
+
 // ─── 複合文書 ──────────────────────────────────────────────
 
 test('convertMarkdownToCourtHtml: handles court document structure', () => {
