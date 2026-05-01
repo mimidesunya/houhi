@@ -73,7 +73,7 @@ test('convertMarkdownToCourtHtml: converts table of contents marker', () => {
         '',
         '## 第1 はじめに',
         '',
-        '### 1 概要',
+        '1 概要',
         '',
         '#### (1) 詳細'
     ].join('\n');
@@ -84,6 +84,29 @@ test('convertMarkdownToCourtHtml: converts table of contents marker', () => {
     assert.ok(result.includes('<h1>第1　はじめに</h1>'));
     assert.ok(result.includes('<h2>1　概要</h2>'));
     assert.ok(result.includes('<h3>(1)　詳細</h3>'));
+});
+
+test('convertMarkdownToCourtHtml: converts first two marker levels to headings for toc', () => {
+    const md = [
+        '## 第1 本書面の要旨',
+        '',
+        '1 原告らは代表者ではない。',
+        '',
+        '2 任意的訴訟担当',
+        '',
+        '3 本文として扱われる番号行である。',
+        '',
+        '(1) これは本文階層である。'
+    ].join('\n');
+    const result = convertMarkdownToCourtHtml(md);
+    assert.ok(result.includes('<h1>第1　本書面の要旨</h1>'));
+    assert.ok(!result.includes('<h2>1　原告らは代表者ではない。</h2>'));
+    assert.ok(result.includes('<p>原告らは代表者ではない。</p>'));
+    assert.ok(result.includes('<h2>2　任意的訴訟担当</h2>'));
+    assert.ok(!result.includes('<h2>3　本文として扱われる番号行である。</h2>'));
+    assert.ok(result.includes('<p>本文として扱われる番号行である。</p>'));
+    assert.ok(!result.includes('<h3>(1)　これは本文階層である。</h3>'));
+    assert.ok(result.includes('<p>これは本文階層である。</p>'));
 });
 
 // ─── 複合文書 ──────────────────────────────────────────────

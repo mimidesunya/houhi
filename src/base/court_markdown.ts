@@ -486,13 +486,17 @@ function convertMarkdownToCourtHtml(markdown) {
 
         const levelInfo = getLevelInfo(trimmedLine);
         const isHeader = trimmedLine.startsWith('#');
-        const liClass = isHeader && levelInfo ? ' class="heading-item"' : '';
+        const markerText = levelInfo
+            ? trimmedLine.replace(/^#*\s*/, '').replace(levelInfo.marker, '').trim()
+            : '';
+        const isTocHeading = !!levelInfo && (isHeader || (levelInfo.level <= 2 && !markerText.includes('。')));
+        const liClass = isTocHeading ? ' class="heading-item"' : '';
         
         let level, text;
         if (levelInfo) {
             level = levelInfo.level;
             // マーカーと#を除去
-            text = trimmedLine.replace(/^#*\s*/, '').replace(levelInfo.marker, '').trim();
+            text = markerText;
         } else {
             // マーカーがない場合は現在のレベルの継続（最初からマーカーがない場合はレベル0）
             level = lastLevel;
@@ -522,19 +526,20 @@ function convertMarkdownToCourtHtml(markdown) {
 
         const currentIndent = indent(lastLevel + (lastLevel > 0 ? 1 : 0));
 
-        if (isHeader) {
+        if (isTocHeading) {
             lastHeader = text; // ヘッダテキストを保存
             if (levelInfo) {
                 const tagName = headingTag(levelInfo.level);
                 html += currentIndent + `<${tagName}>${levelInfo.marker}　${text}</${tagName}>` + nl;
-            } else {
-                // マーカーがないヘッダはリストの外に出し、文書タイトルとして扱う
-                while (lastLevel > 0) {
-                    html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
-                    lastLevel--;
-                }
-                html += `<div class="doc-title">${text}</div>` + nl;
             }
+        } else if (isHeader) {
+            lastHeader = text; // ヘッダテキストを保存
+            // マーカーがないヘッダはリストの外に出し、文書タイトルとして扱う
+            while (lastLevel > 0) {
+                html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                lastLevel--;
+            }
+            html += `<div class="doc-title">${text}</div>` + nl;
         } else if (text === '以上') {
             // 「以上」のみの行は特別扱い（リストを閉じて右寄せ）
             while (lastLevel > 0) {
