@@ -52,13 +52,16 @@ async function convertHtmlToPdf(htmlPath, outputPath, resourceDir, defaultTempla
                 console.log('  output.pdf.version は固定値 1.4A-1 を使用します');
                 continue;
             }
+            if (needsPageReferences && name === 'processing.pass-count') {
+                continue;
+            }
             console.log(`プロパティを設定: ${name} = ${value}`);
             session.setProperty(name, value);
         }
 
         if (needsPageReferences) {
             const configuredPassCount = Number(properties['processing.pass-count'] || 0);
-            const passCount = configuredPassCount > 1 ? configuredPassCount : 2;
+            const passCount = configuredPassCount > 3 ? configuredPassCount : 3;
             console.log('目次生成のためページ参照収集を有効化します。');
             console.log('プロパティを設定: processing.page-references = true');
             session.setProperty('processing.page-references', 'true');

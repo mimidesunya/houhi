@@ -80,6 +80,27 @@ test('loadConfig: loads and parses valid config.json', async (t) => {
     assert.deepEqual(configLoader.loadConfig(), configData);
 });
 
+test('loadConfig: copies config.template.json when config.json is missing', async (t) => {
+    const originalCwd = process.cwd();
+    const tempRoot = makeTempDir();
+    const configPath = path.join(tempRoot, 'config.json');
+    const templateData = {
+        copper: { serverUri: 'ctip://template/', user: 'template-user' },
+        mail: { user: 'mail@example.test' }
+    };
+    fs.writeFileSync(path.join(tempRoot, 'config.template.json'), JSON.stringify(templateData), 'utf8');
+
+    process.chdir(tempRoot);
+    t.after(() => {
+        process.chdir(originalCwd);
+        fs.rmSync(tempRoot, { recursive: true, force: true });
+    });
+
+    assert.deepEqual(configLoader.loadConfig(), templateData);
+    assert.equal(configLoader.findConfigPath(), configPath);
+    assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8')), templateData);
+});
+
 test('loadConfig: returns null for invalid JSON', async (t) => {
     const originalCwd = process.cwd();
     const tempRoot = makeTempDir();

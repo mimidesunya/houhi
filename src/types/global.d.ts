@@ -5,7 +5,6 @@ declare module 'canvas';
 declare global {
     type ScriptKey =
         | 'pdf'
-        | 'renumber'
         | 'ai_archive'
         | 'stamp'
         | 'fax_send';
@@ -15,6 +14,30 @@ declare global {
         output?: string;
         error?: string;
         code?: number;
+    }
+
+    interface ConfigEditorLoadResult {
+        configPath: string;
+        exists: boolean;
+        created: boolean;
+        createdFromTemplate: boolean;
+        templatePath: string | null;
+        config: Record<string, any>;
+        defaults: Record<string, any>;
+        parseError: string | null;
+    }
+
+    interface ConfigEditorSaveResult {
+        configPath: string;
+        config: Record<string, any>;
+    }
+
+    interface DraftingKitOpenResult {
+        exists: boolean;
+        zipPath: string;
+        folderPath: string;
+        fileName: string;
+        openError: string | null;
     }
 
     interface ConsoleTaskInfo {
@@ -29,6 +52,10 @@ declare global {
             filePaths: string[],
             options?: string[]
         ): Promise<ScriptExecutionResult>;
+        openConfigSettings(): Promise<boolean>;
+        openDraftingKitFolder(): Promise<DraftingKitOpenResult>;
+        getConfigForEditor(): Promise<ConfigEditorLoadResult>;
+        saveConfigFromEditor(config: Record<string, any>): Promise<ConfigEditorSaveResult>;
         onLog(callback: (value: string) => void): void;
         onError(callback: (value: string) => void): void;
         getPathForFile(file: File): string;

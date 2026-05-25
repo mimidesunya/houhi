@@ -1,7 +1,82 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { loadConfigForEditor, saveConfigFromEditor } = require('../lib/config_editor');
+
+let settingsWindow = null;
+const DRAFTING_KIT_FILE_NAME = 'houhi-drafting-kit.zip';
+
+function findUpward(startDir, fileName) {
+    let currentDir = path.resolve(startDir);
+
+    while (true) {
+        const candidatePath = path.join(currentDir, fileName);
+        if (fs.existsSync(candidatePath)) {
+            return candidatePath;
+        }
+
+        const parentDir = path.dirname(currentDir);
+        if (parentDir === currentDir) {
+            return null;
+        }
+        currentDir = parentDir;
+    }
+}
+
+function findProjectRootFallback(searchRoots) {
+    for (const searchRoot of searchRoots) {
+        let currentDir = path.resolve(searchRoot);
+
+        while (true) {
+            if (
+                fs.existsSync(path.join(currentDir, 'package.json')) ||
+                fs.existsSync(path.join(currentDir, 'config.template.json'))
+            ) {
+                return currentDir;
+            }
+
+            const parentDir = path.dirname(currentDir);
+            if (parentDir === currentDir) {
+                break;
+            }
+            currentDir = parentDir;
+        }
+    }
+
+    return process.cwd();
+}
+
+function resolveDraftingKitInfo() {
+    const searchRoots = [
+        process.cwd(),
+        __dirname,
+        path.resolve(__dirname, '../../..'),
+        path.dirname(process.execPath),
+    ].filter(Boolean);
+
+    for (const searchRoot of searchRoots) {
+        const zipPath = findUpward(searchRoot, DRAFTING_KIT_FILE_NAME);
+        if (zipPath) {
+            return {
+                exists: true,
+                zipPath,
+                folderPath: path.dirname(zipPath),
+                fileName: DRAFTING_KIT_FILE_NAME,
+                openError: null,
+            };
+        }
+    }
+
+    const folderPath = findProjectRootFallback(searchRoots);
+    return {
+        exists: false,
+        zipPath: path.join(folderPath, DRAFTING_KIT_FILE_NAME),
+        folderPath,
+        fileName: DRAFTING_KIT_FILE_NAME,
+        openError: null,
+    };
+}
 
 function resolveAppIconPath() {
     const candidates = [
@@ -68,6 +143,44 @@ function createConsoleWindow() {
     return consoleWin;
 }
 
+function createSettingsWindow(parentWin = null) {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+        settingsWindow.focus();
+        return settingsWindow;
+    }
+
+    settingsWindow = new BrowserWindow({
+        width: 720,
+        height: 820,
+        minWidth: 640,
+        minHeight: 680,
+        parent: parentWin || undefined,
+        icon: appIconPath,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            nodeIntegration: false,
+            contextIsolation: true
+        },
+        titleBarStyle: 'hidden',
+        titleBarOverlay: {
+            color: '#141a21',
+            symbolColor: '#64b5f6'
+        },
+        backgroundColor: '#171d24',
+        show: false
+    });
+
+    settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
+    settingsWindow.once('ready-to-show', () => {
+        settingsWindow.show();
+    });
+    settingsWindow.on('closed', () => {
+        settingsWindow = null;
+    });
+
+    return settingsWindow;
+}
+
 app.whenReady().then(() => {
     if (process.platform === 'win32') {
         app.setAppUserModelId('jp.mimidesunya.houhi');
@@ -91,7 +204,6 @@ app.on('window-all-closed', () => {
 // Script definitions
 const SCRIPTS = {
     'pdf': { path: 'src/convert_to_pdf.js', name: '裁判文書PDF作成' },
-    'renumber': { path: 'src/renumber_markdown.js', name: 'Markdown番号振直' },
     'ai_archive': { path: 'src/archive_for_ai.js', name: 'AI分析用アーカイブ作成' },
     'stamp': { path: 'src/stamp_evidence_number.js', name: '号証スタンプ' },
     'fax_send': { path: 'src/fax_send.js', name: 'mfax FAX送信' }
@@ -471,4 +583,32 @@ button{padding:6px 20px;border:none;border-radius:6px;font-size:14px;cursor:poin
             });
         });
     });
+});
+
+ipcMain.handle('open-config-settings', (event) => {
+    createSettingsWindow(BrowserWindow.fromWebContents(event.sender));
+    return true;
+});
+
+ipcMain.handle('open-drafting-kit-folder', async () => {
+    const kitInfo = resolveDraftingKitInfo();
+
+    if (kitInfo.exists) {
+        shell.showItemInFolder(kitInfo.zipPath);
+        return kitInfo;
+    }
+
+    const openError = await shell.openPath(kitInfo.folderPath);
+    return {
+        ...kitInfo,
+        openError: openError || null,
+    };
+});
+
+ipcMain.handle('config:get', () => {
+    return loadConfigForEditor();
+});
+
+ipcMain.handle('config:save', (_event, config) => {
+    return saveConfigFromEditor(config);
 });

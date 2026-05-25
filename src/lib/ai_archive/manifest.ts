@@ -37,7 +37,11 @@ export function buildArchiveManifest(caseName: string, scan: CaseArchiveScan, in
         })),
         instructions: instructionEntries.map(entry => ({
             path: entry.displayPath,
-            role: entry.isCommonRules ? 'common_drafting_rules' : 'drafting_instruction',
+            role: entry.isWorkflowGuide
+                ? 'drafting_workflow_guide'
+                : entry.isCommonRules
+                    ? 'common_drafting_rules'
+                    : 'drafting_instruction',
             sizeBytes: entry.content.length,
         })),
         skippedFiles: scan.skippedFiles,

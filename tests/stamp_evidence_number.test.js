@@ -6,6 +6,8 @@ const {
     extractEvidenceNumber,
     naturalSortKey,
     isImageFile,
+    getA4PrintScaleForPage,
+    getStampMetricsForA4Print,
 } = require('../dist/src/stamp_evidence_number.js');
 
 // ─── extractEvidenceNumber ──────────────────────────────────
@@ -106,4 +108,23 @@ test('isImageFile: returns false for .gif', () => {
 
 test('isImageFile: returns false for no extension', () => {
     assert.equal(isImageFile('readme'), false);
+});
+
+// ─── A4印刷換算スタンプ寸法 ─────────────────────────────────
+
+test('getA4PrintScaleForPage: returns 1 for A4 portrait page', () => {
+    assert.equal(getA4PrintScaleForPage(595.28, 841.89), 1);
+});
+
+test('getA4PrintScaleForPage: returns 1 for A4 landscape page', () => {
+    assert.equal(getA4PrintScaleForPage(841.89, 595.28), 1);
+});
+
+test('getStampMetricsForA4Print: enlarges stamp metrics for A3 portrait page', () => {
+    const metrics = getStampMetricsForA4Print(841.89, 1190.55, 20);
+
+    assert.ok(Math.abs(metrics.printScale - 0.707) < 0.001);
+    assert.ok(Math.abs(metrics.fontSize * metrics.printScale - 20) < 0.001);
+    assert.ok(Math.abs(metrics.marginRight * metrics.printScale - 15) < 0.001);
+    assert.ok(Math.abs(metrics.marginTop * metrics.printScale - 12) < 0.001);
 });

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>法匪 設定</title>
+    <style>
+        :root {
+            --bg: #171d24;
+            --panel: #222a34;
+            --panel-soft: #1d242d;
+            --line: rgba(255, 255, 255, 0.1);
+            --accent: #64b5f6;
+            --text: #e6edf3;
+            --muted: #9aa7b3;
+            --danger: #ef5350;
+            --ok: #81c784;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow: hidden;
+        }
+
+        .shell {
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            height: 100vh;
+        }
+
+        header {
+            -webkit-app-region: drag;
+            padding: 12px 20px 8px;
+            border-bottom: 1px solid var(--line);
+            background: #141a21;
+        }
+
+        h1 {
+            margin: 0;
+            color: var(--accent);
+            font-size: 1.1rem;
+            font-weight: 500;
+            letter-spacing: 0;
+        }
+
+        .path-row {
+            padding: 10px 20px;
+            display: grid;
+            grid-template-columns: 86px 1fr;
+            gap: 10px;
+            align-items: center;
+            border-bottom: 1px solid var(--line);
+            background: var(--panel-soft);
+        }
+
+        .path-label {
+            color: var(--muted);
+            font-size: 0.78rem;
+        }
+
+        .path-value {
+            font-family: Consolas, monospace;
+            font-size: 0.78rem;
+            color: #cdd7df;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        main {
+            overflow: auto;
+            padding: 16px 20px 20px;
+        }
+
+        section {
+            border: 1px solid var(--line);
+            background: var(--panel);
+            border-radius: 8px;
+            margin-bottom: 14px;
+            overflow: hidden;
+        }
+
+        h2 {
+            margin: 0;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.035);
+            color: #dce7ef;
+            font-size: 0.92rem;
+            font-weight: 600;
+            letter-spacing: 0;
+        }
+
+        .grid {
+            padding: 14px;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .field {
+            min-width: 0;
+        }
+
+        .field.full {
+            grid-column: 1 / -1;
+        }
+
+        label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.76rem;
+            margin-bottom: 5px;
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 6px;
+            background: #121820;
+            color: var(--text);
+            padding: 8px 9px;
+            font: inherit;
+            font-size: 0.88rem;
+            outline: none;
+        }
+
+        input:focus,
+        textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(100, 181, 246, 0.16);
+        }
+
+        input[type="number"] {
+            font-family: Consolas, monospace;
+        }
+
+        textarea {
+            min-height: 86px;
+            resize: vertical;
+            font-family: Consolas, monospace;
+            line-height: 1.35;
+        }
+
+        .switch-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            height: 100%;
+            padding-top: 21px;
+            color: var(--text);
+            font-size: 0.88rem;
+        }
+
+        .switch-field input {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+        }
+
+        footer {
+            border-top: 1px solid var(--line);
+            background: #141a21;
+            padding: 12px 20px;
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .status {
+            color: var(--muted);
+            font-size: 0.82rem;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .status.error {
+            color: var(--danger);
+        }
+
+        .status.ok {
+            color: var(--ok);
+        }
+
+        button {
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 6px;
+            padding: 8px 14px;
+            background: #26313d;
+            color: var(--text);
+            font: inherit;
+            cursor: pointer;
+        }
+
+        button:hover {
+            border-color: var(--accent);
+            background: #2c3947;
+        }
+
+        button.primary {
+            background: #1565c0;
+            border-color: #1e88e5;
+            color: white;
+            font-weight: 600;
+        }
+
+        button.primary:hover {
+            background: #1976d2;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="shell">
+        <header>
+            <h1>設定</h1>
+        </header>
+
+        <div class="path-row">
+            <div class="path-label">保存先</div>
+            <div class="path-value" id="configPath">読み込み中...</div>
+        </div>
+
+        <main>
+            <section>
+                <h2>Copper PDF</h2>
+                <div class="grid">
+                    <div class="field">
+                        <label for="copperServerUri">サーバーURI</label>
+                        <input id="copperServerUri" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="copperUser">ユーザー</label>
+                        <input id="copperUser" autocomplete="username">
+                    </div>
+                    <div class="field">
+                        <label for="copperPassword">パスワード</label>
+                        <input id="copperPassword" type="password" autocomplete="current-password">
+                    </div>
+                    <div class="field full">
+                        <label for="copperProperties">追加プロパティ JSON</label>
+                        <textarea id="copperProperties" spellcheck="false"></textarea>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2>メールアカウント</h2>
+                <div class="grid">
+                    <div class="field">
+                        <label for="mailUser">メールアドレス</label>
+                        <input id="mailUser" autocomplete="username">
+                    </div>
+                    <div class="field">
+                        <label for="mailPassword">パスワード</label>
+                        <input id="mailPassword" type="password" autocomplete="current-password">
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2>SMTP</h2>
+                <div class="grid">
+                    <div class="field">
+                        <label for="smtpHost">ホスト</label>
+                        <input id="smtpHost" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="smtpPort">ポート</label>
+                        <input id="smtpPort" type="number" min="1" max="65535">
+                    </div>
+                    <label class="switch-field">
+                        <input id="smtpSecure" type="checkbox">
+                        <span>SSL/TLSを使用</span>
+                    </label>
+                    <div class="field">
+                        <label for="smtpTls">TLS最小バージョン</label>
+                        <input id="smtpTls" autocomplete="off">
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2>IMAP</h2>
+                <div class="grid">
+                    <div class="field">
+                        <label for="imapHost">ホスト</label>
+                        <input id="imapHost" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="imapPort">ポート</label>
+                        <input id="imapPort" type="number" min="1" max="65535">
+                    </div>
+                    <label class="switch-field">
+                        <input id="imapSecure" type="checkbox">
+                        <span>SSL/TLSを使用</span>
+                    </label>
+                    <div class="field">
+                        <label for="imapTls">TLS最小バージョン</label>
+                        <input id="imapTls" autocomplete="off">
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2>mfax</h2>
+                <div class="grid">
+                    <div class="field">
+                        <label for="mfaxSendPassword">送信パスワード</label>
+                        <input id="mfaxSendPassword" type="password" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="mfaxFromAddress">Fromアドレス</label>
+                        <input id="mfaxFromAddress" autocomplete="email">
+                    </div>
+                    <div class="field full">
+                        <label for="mfaxSelfFax">自分のFAX番号</label>
+                        <input id="mfaxSelfFax" autocomplete="off">
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <div class="status" id="status">設定を読み込んでいます。</div>
+            <button id="reloadButton" type="button">再読み込み</button>
+            <button class="primary" id="saveButton" type="button">保存</button>
+        </footer>
+    </div>
+
+    <script>
+        window.exports = window.exports || {};
+    </script>
+    <script src="settings_renderer.js"></script>
+</body>
+
+</html>

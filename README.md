@@ -8,14 +8,14 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 
 1. **Markdown特化**: 裁判所提出文書向けの書式（インデント・表・右寄せなど）をテキストで管理できます。
 2. **AI連携前提**: `mimi-ocr` で作成したOCR結果や証拠資料をチャットAIへ渡し、書面起案を補助させます。
-3. **実務向け自動化**: 号証スタンプ・番号振直・FAX送信などの周辺作業をまとめて処理できます。
+3. **実務向け自動化**: 号証スタンプ・FAX送信などの周辺作業をまとめて処理できます。
 
 ## 主な機能
 
 | ツール名 | 機能概要 | 対応形式 |
 | :--- | :--- | :--- |
 | **PDF変換** | Markdownを裁判所提出用PDF（CSS組版）に変換します。 | `.md`, `.html` |
-| **番号振直** | ズレた項番（第1、1、(1)...）を階層ごとに自動修正します。 | `.md` |
+| **起案** | ChatGPTに渡す `houhi-drafting-kit.zip` の場所を開き、書面起案の使い方を案内します。 | `.zip` |
 | **AIアーカイブ** | フォルダ内の `.md` / `.txt` を `case/` に収録し、`START_HERE.md`・目録・manifest付きのZIPを作成します（主にChatGPT向け）。 | フォルダ |
 | **号証スタンプ** | 証拠PDFの右上に「甲第〇号証」などの証拠番号を赤文字で追記します。 | `.pdf` |
 | **mfax FAX送信** | 送付書Markdownと添付PDFを結合し、メールFAXとして送信します。 | `.pdf`, `.md` |
@@ -38,6 +38,8 @@ OCR は [`mimi-ocr`](../mimi-ocr/README.md) に移管しました。OCR・ペー
 3. 処理ログは画面下部または別ウィンドウに表示されます。
 4. 出力ファイルは、多くの場合、入力ファイルと同じ場所に生成されます。
 
+`起案` ボタンは、`houhi-drafting-kit.zip` のあるフォルダを開き、ChatGPTへのアップロード手順と、そのまま送れる指示文を画面下部に表示します。
+
 OCR が必要な場合は、先に `mimi-ocr` で Markdown 化してから `houhi` に渡します。
 
 Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%BB%95%E6%A7%98%E6%9B%B8.md) を参照してください。
@@ -46,11 +48,11 @@ Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%B
 
 ### 書面の起案
 
-`instructions/` フォルダには、訴状・答弁書・控訴理由書などの書面をチャットAIに起案させるための指示書が入っています。  
-対応する `.md` ファイル（例: `instructions/訴状.md`）をチャットAIへドラッグ＆ドロップし、事件の事実関係や証拠資料を添えて依頼します。
+`houhi-drafting-kit.zip` には、訴状・答弁書・控訴理由書などの書面をチャットAIに起案させるための指示書が入っています。
+対応する `.md` ファイル（例: `訴状.md`）をZIP内から参照させ、事件の事実関係や証拠資料を添えて依頼します。
 
 ```text
-添付した instructions/訴状.md の指示に従って、訴状の Markdown 原案を作成してください。
+添付した houhi-drafting-kit.zip 内の 訴状.md の指示に従って、訴状の Markdown 原案を作成してください。
 文体は日本の民事訴訟実務に合わせ、事実関係は下記資料に基づいて整理してください。
 
 [事件の事実関係メモ]
@@ -58,12 +60,16 @@ Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%B
 [証拠の要約またはOCR結果]
 ```
 
+`houhi-drafting-kit.zip` 内の `00_START_HERE.md` には、ChatGPT が具体的な要望を優先し、不足情報を聞き返してから Markdown 原案を出すための対話手順を入れています。ZIPをアップロードするときに「訴状を起案してほしい」のような要望を同じメッセージに書いて構いません。
+
 資料の渡し方:
 
 - 短いメモや要約はチャット欄へ直接記載
 - OCR結果ファイルはそのままドロップ
 - 複数の資料をまとめて渡す場合は **AIアーカイブ** ツールでZIP化してから添付（主にChatGPT向け）
-- AIアーカイブZIPでは、チャットAIにまず `START_HERE.md` と `CASE_INDEX.md` を読むよう指示してください
+- AIアーカイブZIPを添付した後、チャットAIにまず `START_HERE.md` と `CASE_INDEX.md` を読むよう指示してください
+- 「訴状を起案して」「時系列を作って」のような要望を、ZIPアップロード時の指示文に続けて書いて構いません
+- AIアーカイブ作成後のログには、ChatGPTへそのまま送れる指示文を表示します
 
 ### 典型的なワークフロー
 
@@ -75,7 +81,6 @@ Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%B
 チャットAIにAIアーカイブZIPを添付し、START_HERE.md から読ませて起案を依頼
     ↓
 書面の Markdown 原案
-    ↓ 番号振直（必要に応じて）
     ↓ PDF変換
 裁判所提出用PDF
     ↓ 号証スタンプ（証拠PDFの場合）
@@ -97,7 +102,7 @@ npm run build
 npm run setup
 ```
 
-`setup` は `instructions/` フォルダへの指示書生成と初期設定ファイルの確認を行います。  
+`setup` は `houhi-drafting-kit.zip` への指示書生成と初期設定ファイルの確認を行います。
 セットアップとドキュメント再生成をまとめて行う場合は `setup.sh` も使えます。
 
 ```bash
@@ -111,7 +116,7 @@ WSL の Windows interop が無効な環境では、PowerShell で `.\setup.cmd` 
 
 ### 設定ファイル
 
-`config.template.json` を `config.json` にコピーして編集します。
+GUI のツール一覧にある設定ボタンから `config.json` を編集できます。`config.json` がない場合は、`config.template.json` から自動作成されます。手で編集する場合も同じファイルを編集します。
 
 ```json
 {
@@ -173,7 +178,7 @@ npm run build:launcher
 ├── docs/                       # 補足ドキュメント
 │   ├── ツール詳細.md            # 各ツールの詳細説明（自動生成）
 │   └── Markdown仕様書.md       # Markdown拡張書式の仕様
-├── instructions/               # 書面起案用の指示書（チャットAIへ渡すMarkdown）
+├── houhi-drafting-kit.zip      # 書面起案用の指示書一式（setupで生成）
 ├── src/                        # TypeScript ソースコード
 │   ├── base/                   # 文書書式（CSS/HTML）定義・サンプル
 │   ├── gui/                    # GUI アプリケーション

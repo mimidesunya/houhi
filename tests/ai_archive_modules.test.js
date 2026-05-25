@@ -117,6 +117,7 @@ test('renderer modules: generate each AI-facing markdown artifact directly', () 
 
     assert.ok(buildInstructionStructure(instructions).includes('📄 sample.md'));
     assert.ok(buildStartHere('matter', scan, instructions).includes('事件の事実そのものではありません'));
+    assert.ok(buildStartHere('matter', scan, instructions).includes('何を作成・整理しますか'));
     assert.ok(buildCaseIndex('matter', scan).includes('ZIPに含めなかったファイル'));
     assert.ok(buildWarningsMarkdown(scan.warnings).includes('非対象ファイルがあります。'));
     assert.ok(buildArchiveReadme('matter', '📄 訴状.md\n', instructions, scan).includes('START_HERE.md'));

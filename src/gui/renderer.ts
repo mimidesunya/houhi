@@ -10,18 +10,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const optNoDither = document.getElementById('optNoDither') as HTMLInputElement;
 
     let currentScript: ScriptKey = 'pdf';
+    type ToolCardKey = ScriptKey | 'drafting' | 'settings';
 
-    const toolDescriptions: Record<ScriptKey, string> = {
+    const toolDescriptions: Record<ToolCardKey, string> = {
         pdf: 'Markdown/HTMLをPDFへ変換',
-        renumber: 'Markdownの段落番号を整理',
         ai_archive: 'AI分析用データをZIP化',
         stamp: 'PDFに号証番号を赤字でスタンプ',
-        fax_send: 'mfax経由でFAX送信'
+        fax_send: 'mfax経由でFAX送信',
+        drafting: 'ChatGPT用の起案キットを開く',
+        settings: 'config.jsonを編集'
     };
 
-    const getScriptKey = (element: HTMLElement): ScriptKey => {
+    const getToolCardKey = (element: HTMLElement): ToolCardKey => {
+        const action = element.dataset.action as ToolCardKey | undefined;
         const script = element.dataset.script as ScriptKey | undefined;
-        return script || 'pdf';
+        return action || script || 'pdf';
+    };
+
+    const getScriptKey = (element: HTMLElement): ScriptKey | null => {
+        return (element.dataset.script as ScriptKey | undefined) || null;
     };
 
     const updateOptionsVisibility = (scriptKey: ScriptKey) => {
@@ -46,9 +53,66 @@ document.addEventListener('DOMContentLoaded', () => {
         dropSubtext.innerText = 'または クリックして選択';
     };
 
-    const showToolDescription = (scriptKey: ScriptKey) => {
-        dropText.innerText = toolDescriptions[scriptKey] || 'ここにファイルをドロップ';
-        dropSubtext.innerText = '';
+    const showCardDescription = (toolKey: ToolCardKey) => {
+        dropText.innerText = toolDescriptions[toolKey] || 'ここにファイルをドロップ';
+        if (toolKey === 'drafting') {
+            dropSubtext.innerText = 'クリックでZIPの場所と使い方を表示';
+        } else if (toolKey === 'settings') {
+            dropSubtext.innerText = 'クリックで設定画面を開く';
+        } else {
+            dropSubtext.innerText = 'ここへ直接ドロップして実行';
+        }
+    };
+
+    const selectToolCard = (card: HTMLElement, script: ScriptKey) => {
+        toolCards.forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        currentScript = script;
+        updateOptionsVisibility(script);
+    };
+
+    const openSettings = async () => {
+        try {
+            await window.electronAPI.openConfigSettings();
+        } catch (err) {
+            log(`設定画面を開けませんでした: ${err.message}`, 'error');
+        }
+    };
+
+    const openDraftingKit = async () => {
+        try {
+            const result = await window.electronAPI.openDraftingKitFolder();
+
+            if (result.openError) {
+                log(`起案キットのフォルダを開けませんでした: ${result.openError}`, 'error');
+                return;
+            }
+
+            if (!result.exists) {
+                log(`${result.fileName} が見つかりません。npm run setup を実行すると作成できます。`, 'error');
+                log(`確認先フォルダ: ${result.folderPath}`);
+                return;
+            }
+
+            log(`起案キットをエクスプローラーで表示しました: ${result.zipPath}`, 'success');
+            log([
+                'ChatGPTでの使い方:',
+                `1. 開いたフォルダの ${result.fileName} をChatGPTにアップロードします。`,
+                '2. アップロード時に、次の指示文もChatGPTに送ってください。',
+                '---',
+                `添付した ${result.fileName} を読み込み、まず 00_START_HERE.md の指示に従ってください。私がこのメッセージで「訴状を起案してほしい」などの具体的な要望を書いている場合は、その要望を優先してください。具体的な要望がない場合は、法匪の書面起案アシスタントとして自己紹介し、何の書面を作成したいか私に質問してください。`,
+                '---',
+                '3. すぐ依頼したい場合は、上の指示文に続けて「訴状を起案してほしい」のような要望を書き足してかまいません。',
+                '4. ChatGPTが質問してきたら、事件資料、OCR結果、当事者情報、事件番号、請求内容、証拠番号などを伝えます。',
+                '5. Markdown原案ができたら .md ファイルとして保存し、法匪の「PDF作成」へドロップするとPDFにできます。'
+            ].join('\n'));
+        } catch (err) {
+            log(`起案キットを開けませんでした: ${err.message}`, 'error');
+        }
+    };
+
+    const getDroppedFilePaths = (event: DragEvent): string[] => {
+        return Array.from(event.dataTransfer?.files || []).map(f => window.electronAPI.getPathForFile(f));
     };
 
     const executeCurrentScript = async (filePaths: string[]) => {
@@ -75,16 +139,56 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     toolCards.forEach(card => {
+        const toolKey = getToolCardKey(card);
         const script = getScriptKey(card);
 
-        card.addEventListener('mouseenter', () => showToolDescription(script));
+        card.addEventListener('mouseenter', () => showCardDescription(toolKey));
         card.addEventListener('mouseleave', resetDropMessage);
-        card.addEventListener('click', () => {
-            toolCards.forEach(c => c.classList.remove('active'));
-            card.classList.add('active');
-            currentScript = script;
-            updateOptionsVisibility(script);
+        card.addEventListener('click', async () => {
+            if (toolKey === 'drafting') {
+                await openDraftingKit();
+                return;
+            }
+
+            if (!script) {
+                await openSettings();
+                return;
+            }
+
+            selectToolCard(card, script);
             log(`ツール変更: ${(card.querySelector('.tool-name') as HTMLElement).innerText}`);
+        });
+
+        card.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            card.classList.add('drag-over');
+        });
+
+        card.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            card.classList.remove('drag-over');
+        });
+
+        card.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            card.classList.remove('drag-over');
+
+            if (toolKey === 'drafting') {
+                await openDraftingKit();
+                return;
+            }
+
+            if (!script) {
+                await openSettings();
+                return;
+            }
+
+            selectToolCard(card, script);
+            log(`ツール変更: ${(card.querySelector('.tool-name') as HTMLElement).innerText}`);
+            await executeCurrentScript(getDroppedFilePaths(e));
         });
     });
 
@@ -107,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.stopPropagation();
         dropZone.classList.remove('drag-over');
 
-        const files = Array.from(e.dataTransfer.files).map(f => window.electronAPI.getPathForFile(f));
+        const files = getDroppedFilePaths(e);
         await executeCurrentScript(files);
     });
 

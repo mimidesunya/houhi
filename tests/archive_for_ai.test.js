@@ -194,6 +194,70 @@ test('loadInstructionEntries: loads files from instructions directory when prese
     }
 });
 
+test('loadInstructionEntries: expands houhi-drafting-kit.zip when present', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'package.json'), '{}');
+        const zip = new AdmZip();
+        zip.addFile('sample.md', Buffer.from('# common rules'));
+        zip.addFile('nested/memo.txt', Buffer.from('nested note'));
+        zip.writeZip(path.join(dir, 'houhi-drafting-kit.zip'));
+
+        const entries = loadInstructionEntries([dir]);
+
+        assert.deepEqual(
+            entries.map(entry => entry.displayPath),
+            [
+                'instructions/sample.md',
+                'instructions/nested/memo.txt',
+            ]
+        );
+        assert.equal(entries[0].content.toString('utf-8'), '# common rules');
+        assert.equal(entries[1].content.toString('utf-8'), 'nested note');
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('loadInstructionEntries: prefers houhi-drafting-kit.zip over legacy directory', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'package.json'), '{}');
+        fs.mkdirSync(path.join(dir, 'instructions'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'instructions', 'sample.md'), '# legacy rules');
+
+        const zip = new AdmZip();
+        zip.addFile('sample.md', Buffer.from('# zipped rules'));
+        zip.writeZip(path.join(dir, 'houhi-drafting-kit.zip'));
+
+        const entries = loadInstructionEntries([dir]);
+
+        assert.equal(entries.length, 1);
+        assert.equal(entries[0].displayPath, 'instructions/sample.md');
+        assert.equal(entries[0].content.toString('utf-8'), '# zipped rules');
+    } finally {
+        cleanup(dir);
+    }
+});
+
+test('loadInstructionEntries: still accepts legacy instructions.zip', () => {
+    const dir = createTempDir();
+    try {
+        fs.writeFileSync(path.join(dir, 'package.json'), '{}');
+        const zip = new AdmZip();
+        zip.addFile('sample.md', Buffer.from('# legacy zip rules'));
+        zip.writeZip(path.join(dir, 'instructions.zip'));
+
+        const entries = loadInstructionEntries([dir]);
+
+        assert.equal(entries.length, 1);
+        assert.equal(entries[0].displayPath, 'instructions/sample.md');
+        assert.equal(entries[0].content.toString('utf-8'), '# legacy zip rules');
+    } finally {
+        cleanup(dir);
+    }
+});
+
 test('loadInstructionEntries: returns empty when instructions directory is missing', () => {
     const dir = createTempDir();
     try {
@@ -249,6 +313,8 @@ test('buildStartHere: separates case documents from drafting instructions', () =
         assert.ok(startHere.includes('case/'));
         assert.ok(startHere.includes('instructions/'));
         assert.ok(startHere.includes('事件の事実そのものではありません'));
+        assert.ok(startHere.includes('ユーザーから具体的な指示がない場合'));
+        assert.ok(startHere.includes('次に取れる手'));
     } finally {
         cleanup(dir);
     }
@@ -353,6 +419,9 @@ test('CLI archive: writes case root, AI entrypoints, manifest, and warnings', ()
 
         assert.ok(output.includes('1 個のファイルを収録しました。'));
         assert.ok(!output.includes('ZIP を作成中'));
+        assert.ok(output.includes('ChatGPTで使う場合'));
+        assert.ok(output.includes('START_HERE.md と CASE_INDEX.md'));
+        assert.ok(output.includes('何をしてほしいか'));
         assert.ok(entryNames.includes('case/facts.md'));
         assert.ok(!entryNames.includes('facts.md'));
         assert.ok(entryNames.includes('START_HERE.md'));

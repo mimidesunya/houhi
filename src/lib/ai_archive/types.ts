@@ -7,6 +7,8 @@ export type InstructionEntry = {
     content: Buffer;
     /** `sample.md` は全文書共通ルールとして、README 上で特別に案内する。 */
     isCommonRules: boolean;
+    /** `START_HERE.md` は単体アップロード時の対話手順として、書面テンプレートとは分けて扱う。 */
+    isWorkflowGuide: boolean;
 };
 
 export type CaseFileEntry = {

@@ -1,12 +1,27 @@
 import * as fs from 'fs';
 import * as path from 'path';
+const AdmZip = require('adm-zip');
+
 import { hasTargetFiles } from './scanner';
 import type { InstructionEntry } from './types';
 import { compareInstructionNames, compareInstructionPaths, isTargetTextFile, normalizeArchivePath } from './utils';
 
+const INSTRUCTION_ZIP_FILE_NAMES = ['houhi-drafting-kit.zip', 'instructions.zip'];
+
+function findInstructionZipPath(projectRoot: string) {
+    for (const fileName of INSTRUCTION_ZIP_FILE_NAMES) {
+        const zipPath = path.join(projectRoot, fileName);
+        if (fs.existsSync(zipPath)) {
+            return zipPath;
+        }
+    }
+
+    return null;
+}
+
 /**
  * 実行場所から上位ディレクトリへたどり、プロジェクトルートを探す。
- * GUI / CLI / テストなど起動位置が変わっても `instructions/` を見つけられるようにしている。
+ * GUI / CLI / テストなど起動位置が変わっても指示書セットを見つけられるようにしている。
  */
 export function findProjectRoot(startDir: string) {
     let currentDir = path.resolve(startDir);
@@ -14,8 +29,9 @@ export function findProjectRoot(startDir: string) {
     while (true) {
         const packageJsonPath = path.join(currentDir, 'package.json');
         const instructionsDir = path.join(currentDir, 'instructions');
+        const instructionsZipPath = findInstructionZipPath(currentDir);
 
-        if (fs.existsSync(packageJsonPath) && fs.existsSync(instructionsDir)) {
+        if (fs.existsSync(packageJsonPath) && (instructionsZipPath || fs.existsSync(instructionsDir))) {
             return currentDir;
         }
 
@@ -26,6 +42,21 @@ export function findProjectRoot(startDir: string) {
 
         currentDir = parentDir;
     }
+}
+
+function normalizeInstructionZipEntryName(entryName: string) {
+    const normalizedName = normalizeArchivePath(entryName).replace(/^instructions\//, '');
+    const parts = normalizedName.split('/');
+
+    if (
+        normalizedName.length === 0 ||
+        path.isAbsolute(normalizedName) ||
+        parts.some(part => part === '..' || part === '')
+    ) {
+        return null;
+    }
+
+    return normalizedName;
 }
 
 /**
@@ -97,18 +128,58 @@ export function buildInstructionEntriesFromInstructionsDir(instructionsDir: stri
             displayPath: `instructions/${relPath}`,
             content: fs.readFileSync(fullPath),
             isCommonRules: path.basename(relPath).toLowerCase() === 'sample.md',
+            isWorkflowGuide: path.basename(relPath).toLowerCase().endsWith('start_here.md'),
         };
     });
 }
 
 /**
+ * `houhi-drafting-kit.zip` から、AIアーカイブ内の `instructions/` に展開する指示書一覧を作る。
+ * ZIP内に `instructions/` フォルダが付いていても、付いていなくても同じ形へ正規化する。
+ */
+export function buildInstructionEntriesFromInstructionsZip(instructionsZipPath: string): InstructionEntry[] {
+    if (!fs.existsSync(instructionsZipPath)) {
+        return [];
+    }
+
+    const zip = new AdmZip(instructionsZipPath);
+    return zip.getEntries()
+        .filter(entry => !entry.isDirectory)
+        .map(entry => {
+            const relativePath = normalizeInstructionZipEntryName(entry.entryName);
+            if (!relativePath || !isTargetTextFile(relativePath)) {
+                return null;
+            }
+
+            return {
+                archivePath: `instructions/${relativePath}`,
+                displayPath: `instructions/${relativePath}`,
+                content: entry.getData(),
+                isCommonRules: path.basename(relativePath).toLowerCase() === 'sample.md',
+                isWorkflowGuide: path.basename(relativePath).toLowerCase().endsWith('start_here.md'),
+            };
+        })
+        .filter((entry): entry is InstructionEntry => entry !== null)
+        .sort((a, b) => compareInstructionPaths(a.displayPath, b.displayPath));
+}
+
+/**
  * 利用可能な指示書セットを読み込む。
- * 先に見つかったプロジェクトルートの `instructions/` を採用し、見つからない場合は同梱なしにする。
+ * 先に見つかったプロジェクトルートの `houhi-drafting-kit.zip` を優先し、
+ * 旧名 `instructions.zip` と旧来の `instructions/` も互換用に読む。
  */
 export function loadInstructionEntries(searchRoots: string[] = [process.cwd(), __dirname]) {
     const projectRoots = resolveProjectRoots(searchRoots);
 
     for (const projectRoot of projectRoots) {
+        const instructionZipPath = findInstructionZipPath(projectRoot);
+        if (instructionZipPath) {
+            const zippedInstructionEntries = buildInstructionEntriesFromInstructionsZip(instructionZipPath);
+            if (zippedInstructionEntries.length > 0) {
+                return zippedInstructionEntries;
+            }
+        }
+
         const instructionEntries = buildInstructionEntriesFromInstructionsDir(path.join(projectRoot, 'instructions'));
         if (instructionEntries.length > 0) {
             return instructionEntries;

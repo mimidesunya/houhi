@@ -14,7 +14,7 @@
  *
  * オプション:
  * - `--all-pages`: 全ページにスタンプします（既定は1ページ目のみ）。
- * - `--font-size N`: フォントサイズを指定します。
+ * - `--font-size N`: A4印刷換算のフォントサイズを指定します。
  *
  * 補足:
  * - ファイルは証拠番号順に自然ソートして処理します。
@@ -26,7 +26,7 @@
  *
  * オプション:
  *   --all-pages   全ページにスタンプ（デフォルトは1ページ目のみ）
- *   --font-size N フォントサイズ指定（デフォルト: 20）
+ *   --font-size N A4印刷換算のフォントサイズ指定（デフォルト: 20）
  *   --no-blank-pages 結合時に空白ページを挿入しない（FAX向け）
  */
 const fs = require('fs');
@@ -38,6 +38,7 @@ const fontkit = require('@pdf-lib/fontkit');
 const DEFAULT_FONT_SIZE = 20;
 const MARGIN_RIGHT = 15;   // 右余白 (pt)
 const MARGIN_TOP = 12;     // 上余白 (pt)
+const STAMP_OUTLINE = 1.5; // 白縁取り幅 (pt)
 const STAMP_SUFFIX = '号証';
 const A4_WIDTH = 595.28;   // A4 幅 (pt)
 const A4_HEIGHT = 841.89;  // A4 高さ (pt)
@@ -83,6 +84,30 @@ function loadFontBytes(fontPath) {
         }
     }
     return buffer;
+}
+
+/**
+ * ページをA4へフィット印刷するときの倍率を返す
+ */
+function getA4PrintScaleForPage(width, height) {
+    const isLandscape = width > height;
+    const [a4W, a4H] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+    return Math.min(a4W / width, a4H / height);
+}
+
+/**
+ * A4印刷時の見かけが一定になるよう、スタンプの描画寸法を補正する
+ */
+function getStampMetricsForA4Print(pageWidth, pageHeight, fontSize = DEFAULT_FONT_SIZE) {
+    const printScale = getA4PrintScaleForPage(pageWidth, pageHeight);
+    const metricScale = printScale > 0 ? 1 / printScale : 1;
+    return {
+        printScale,
+        fontSize: fontSize * metricScale,
+        marginRight: MARGIN_RIGHT * metricScale,
+        marginTop: MARGIN_TOP * metricScale,
+        outline: STAMP_OUTLINE * metricScale,
+    };
 }
 
 /**
@@ -218,13 +243,14 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
 
     for (const page of pagesToStamp) {
         const { width, height } = page.getSize();
-        const textWidth = embeddedFont.widthOfTextAtSize(stampText, fontSize);
+        const stampMetrics = getStampMetricsForA4Print(width, height, fontSize);
+        const textWidth = embeddedFont.widthOfTextAtSize(stampText, stampMetrics.fontSize);
 
-        const x = width - textWidth - MARGIN_RIGHT;
-        const y = height - MARGIN_TOP - fontSize;
+        const x = width - textWidth - stampMetrics.marginRight;
+        const y = height - stampMetrics.marginTop - stampMetrics.fontSize;
 
         // 白縁取り（上下左右・斜めの8方向にオフセット描画）
-        const outline = 1.5;
+        const outline = stampMetrics.outline;
         const offsets = [
             [-outline, 0], [outline, 0], [0, -outline], [0, outline],
             [-outline, -outline], [outline, -outline], [-outline, outline], [outline, outline],
@@ -233,7 +259,7 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
             page.drawText(stampText, {
                 x: x + dx,
                 y: y + dy,
-                size: fontSize,
+                size: stampMetrics.fontSize,
                 font: embeddedFont,
                 color: rgb(1, 1, 1),
             });
@@ -243,7 +269,7 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
         page.drawText(stampText, {
             x,
             y,
-            size: fontSize,
+            size: stampMetrics.fontSize,
             font: embeddedFont,
             color: rgb(1, 0, 0),
         });
@@ -441,6 +467,8 @@ module.exports = {
     naturalSortKey,
     isImageFile,
     findJapaneseFont,
+    getA4PrintScaleForPage,
+    getStampMetricsForA4Print,
     ensureA4Pages,
     stampPdf,
     mergeStampedPdfs,
