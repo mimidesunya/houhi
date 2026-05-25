@@ -16,7 +16,7 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 | :--- | :--- | :--- |
 | **PDF変換** | Markdownを裁判所提出用PDF（CSS組版）に変換します。 | `.md`, `.html` |
 | **番号振直** | ズレた項番（第1、1、(1)...）を階層ごとに自動修正します。 | `.md` |
-| **AIアーカイブ** | フォルダ内の `.md` / `.txt` を収集してZIPアーカイブを作成します（主にChatGPT向け）。 | フォルダ |
+| **AIアーカイブ** | フォルダ内の `.md` / `.txt` を `case/` に収録し、`START_HERE.md`・目録・manifest付きのZIPを作成します（主にChatGPT向け）。 | フォルダ |
 | **号証スタンプ** | 証拠PDFの右上に「甲第〇号証」などの証拠番号を赤文字で追記します。 | `.pdf` |
 | **mfax FAX送信** | 送付書Markdownと添付PDFを結合し、メールFAXとして送信します。 | `.pdf`, `.md` |
 
@@ -63,6 +63,7 @@ Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%B
 - 短いメモや要約はチャット欄へ直接記載
 - OCR結果ファイルはそのままドロップ
 - 複数の資料をまとめて渡す場合は **AIアーカイブ** ツールでZIP化してから添付（主にChatGPT向け）
+- AIアーカイブZIPでは、チャットAIにまず `START_HERE.md` と `CASE_INDEX.md` を読むよう指示してください
 
 ### 典型的なワークフロー
 
@@ -71,7 +72,7 @@ Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%B
     ↓ mimi-ocr
 証拠のMarkdown化
     ↓ AIアーカイブ（大量資料をChatGPTへ渡す場合）
-チャットAIに instructions/*.md + 事実関係を添えて起案を依頼
+チャットAIにAIアーカイブZIPを添付し、START_HERE.md から読ませて起案を依頼
     ↓
 書面の Markdown 原案
     ↓ 番号振直（必要に応じて）
