@@ -6,11 +6,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const dropText = document.querySelector('.drop-text') as HTMLElement;
     const dropSubtext = document.querySelector('.drop-subtext') as HTMLElement;
     const optionsBar = document.getElementById('optionsBar') as HTMLElement;
+    const pdfEngineOption = document.getElementById('pdfEngineOption') as HTMLElement;
+    const optPdfEngine = document.getElementById('optPdfEngine') as HTMLSelectElement;
     const optNoBlankPages = document.getElementById('optNoBlankPages') as HTMLInputElement;
     const optNoDither = document.getElementById('optNoDither') as HTMLInputElement;
 
     let currentScript: ScriptKey = 'pdf';
     type ToolCardKey = ScriptKey | 'drafting' | 'settings';
+    type GuiState = {
+        currentScript?: ScriptKey;
+        pdfEngine?: string;
+        noBlankPages?: boolean;
+        noDither?: boolean;
+    };
+
+    const GUI_STATE_KEY = 'houhi.gui.state.v1';
+    const DEFAULT_PDF_ENGINE = 'chrome';
 
     const toolDescriptions: Record<ToolCardKey, string> = {
         pdf: 'Markdown/HTMLをPDFへ変換',
@@ -31,14 +42,47 @@ document.addEventListener('DOMContentLoaded', () => {
         return (element.dataset.script as ScriptKey | undefined) || null;
     };
 
+    const isScriptKey = (value: any): value is ScriptKey => {
+        return value === 'pdf' || value === 'ai_archive' || value === 'stamp' || value === 'fax_send';
+    };
+
+    const isPdfEngine = (value: any) => value === 'chrome' || value === 'copper';
+
+    const loadGuiState = (): GuiState => {
+        try {
+            const raw = localStorage.getItem(GUI_STATE_KEY);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (_err) {
+            return {};
+        }
+    };
+
+    const saveGuiState = () => {
+        const state: GuiState = {
+            currentScript,
+            pdfEngine: optPdfEngine.value || DEFAULT_PDF_ENGINE,
+            noBlankPages: optNoBlankPages.checked,
+            noDither: optNoDither.checked,
+        };
+        localStorage.setItem(GUI_STATE_KEY, JSON.stringify(state));
+    };
+
+    const savedState = loadGuiState();
+
     const updateOptionsVisibility = (scriptKey: ScriptKey) => {
-        optionsBar.style.display = (scriptKey === 'stamp' || scriptKey === 'fax_send') ? '' : 'none';
+        optionsBar.style.display = (scriptKey === 'pdf' || scriptKey === 'stamp' || scriptKey === 'fax_send') ? '' : 'none';
+        pdfEngineOption.style.display = scriptKey === 'pdf' ? '' : 'none';
         optNoBlankPages.parentElement!.style.display = scriptKey === 'stamp' ? '' : 'none';
         optNoDither.parentElement!.style.display = scriptKey === 'fax_send' ? '' : 'none';
     };
 
     const getScriptOptions = (): string[] => {
         const opts: string[] = [];
+        if (currentScript === 'pdf') {
+            opts.push(`--pdf-engine=${optPdfEngine.value || DEFAULT_PDF_ENGINE}`);
+        }
         if (currentScript === 'stamp' && optNoBlankPages.checked) {
             opts.push('--no-blank-pages');
         }
@@ -69,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
         card.classList.add('active');
         currentScript = script;
         updateOptionsVisibility(script);
+        saveGuiState();
     };
 
     const openSettings = async () => {
@@ -192,7 +237,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    if (isPdfEngine(savedState.pdfEngine)) {
+        optPdfEngine.value = savedState.pdfEngine;
+    } else {
+        optPdfEngine.value = DEFAULT_PDF_ENGINE;
+    }
+    optNoBlankPages.checked = Boolean(savedState.noBlankPages);
+    optNoDither.checked = Boolean(savedState.noDither);
+
+    const restoredScript = isScriptKey(savedState.currentScript) ? savedState.currentScript : currentScript;
+    const restoredCard = Array.from(toolCards).find(card => getScriptKey(card) === restoredScript);
+    if (restoredCard) {
+        selectToolCard(restoredCard, restoredScript);
+    } else {
+        updateOptionsVisibility(currentScript);
+        saveGuiState();
+    }
     resetDropMessage();
+
+    optPdfEngine.addEventListener('change', saveGuiState);
+    optNoBlankPages.addEventListener('change', saveGuiState);
+    optNoDither.addEventListener('change', saveGuiState);
+    window.addEventListener('beforeunload', saveGuiState);
 
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -225,6 +291,19 @@ document.addEventListener('DOMContentLoaded', () => {
             await executeCurrentScript(files);
         };
         input.click();
+    });
+
+    window.electronAPI.getConfigForEditor().then(result => {
+        if (isPdfEngine(savedState.pdfEngine)) {
+            return;
+        }
+        const engine = String(result.config?.pdf?.engine || '').toLowerCase();
+        if (engine === 'chrome' || engine === 'copper') {
+            optPdfEngine.value = engine;
+            saveGuiState();
+        }
+    }).catch(() => {
+        // 設定が読めない場合は画面上の既定値を使います。
     });
 
     window.electronAPI.onLog((msg) => {

@@ -14,7 +14,7 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 
 | ツール名 | 機能概要 | 対応形式 |
 | :--- | :--- | :--- |
-| **PDF変換** | Markdownを裁判所提出用PDF（CSS組版）に変換します。 | `.md`, `.html` |
+| **PDF変換** | Markdownを裁判所提出用PDF（CSS組版）に変換します。Copper PDF / Chrome を選択できます。 | `.md`, `.html` |
 | **起案** | ChatGPTに渡す `houhi-drafting-kit.zip` の場所を開き、書面起案の使い方を案内します。 | `.zip` |
 | **AIアーカイブ** | フォルダ内の `.md` / `.txt` を `case/` に収録し、`START_HERE.md`・目録・manifest付きのZIPを作成します（主にChatGPT向け）。 | フォルダ |
 | **号証スタンプ** | 証拠PDFの右上に「甲第〇号証」などの証拠番号を赤文字で追記します。 | `.pdf` |
@@ -92,7 +92,8 @@ Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%B
 ### 必要環境
 
 - Node.js v16 以上
-- インターネット接続（Copper PDF 公開サーバーを使用）
+- インターネット接続（Copper PDF 公開サーバーを使用する場合）
+- Chrome PDF 生成を使う場合は Google Chrome または Chromium
 
 ### インストール
 
@@ -120,6 +121,10 @@ GUI のツール一覧にある設定ボタンから `config.json` を編集で�
 
 ```json
 {
+    "pdf": {
+        "engine": "chrome",
+        "chromePath": ""
+    },
     "copper": {
         "serverUri": "ctip://cti.li/",
         "user": "user",
@@ -130,6 +135,8 @@ GUI のツール一覧にある設定ボタンから `config.json` を編集で�
 
 OCR 用の AI / `ndlocr-lite` 設定は `houhi` ではなく `mimi-ocr` 側の `config.json` で管理します。
 FAX送信を使う場合は、上記に加えて `mail` と `mfax` の設定も必要です。
+
+PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine=copper` または GUI の「PDFエンジン」から Copper PDF に切り替えられます。Chrome を自動検出できない場合は `pdf.chromePath` に実行ファイルのパスを設定してください。
 
 ### 開発者向けコマンド
 
@@ -195,6 +202,6 @@ npm run build:launcher
 
 - **言語**: Node.js / TypeScript
 - **UI**: Electron
-- **PDF生成**: Copper PDF (CTI)
+- **PDF生成**: Copper PDF (CTI) / Chrome headless
 - **OCR**: `mimi-ocr` を別プロジェクトとして利用
 - **マークアップ**: HTML5 + CSS 2.1

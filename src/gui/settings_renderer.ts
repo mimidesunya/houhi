@@ -60,12 +60,16 @@ function parseProperties() {
 }
 
 function fillForm(config: ConfigMap) {
+    const pdf = asObject(config.pdf);
     const copper = asObject(config.copper);
     const copperProperties = asObject(copper.properties);
     const mail = asObject(config.mail);
     const smtp = asObject(mail.smtp);
     const imap = asObject(mail.imap);
     const mfax = asObject(config.mfax);
+
+    setValue('pdfEngine', pdf.engine || 'copper');
+    setValue('chromePath', pdf.chromePath);
 
     setValue('copperServerUri', copper.serverUri);
     setValue('copperUser', copper.user);
@@ -92,11 +96,15 @@ function fillForm(config: ConfigMap) {
 
 function buildConfigFromForm() {
     const config = { ...loadedConfig };
+    const pdf = { ...asObject(config.pdf) };
     const copper = { ...asObject(config.copper) };
     const mail = { ...asObject(config.mail) };
     const smtp = { ...asObject(mail.smtp) };
     const imap = { ...asObject(mail.imap) };
     const mfax = { ...asObject(config.mfax) };
+
+    pdf.engine = input('pdfEngine').value.trim() || 'copper';
+    pdf.chromePath = input('chromePath').value.trim();
 
     copper.serverUri = input('copperServerUri').value.trim();
     copper.user = input('copperUser').value.trim();
@@ -122,6 +130,7 @@ function buildConfigFromForm() {
 
     mail.smtp = smtp;
     mail.imap = imap;
+    config.pdf = pdf;
     config.copper = copper;
     config.mail = mail;
     config.mfax = mfax;

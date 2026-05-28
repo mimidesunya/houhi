@@ -1,4 +1,8 @@
 {
+    "pdf": {
+        "engine": "chrome",
+        "chromePath": ""
+    },
     "copper": {
         "serverUri": "ctip://cti.li/",
         "user": "user",

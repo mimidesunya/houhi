@@ -86,6 +86,9 @@ test('convertHtmlToPdf: uses at least three passes when generating toc', async (
 
     const calls = { properties: [] };
     const { converter, restore } = loadPdfConverterWithMocks({
+        pdf: {
+            engine: 'copper'
+        },
         copper: {
             properties: {
                 'processing.pass-count': '2'
@@ -111,6 +114,9 @@ test('convertHtmlToPdf: preserves configured pass count above three for toc', as
 
     const calls = { properties: [] };
     const { converter, restore } = loadPdfConverterWithMocks({
+        pdf: {
+            engine: 'copper'
+        },
         copper: {
             properties: {
                 'processing.pass-count': '4'

@@ -17,15 +17,18 @@
  * 補足:
  * - 変換後は生成した PDF を既定アプリまたはブラウザで開こうとします。
  * - CSS やテンプレートは `src/base/` を基準に参照します。
+ * - PDF 生成エンジンは Copper PDF または Chrome を選択できます（既定は Chrome）。
  *
  * 使い方:
- *   node src/convert_to_pdf.js <入力ファイルパス(.html または .md)>
+ *   node src/convert_to_pdf.js [--pdf-engine=copper|chrome] <入力ファイルパス(.html または .md)>
+ *   node src/convert_to_pdf.js --chrome <入力ファイルパス>
+ *   node src/convert_to_pdf.js --copper <入力ファイルパス>
  */
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const clipboardy = require('clipboardy');
-const { convertHtmlToPdf } = require('./lib/pdf_converter');
+const { PDF_ENGINE_CHROME, convertHtmlToPdf, resolvePdfEngine } = require('./lib/pdf_converter');
 const { renderPreTags } = require('./lib/markdown_renderer');
 
 // 設定
@@ -37,13 +40,84 @@ const DEFAULT_TEMPLATE_DIR = path.join(BASE_DIR, 'base');
 const DEFAULT_OUTPUT_DIR = path.join(PROJECT_ROOT, 'output');
 const DEFAULT_MAIN_HTML = 'base.html';
 
-function wrapMarkdownInHtml(markdownContent, title = "裁判文書") {
+const CHROME_PAGE_NUMBER_STYLE = `<style data-houhi-page-number-style="chrome">
+html[data-houhi-pdf-engine="chrome"],
+html[data-houhi-pdf-engine="chrome"] body,
+html[data-houhi-pdf-engine="chrome"] body * {
+    font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
+    font-size: 12pt;
+}
+
+body::before {
+    content: none !important;
+    display: none !important;
+}
+
+@page {
+    counter-increment: none;
+
+    @bottom-center {
+        content: "- " counter(page) " -";
+        font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
+        font-size: 12pt;
+        color: #000;
+    }
+}
+</style>`;
+
+function getPdfEngineHeadMarkup(engine) {
+    if (engine === PDF_ENGINE_CHROME) {
+        return `\n    ${CHROME_PAGE_NUMBER_STYLE.replace(/\n/g, '\n    ')}`;
+    }
+    return '';
+}
+
+function applyPdfEngineHtml(htmlContent, engine) {
+    const attrs = `data-houhi-pdf-engine="${engine}"`;
+    let nextContent = htmlContent;
+
+    if (/<html\b[^>]*>/i.test(nextContent)) {
+        nextContent = nextContent.replace(/<html\b([^>]*)>/i, (match, attrText) => {
+            if (/\bdata-houhi-pdf-engine\s*=/.test(attrText)) {
+                return match.replace(/\bdata-houhi-pdf-engine\s*=\s*(["']).*?\1/i, attrs);
+            }
+            return `<html${attrText} ${attrs}>`;
+        });
+    } else {
+        nextContent = `<html lang="ja" ${attrs}>${nextContent}</html>`;
+    }
+
+    if (engine !== PDF_ENGINE_CHROME || nextContent.includes('data-houhi-page-number-style="chrome"')) {
+        return nextContent;
+    }
+
+    if (/<\/head>/i.test(nextContent)) {
+        return nextContent.replace(/<\/head>/i, `${getPdfEngineHeadMarkup(engine)}\n</head>`);
+    }
+
+    return nextContent.replace(/<html\b[^>]*>/i, match => `${match}\n<head>${getPdfEngineHeadMarkup(engine)}\n</head>`);
+}
+
+function writeEngineHtmlCopy(htmlPath, engine, outputDir) {
+    const htmlContent = fs.readFileSync(htmlPath, 'utf-8');
+    const engineHtml = applyPdfEngineHtml(htmlContent, engine);
+    if (engineHtml === htmlContent) {
+        return null;
+    }
+
+    const tempPath = path.join(outputDir, `temp_${engine}_${Date.now()}_${path.basename(htmlPath)}`);
+    fs.writeFileSync(tempPath, engineHtml, 'utf-8');
+    return tempPath;
+}
+
+function wrapMarkdownInHtml(markdownContent, title = "裁判文書", engine = "copper") {
     return `<!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-houhi-pdf-engine="${engine}">
 <head>
     <meta charset="UTF-8">
     <title>${title}</title>
     <link rel="stylesheet" href="style.css">
+    ${getPdfEngineHeadMarkup(engine)}
     <script src="court_markdown.js"></script>
 </head>
 <body>
@@ -56,7 +130,64 @@ ${markdownContent}
 </html>`;
 }
 
-async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput) {
+function printUsage() {
+    console.log('使い方: node src/convert_to_pdf.js [--pdf-engine=copper|chrome] <入力ファイルパス(.html または .md)>');
+    console.log('       node src/convert_to_pdf.js --chrome <入力ファイルパス>');
+    console.log('       node src/convert_to_pdf.js --copper <入力ファイルパス>');
+}
+
+function parseArgs(args) {
+    const files = [];
+    const pdfOptions: Record<string, string> = {};
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--help' || arg === '-h') {
+            return { files, pdfOptions, help: true };
+        }
+        if (arg === '--chrome') {
+            pdfOptions.engine = 'chrome';
+            continue;
+        }
+        if (arg === '--copper') {
+            pdfOptions.engine = 'copper';
+            continue;
+        }
+        if (arg === '--pdf-engine' || arg === '--engine') {
+            const value = args[++i];
+            if (!value) {
+                throw new Error(`${arg} には copper または chrome を指定してください。`);
+            }
+            pdfOptions.engine = value;
+            continue;
+        }
+        if (arg.startsWith('--pdf-engine=')) {
+            pdfOptions.engine = arg.slice('--pdf-engine='.length);
+            continue;
+        }
+        if (arg.startsWith('--engine=')) {
+            pdfOptions.engine = arg.slice('--engine='.length);
+            continue;
+        }
+        if (arg.startsWith('--chrome-path=')) {
+            pdfOptions.chromePath = arg.slice('--chrome-path='.length);
+            continue;
+        }
+        if (arg === '--chrome-path') {
+            const value = args[++i];
+            if (!value) {
+                throw new Error('--chrome-path には Chrome/Chromium の実行ファイルパスを指定してください。');
+            }
+            pdfOptions.chromePath = value;
+            continue;
+        }
+        files.push(arg);
+    }
+
+    return { files, pdfOptions, help: false };
+}
+
+async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput, pdfOptions = {}) {
     // 出力ディレクトリの準備
     if (!fs.existsSync(DEFAULT_OUTPUT_DIR)) {
         fs.mkdirSync(DEFAULT_OUTPUT_DIR, { recursive: true });
@@ -66,6 +197,7 @@ async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput) {
     let resourceDir = DEFAULT_TEMPLATE_DIR;
     let outputPdfPath = "";
     let filesToDelete = [];
+    const pdfEngine = resolvePdfEngine(pdfOptions);
 
     if (isHtmlInput) {
         try {
@@ -89,10 +221,17 @@ async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput) {
         const baseName = path.basename(inputPath, path.extname(inputPath));
         const outputDir = (path.dirname(inputPath) === DEFAULT_TEMPLATE_DIR) ? DEFAULT_OUTPUT_DIR : path.dirname(inputPath);
         outputPdfPath = path.join(outputDir, `${baseName}.pdf`);
+
+        const engineHtmlPath = writeEngineHtmlCopy(htmlToConvert, pdfEngine, DEFAULT_OUTPUT_DIR);
+        if (engineHtmlPath) {
+            htmlToConvert = engineHtmlPath;
+            filesToDelete.push(engineHtmlPath);
+            console.log(`PDFエンジン用HTMLを生成しました (${pdfEngine}): ${engineHtmlPath}`);
+        }
     } else if (isMarkdownInput) {
         const titleMatch = inputText.match(/^#\s+(.*)$/m);
         const title = titleMatch ? titleMatch[1].trim() : "裁判文書";
-        let htmlContent = wrapMarkdownInHtml(inputText, title);
+        let htmlContent = wrapMarkdownInHtml(inputText, title, pdfEngine);
 
         const safeTitle = title.replace(/[\\/*?:"<>|]/g, "");
         const now = new Date();
@@ -112,7 +251,7 @@ async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput) {
     }
 
     // PDF変換
-    await convertHtmlToPdf(htmlToConvert, outputPdfPath, resourceDir, DEFAULT_TEMPLATE_DIR);
+    await convertHtmlToPdf(htmlToConvert, outputPdfPath, resourceDir, DEFAULT_TEMPLATE_DIR, pdfOptions);
 
     // 一時ファイルの削除
     for (const file of filesToDelete) {
@@ -138,7 +277,23 @@ async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput) {
 }
 
 async function main() {
-    const args = process.argv.slice(2);
+    let parsed;
+    try {
+        parsed = parseArgs(process.argv.slice(2));
+    } catch (err) {
+        console.error(`エラー: ${err instanceof Error ? err.message : err}`);
+        printUsage();
+        process.exitCode = 1;
+        return;
+    }
+
+    if (parsed.help) {
+        printUsage();
+        return;
+    }
+
+    const args = parsed.files;
+    const pdfOptions = parsed.pdfOptions;
 
     if (args.length > 0) {
         for (const arg of args) {
@@ -155,10 +310,10 @@ async function main() {
             
             const ext = path.extname(inputPath).toLowerCase();
             if (ext === '.html') {
-                await processFile(inputPath, "", true, false);
+                await processFile(inputPath, "", true, false, pdfOptions);
             } else if (ext === '.md') {
                 const inputText = fs.readFileSync(inputPath, 'utf-8');
-                await processFile(inputPath, inputText, false, true);
+                await processFile(inputPath, inputText, false, true, pdfOptions);
             } else {
                 console.error(`エラー: .html または .md ファイルを指定してください: ${inputPath}`);
             }
@@ -181,23 +336,31 @@ async function main() {
                     }
                     const tempHtmlPath = path.join(DEFAULT_OUTPUT_DIR, "temp_clipboard_input.html");
                     fs.writeFileSync(tempHtmlPath, clipboardContent, 'utf-8');
-                    await processFile(tempHtmlPath, "", true, false);
+                    await processFile(tempHtmlPath, "", true, false, pdfOptions);
                 } else {
                     console.log("クリップボードの内容をMarkdownとして処理します。");
-                    await processFile("", clipboardContent, false, true);
+                    await processFile("", clipboardContent, false, true, pdfOptions);
                 }
             } else {
                 const defaultHtmlPath = path.join(DEFAULT_TEMPLATE_DIR, DEFAULT_MAIN_HTML);
                 console.log("クリップボードが空です。デフォルトテンプレートを使用します。");
-                await processFile(defaultHtmlPath, "", true, false);
+                await processFile(defaultHtmlPath, "", true, false, pdfOptions);
             }
         } catch (err) {
             console.error(`クリップボード取得エラー: ${err}`);
             const defaultHtmlPath = path.join(DEFAULT_TEMPLATE_DIR, DEFAULT_MAIN_HTML);
-            await processFile(defaultHtmlPath, "", true, false);
+            await processFile(defaultHtmlPath, "", true, false, pdfOptions);
         }
     }
     console.log("\nすべての処理が完了しました。");
 }
 
-main();
+if (require.main === module) {
+    main();
+}
+
+module.exports = {
+    parseArgs,
+    processFile,
+    wrapMarkdownInHtml
+};

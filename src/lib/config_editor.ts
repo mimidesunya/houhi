@@ -4,6 +4,10 @@ import * as path from 'path';
 type AnyConfig = Record<string, any>;
 
 const DEFAULT_CONFIG: AnyConfig = {
+    pdf: {
+        engine: 'chrome',
+        chromePath: '',
+    },
     copper: {
         serverUri: 'ctip://cti.li/',
         user: 'user',

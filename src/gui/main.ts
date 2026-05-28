@@ -237,8 +237,9 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, options }
     });
 
     // Log command to console window
+    const quotedOptions = extraArgs.map(arg => `"${arg}"`).join(' ');
     const quotedPaths = filePaths.map(p => `"${p}"`).join(' ');
-    const command = `node "${scriptPath}" ${quotedPaths}`.trim();
+    const command = `node "${scriptPath}" ${quotedOptions} ${quotedPaths}`.trim();
     consoleWin.webContents.send('console-command', `実行コマンド: node ${path.basename(scriptPath)} ...`);
     consoleWin.webContents.send('console-info', `作業ディレクトリ: ${path.resolve(__dirname, '../../')}`);
 
