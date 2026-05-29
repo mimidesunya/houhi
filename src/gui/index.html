@@ -266,6 +266,142 @@
             transition: width 0.3s ease;
             box-shadow: 0 0 10px var(--accent-color);
         }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 20;
+            padding: 18px;
+        }
+
+        .modal-backdrop.visible {
+            display: flex;
+        }
+
+        .order-dialog {
+            width: min(420px, 100%);
+            max-height: calc(100vh - 56px);
+            background: #171d24;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 8px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .order-dialog header {
+            padding: 14px 16px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .order-dialog h2 {
+            margin: 0;
+            color: var(--accent-color);
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .order-list {
+            margin: 0;
+            padding: 10px 12px;
+            list-style: none;
+            overflow-y: auto;
+        }
+
+        .order-item {
+            display: grid;
+            grid-template-columns: 1.4em 2em 1fr auto;
+            align-items: center;
+            gap: 8px;
+            min-height: 42px;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .order-item.dragging {
+            opacity: 0.55;
+        }
+
+        .order-item.drag-target {
+            background: rgba(100, 181, 246, 0.12);
+        }
+
+        .order-grip {
+            color: var(--secondary-text-color);
+            cursor: grab;
+            text-align: center;
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .order-item:active .order-grip {
+            cursor: grabbing;
+        }
+
+        .order-index {
+            color: var(--secondary-text-color);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .order-name {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.86rem;
+        }
+
+        .order-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        .order-actions button,
+        .modal-actions button {
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 6px;
+            background: #202936;
+            color: var(--text-color);
+            cursor: pointer;
+        }
+
+        .order-actions button {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .order-actions button:disabled {
+            opacity: 0.35;
+            cursor: default;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            padding: 12px 16px 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .modal-actions button {
+            padding: 8px 14px;
+            font-size: 0.86rem;
+        }
+
+        .modal-actions .primary {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #101820;
+            font-weight: 600;
+        }
     </style>
 </head>
 
@@ -334,6 +470,19 @@
 
         <div class="status-bar">
             <div class="progress-bar" id="progressBar"></div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop" id="faxOrderModal" aria-hidden="true">
+        <div class="order-dialog" role="dialog" aria-modal="true" aria-labelledby="faxOrderTitle">
+            <header>
+                <h2 id="faxOrderTitle">FAX送信PDFの順序</h2>
+            </header>
+            <ol class="order-list" id="faxOrderList"></ol>
+            <div class="modal-actions">
+                <button type="button" id="faxOrderCancel">キャンセル</button>
+                <button type="button" class="primary" id="faxOrderConfirm">プレビューに進む</button>
+            </div>
         </div>
     </div>
 

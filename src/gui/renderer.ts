@@ -10,6 +10,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const optPdfEngine = document.getElementById('optPdfEngine') as HTMLSelectElement;
     const optNoBlankPages = document.getElementById('optNoBlankPages') as HTMLInputElement;
     const optNoDither = document.getElementById('optNoDither') as HTMLInputElement;
+    const faxOrderModal = document.getElementById('faxOrderModal') as HTMLElement;
+    const faxOrderList = document.getElementById('faxOrderList') as HTMLOListElement;
+    const faxOrderCancel = document.getElementById('faxOrderCancel') as HTMLButtonElement;
+    const faxOrderConfirm = document.getElementById('faxOrderConfirm') as HTMLButtonElement;
 
     let currentScript: ScriptKey = 'pdf';
     type ToolCardKey = ScriptKey | 'drafting' | 'settings';
@@ -160,17 +164,173 @@ document.addEventListener('DOMContentLoaded', () => {
         return Array.from(event.dataTransfer?.files || []).map(f => window.electronAPI.getPathForFile(f));
     };
 
+    const isPdfPath = (filePath: string) => /\.pdf$/i.test(filePath);
+    const getBasename = (filePath: string) => {
+        const parts = filePath.split(/[\\/]/);
+        return parts[parts.length - 1] || filePath;
+    };
+
+    const chooseFaxPdfOrder = (pdfPaths: string[]): Promise<string[] | null> => {
+        let ordered = [...pdfPaths];
+
+        return new Promise(resolve => {
+            let draggedIndex = -1;
+
+            const cleanup = () => {
+                faxOrderModal.classList.remove('visible');
+                faxOrderModal.setAttribute('aria-hidden', 'true');
+                faxOrderCancel.onclick = null;
+                faxOrderConfirm.onclick = null;
+            };
+
+            const finish = (result: string[] | null) => {
+                cleanup();
+                resolve(result);
+            };
+
+            const moveItem = (index: number, delta: number) => {
+                const nextIndex = index + delta;
+                if (nextIndex < 0 || nextIndex >= ordered.length) return;
+                const [item] = ordered.splice(index, 1);
+                ordered.splice(nextIndex, 0, item);
+                renderOrder();
+            };
+
+            const renderOrder = () => {
+                faxOrderList.innerHTML = '';
+                ordered.forEach((filePath, index) => {
+                const item = document.createElement('li');
+                item.className = 'order-item';
+                    item.draggable = true;
+                    item.dataset.index = String(index);
+
+                    const grip = document.createElement('span');
+                    grip.className = 'order-grip';
+                    grip.innerText = '↕';
+                    grip.title = 'ドラッグして順序変更';
+
+                    const number = document.createElement('span');
+                    number.className = 'order-index';
+                    number.innerText = String(index + 1);
+
+                    const name = document.createElement('span');
+                    name.className = 'order-name';
+                    name.innerText = getBasename(filePath);
+                    name.title = filePath;
+
+                    const actions = document.createElement('span');
+                    actions.className = 'order-actions';
+
+                    const up = document.createElement('button');
+                    up.type = 'button';
+                    up.innerText = '↑';
+                    up.title = '上へ';
+                    up.disabled = index === 0;
+                    up.onclick = () => moveItem(index, -1);
+
+                    const down = document.createElement('button');
+                    down.type = 'button';
+                    down.innerText = '↓';
+                    down.title = '下へ';
+                    down.disabled = index === ordered.length - 1;
+                    down.onclick = () => moveItem(index, 1);
+
+                    actions.append(up, down);
+                    item.addEventListener('dragstart', (event) => {
+                        draggedIndex = index;
+                        item.classList.add('dragging');
+                        event.dataTransfer?.setData('text/plain', String(index));
+                        if (event.dataTransfer) {
+                            event.dataTransfer.effectAllowed = 'move';
+                        }
+                    });
+
+                    item.addEventListener('dragend', () => {
+                        draggedIndex = -1;
+                        item.classList.remove('dragging');
+                        faxOrderList.querySelectorAll('.drag-target').forEach(el => el.classList.remove('drag-target'));
+                    });
+
+                    item.addEventListener('dragover', (event) => {
+                        event.preventDefault();
+                        if (draggedIndex === -1 || draggedIndex === index) return;
+                        item.classList.add('drag-target');
+                        if (event.dataTransfer) {
+                            event.dataTransfer.dropEffect = 'move';
+                        }
+                    });
+
+                    item.addEventListener('dragleave', () => {
+                        item.classList.remove('drag-target');
+                    });
+
+                    item.addEventListener('drop', (event) => {
+                        event.preventDefault();
+                        item.classList.remove('drag-target');
+                        if (draggedIndex === -1 || draggedIndex === index) return;
+
+                        const rect = item.getBoundingClientRect();
+                        const placeAfter = event.clientY > rect.top + rect.height / 2;
+                        let insertIndex = placeAfter ? index + 1 : index;
+                        if (draggedIndex < insertIndex) {
+                            insertIndex -= 1;
+                        }
+                        const [draggedItem] = ordered.splice(draggedIndex, 1);
+                        ordered.splice(insertIndex, 0, draggedItem);
+                        draggedIndex = -1;
+                        renderOrder();
+                    });
+
+                    item.append(grip, number, name, actions);
+                    faxOrderList.appendChild(item);
+                });
+            };
+
+            faxOrderCancel.onclick = () => finish(null);
+            faxOrderConfirm.onclick = () => finish(ordered);
+            faxOrderModal.classList.add('visible');
+            faxOrderModal.setAttribute('aria-hidden', 'false');
+            renderOrder();
+            faxOrderConfirm.focus();
+        });
+    };
+
+    const prepareFaxFileOrder = async (filePaths: string[]): Promise<string[] | null> => {
+        if (currentScript !== 'fax_send') {
+            return filePaths;
+        }
+
+        const pdfPaths = filePaths.filter(isPdfPath);
+        if (pdfPaths.length <= 1) {
+            return filePaths;
+        }
+
+        const orderedPdfs = await chooseFaxPdfOrder(pdfPaths);
+        if (!orderedPdfs) {
+            return null;
+        }
+
+        const nonPdfPaths = filePaths.filter(filePath => !isPdfPath(filePath));
+        return [...nonPdfPaths, ...orderedPdfs];
+    };
+
     const executeCurrentScript = async (filePaths: string[]) => {
         if (filePaths.length === 0) {
             return;
         }
 
+        const orderedFilePaths = await prepareFaxFileOrder(filePaths);
+        if (!orderedFilePaths) {
+            log('FAX送信をキャンセルしました。');
+            return;
+        }
+
         const options = getScriptOptions();
-        log(`${filePaths.length} 個のファイルを処理中 (${currentScript})...`);
+        log(`${orderedFilePaths.length} 個のファイルを処理中 (${currentScript})...`);
         setLoading(true);
 
         try {
-            const result = await window.electronAPI.executeScript(currentScript, filePaths, options);
+            const result = await window.electronAPI.executeScript(currentScript, orderedFilePaths, options);
             if (result.success) {
                 log('処理が正常に完了しました。', 'success');
             } else {

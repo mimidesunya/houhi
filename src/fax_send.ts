@@ -6,8 +6,8 @@
  * 送信後は IMAP 上の送信済みフォルダへ保存します。
  *
  * 入力:
- * - `送付書.md + 添付PDF`
- * - または `添付PDF` のみ（FAX番号は手入力）
+ * - `送付書.md + 添付PDF...`
+ * - または `添付PDF...` のみ（FAX番号は手入力）
  *
  * 出力:
  * - 送付書 PDF、結合 PDF、二値化 PDF を一時ディレクトリに作成して送信に使用します。
@@ -18,12 +18,12 @@
  * - `config.json` の `mfax`
  *
  * 使い方:
- *   node src/fax_send.js <YYYY-MM-DD-送付書.md> <添付PDF>
- *   node src/fax_send.js <添付PDF>              ← 送付書なし（FAX番号を手入力）
+ *   node src/fax_send.js <YYYY-MM-DD-送付書.md> <添付PDF...>
+ *   node src/fax_send.js <添付PDF...>              ← 送付書なし（FAX番号を手入力）
  *
  * 動作:
  *   1. 送付書.mdをPDF化（送付書がある場合）
- *   2. 送付書PDF + 添付PDFを結合（送付書がある場合）
+ *   2. 送付書PDF + 添付PDF全件を結合（送付書がある場合）
  *   3. 送付書.mdからFAX番号を抽出 (FAX XXXXXXXXXX)、または手入力
  *   4. {FAX番号}@mfax.jp 宛にメール送信（本文空、PDFを添付）
  *   5. 送信済みメールをIMAPの送信済みフォルダへ保存
@@ -105,6 +105,46 @@ async function mergePdfs(pdfPaths, outputPath) {
     }
     const mergedBytes = await merged.save();
     fs.writeFileSync(outputPath, mergedBytes);
+}
+
+function createFaxAttachmentFilename(pdfPaths) {
+    if (pdfPaths.length === 1) {
+        return path.basename(pdfPaths[0]);
+    }
+
+    const firstBase = path.basename(pdfPaths[0], path.extname(pdfPaths[0]));
+    return `${firstBase}_ほか${pdfPaths.length - 1}件.pdf`;
+}
+
+function classifyFaxInputFiles(fileArgs) {
+    let mdFile = null;
+    const attachPdfs = [];
+
+    for (const arg of fileArgs) {
+        const abs = path.resolve(arg);
+        if (!fs.existsSync(abs)) {
+            throw new Error(`ファイルが見つかりません: ${abs}`);
+        }
+
+        const ext = path.extname(abs).toLowerCase();
+        if (ext === '.md') {
+            mdFile = abs;
+        } else if (ext === '.pdf') {
+            attachPdfs.push(abs);
+        }
+    }
+
+    return { mdFile, attachPdfs };
+}
+
+function findPagedMarkdownForPdfs(pdfPaths) {
+    for (const pdfPath of pdfPaths) {
+        const candidate = pdfPath.replace(/\.pdf$/i, '') + '_paged.md';
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
+    }
+    return null;
 }
 
 // ─── FAX二値化 ───────────────────────────────────────────────
@@ -503,9 +543,9 @@ async function main() {
     if (args.length < 1) {
         console.log('-------------------------------------------------------');
         console.log(' mfax FAX送信ツール');
-        console.log(' 使い方: node fax_send.js <送付書.md> <添付PDF>');
-        console.log('         node fax_send.js <添付PDF>  (送付書なし)');
-        console.log(' ドロップ: YYYY-MM-DD-送付書.md と 送付するPDF をペアでドロップ');
+        console.log(' 使い方: node fax_send.js <送付書.md> <添付PDF...>');
+        console.log('         node fax_send.js <添付PDF...>  (送付書なし)');
+        console.log(' ドロップ: YYYY-MM-DD-送付書.md と 送付するPDFをドロップ');
         console.log('           または PDF のみドロップ（FAX番号を手入力）');
         console.log('-------------------------------------------------------');
         return;
@@ -523,36 +563,26 @@ async function main() {
     }
 
     // ─ ファイル分類 ─
-    let mdFile = null;
-    let attachPdf = null;
+    const { mdFile, attachPdfs } = classifyFaxInputFiles(fileArgs);
 
-    for (const arg of fileArgs) {
-        const abs = path.resolve(arg);
-        if (!fs.existsSync(abs)) {
-            console.error(`[エラー] ファイルが見つかりません: ${abs}`);
-            return;
-        }
-        const ext = path.extname(abs).toLowerCase();
-        if (ext === '.md') {
-            mdFile = abs;
-        } else if (ext === '.pdf') {
-            attachPdf = abs;
-        }
-    }
-
-    if (!attachPdf) {
+    if (attachPdfs.length === 0) {
         console.error('[エラー] 送信する PDF ファイルが見つかりません。');
         return;
+    }
+    if (attachPdfs.length > 1) {
+        console.log(`[FAX] PDF ${attachPdfs.length} 件を指定順に結合します。`);
+        attachPdfs.forEach((pdfPath, i) => {
+            console.log(`  ${i + 1}. ${path.basename(pdfPath)}`);
+        });
     }
 
     // ─ _paged.md 自動検出 ─
     // PDFのみドロップ時: {basename}_paged.md があればFAX番号抽出に使用
     let pagedMdFile = null;
     if (!mdFile) {
-        const candidate = attachPdf.replace(/\.pdf$/i, '') + '_paged.md';
-        if (fs.existsSync(candidate)) {
-            pagedMdFile = candidate;
-            console.log(`[FAX] _paged.md を検出: ${path.basename(candidate)}`);
+        pagedMdFile = findPagedMarkdownForPdfs(attachPdfs);
+        if (pagedMdFile) {
+            console.log(`[FAX] _paged.md を検出: ${path.basename(pagedMdFile)}`);
         }
     }
 
@@ -616,12 +646,17 @@ async function main() {
                 throw new Error('送付書PDFの生成に失敗しました。');
             }
 
-            // ─ PDF結合（送付書 + 添付PDF）─
+            // ─ PDF結合（送付書 + 添付PDF全件）─
             console.log(`[FAX] PDFを結合中...`);
-            await mergePdfs([coverPdfPath, attachPdf], mergedPdfPath);
+            await mergePdfs([coverPdfPath, ...attachPdfs], mergedPdfPath);
         } else {
-            // 送付書なし: 添付PDFをそのまま使用
-            fs.copyFileSync(attachPdf, mergedPdfPath);
+            // 送付書なし: PDF全件を指定順に使用
+            if (attachPdfs.length === 1) {
+                fs.copyFileSync(attachPdfs[0], mergedPdfPath);
+            } else {
+                console.log(`[FAX] PDFを結合中...`);
+                await mergePdfs(attachPdfs, mergedPdfPath);
+            }
         }
 
         // ─ 二値化 ─
@@ -646,7 +681,7 @@ async function main() {
         await buildFaxPdf(previewPaths, pageDims, faxPdfPath);
 
         const mergedPdfBytes = fs.readFileSync(faxPdfPath);
-        const attachFilename = path.basename(attachPdf);
+        const attachFilename = createFaxAttachmentFilename(attachPdfs);
 
         const transporter = nodemailer.createTransport({
             host: mailConfig.smtp.host,
@@ -704,6 +739,12 @@ async function main() {
             console.log(`   ${i + 1}. ${formatFaxDestination({ label, name })}  (${number})`);
         }
         console.log(`   添付: ${attachFilename} (${(mergedPdfBytes.length / 1024).toFixed(1)} KB)`);
+        if (attachPdfs.length > 1) {
+            console.log('   結合順:');
+            attachPdfs.forEach((pdfPath, i) => {
+                console.log(`     ${i + 1}. ${path.basename(pdfPath)}`);
+            });
+        }
 
     } finally {
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_e) {}
@@ -723,4 +764,7 @@ module.exports = {
     wrapMarkdownInHtml,
     extractFaxNumbers,
     mergePdfs,
+    classifyFaxInputFiles,
+    createFaxAttachmentFilename,
+    findPagedMarkdownForPdfs,
 };

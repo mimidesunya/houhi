@@ -1,7 +1,18 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { PDFDocument } = require('pdf-lib');
 
-const { wrapMarkdownInHtml, extractFaxNumbers } = require('../dist/src/fax_send.js');
+const {
+    wrapMarkdownInHtml,
+    extractFaxNumbers,
+    mergePdfs,
+    classifyFaxInputFiles,
+    createFaxAttachmentFilename,
+    findPagedMarkdownForPdfs,
+} = require('../dist/src/fax_send.js');
 
 // ─── wrapMarkdownInHtml ─────────────────────────────────────
 
@@ -25,6 +36,74 @@ test('wrapMarkdownInHtml: preserves markdown content inside pre tag', () => {
     const html = wrapMarkdownInHtml(md, '送付書');
     assert.ok(html.includes('### --左'));
     assert.ok(html.includes('(FAX 0312345678)'));
+});
+
+// ─── input file handling ─────────────────────────────────────
+
+test('classifyFaxInputFiles: keeps multiple PDFs in argument order', (t) => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-fax-'));
+    t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+    const md = path.join(tempRoot, '送付書.md');
+    const first = path.join(tempRoot, '01.pdf');
+    const second = path.join(tempRoot, '02.pdf');
+    fs.writeFileSync(md, '# 送付書');
+    fs.writeFileSync(first, Buffer.alloc(1));
+    fs.writeFileSync(second, Buffer.alloc(1));
+
+    const result = classifyFaxInputFiles([md, first, second]);
+    assert.equal(result.mdFile, path.resolve(md));
+    assert.deepEqual(result.attachPdfs, [path.resolve(first), path.resolve(second)]);
+});
+
+test('createFaxAttachmentFilename: names merged PDF from first file', () => {
+    const result = createFaxAttachmentFilename([
+        path.join('docs', '01_申立書.pdf'),
+        path.join('docs', '02_資料.pdf'),
+        path.join('docs', '03_別紙.pdf'),
+    ]);
+    assert.equal(result, '01_申立書_ほか2件.pdf');
+});
+
+test('findPagedMarkdownForPdfs: returns first matching _paged.md', (t) => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-fax-'));
+    t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+    const first = path.join(tempRoot, 'a.pdf');
+    const second = path.join(tempRoot, 'b.pdf');
+    const paged = path.join(tempRoot, 'b_paged.md');
+    fs.writeFileSync(first, Buffer.alloc(1));
+    fs.writeFileSync(second, Buffer.alloc(1));
+    fs.writeFileSync(paged, '# 受領書');
+
+    assert.equal(findPagedMarkdownForPdfs([first, second]), paged);
+});
+
+test('mergePdfs: appends multiple PDFs in supplied order', async (t) => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-fax-'));
+    t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+    async function writePdf(filePath, size) {
+        const pdf = await PDFDocument.create();
+        pdf.addPage(size);
+        fs.writeFileSync(filePath, await pdf.save());
+    }
+
+    const first = path.join(tempRoot, 'first.pdf');
+    const second = path.join(tempRoot, 'second.pdf');
+    const output = path.join(tempRoot, 'merged.pdf');
+    await writePdf(first, [123, 456]);
+    await writePdf(second, [234, 567]);
+
+    await mergePdfs([first, second], output);
+    const merged = await PDFDocument.load(fs.readFileSync(output));
+    const pages = merged.getPages();
+
+    assert.equal(pages.length, 2);
+    assert.equal(pages[0].getWidth(), 123);
+    assert.equal(pages[0].getHeight(), 456);
+    assert.equal(pages[1].getWidth(), 234);
+    assert.equal(pages[1].getHeight(), 567);
 });
 
 // ─── extractFaxNumbers ──────────────────────────────────────
