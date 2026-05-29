@@ -70,3 +70,23 @@ test('renderPreTags: returns unchanged HTML with no pre tags', () => {
     const result = renderPreTags(html);
     assert.equal(result, html);
 });
+
+test('src/base/sample.md: follows preparation brief drafting syntax rules', () => {
+    const sample = fs.readFileSync(path.resolve('src/base/sample.md'), 'utf-8');
+    const alignmentBlocks = sample.match(/### --[左右]\r?\n[\s\S]*?\r?\n### --/g) || [];
+
+    assert.ok(alignmentBlocks.length > 0);
+    for (const block of alignmentBlocks) {
+        assert.equal(/\r?\n\s*\r?\n/.test(block), false);
+        assert.equal(/^\* /m.test(block), false);
+        assert.equal(/^- [^:\r\n]+：/m.test(block), false);
+    }
+
+    assert.equal(/〒\d{3}-\d{4}/.test(sample), false);
+    assert.equal(/東京都千代田区|丸の内|送達場所/.test(sample), false);
+    assert.match(sample, /^# 準備書面$/m);
+    assert.match(sample, /^## 第1　/m);
+    assert.match(sample, /^1　/m);
+    assert.match(sample, /^# 附属書類$/m);
+    assert.match(sample, /^- 準備書面副本：1通$/m);
+});
