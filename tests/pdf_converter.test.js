@@ -129,3 +129,72 @@ test('convertHtmlToPdf: preserves configured pass count above three for toc', as
 
     assert.ok(calls.properties.some(([name, value]) => name === 'processing.pass-count' && value === '4'));
 });
+
+test('prepareHtmlForChrome: injects Paged.js and expands pre data-src before printing', (t) => {
+    const tempRoot = makeTempDir();
+    const htmlPath = path.join(tempRoot, 'input.html');
+    const outputPath = path.join(tempRoot, 'out.pdf');
+    fs.writeFileSync(path.join(tempRoot, 'style.css'), 'body { color: black; }');
+    fs.writeFileSync(path.join(tempRoot, 'source.md'), '# 表題\n\n本文です');
+    fs.writeFileSync(htmlPath, [
+        '<!doctype html>',
+        '<html lang="ja">',
+        '<head><link rel="stylesheet" href="style.css"></head>',
+        '<body><pre data-src="source.md"></pre></body>',
+        '</html>'
+    ].join('\n'));
+    t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+    const chromeConverter = require('../dist/src/lib/pdf_converter_chrome.js');
+    const prepared = chromeConverter.prepareHtmlForChrome(htmlPath, outputPath, tempRoot, tempRoot);
+    t.after(prepared.cleanup);
+
+    const preparedHtml = fs.readFileSync(prepared.htmlPath, 'utf-8');
+    assert.match(preparedHtml, /data-houhi-pagedjs-polyfill/);
+    assert.match(preparedHtml, /data-houhi-pagedjs-runner/);
+    assert.match(preparedHtml, /paged\.polyfill/);
+    assert.match(preparedHtml, /file:\/\/\/.*style\.css/i);
+    assert.equal(preparedHtml.includes('<pre data-src="source.md"></pre>'), false);
+    assert.match(preparedHtml, /<div class="doc-title">表題<\/div>/);
+    assert.match(preparedHtml, /<p>本文です<\/p>/);
+});
+
+test('prepareHtmlForChrome: converts cssj toc marker for Chrome/Paged.js', (t) => {
+    const tempRoot = makeTempDir();
+    const htmlPath = path.join(tempRoot, 'toc.html');
+    const outputPath = path.join(tempRoot, 'out.pdf');
+    fs.writeFileSync(htmlPath, [
+        '<!doctype html>',
+        '<html lang="ja"><body>',
+        '<div class="toc-title">目次</div>',
+        '<cssj:make-toc xmlns:cssj="http://www.cssj.jp/ns/cssjml"></cssj:make-toc>',
+        '<h1>第1　見出し</h1>',
+        '<h2>1　小見出し</h2>',
+        '</body></html>'
+    ].join('\n'));
+    t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+    const chromeConverter = require('../dist/src/lib/pdf_converter_chrome.js');
+    const prepared = chromeConverter.prepareHtmlForChrome(htmlPath, outputPath, tempRoot, tempRoot);
+    t.after(prepared.cleanup);
+
+    const preparedHtml = fs.readFileSync(prepared.htmlPath, 'utf-8');
+    assert.equal(preparedHtml.includes('cssj:make-toc'), false);
+    assert.match(preparedHtml, /<ul class="cssj-toc houhi-chrome-toc" data-houhi-chrome-toc="pending"><\/ul>/);
+    assert.match(preparedHtml, /function prepareChromeToc/);
+    assert.match(preparedHtml, /function fillChromeTocPageNumbers/);
+    assert.match(preparedHtml, /cssj-leader/);
+});
+
+test('base stylesheet increments list counters on real li elements for Paged.js', () => {
+    const stylePath = path.resolve('src/base/style.css');
+    const css = fs.readFileSync(stylePath, 'utf-8');
+
+    for (let level = 1; level <= 7; level++) {
+        const liRule = new RegExp(`ol\\.lvl${level}\\s*>\\s*li\\s*\\{[^}]*counter-increment:\\s*cnt${level}\\b`, 's');
+        const beforeRule = new RegExp(`ol\\.lvl${level}\\s*>\\s*li:before\\s*\\{[^}]*counter-increment:\\s*cnt${level}\\b`, 's');
+
+        assert.match(css, liRule);
+        assert.equal(beforeRule.test(css), false);
+    }
+});

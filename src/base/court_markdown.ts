@@ -682,5 +682,13 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { convertMarkdownToCourtHtml };
 } else {
     // ブラウザ環境では自動実行
-    document.addEventListener('DOMContentLoaded', renderMarkdown);
+    (window as any).__houhiMarkdownReady = false;
+    (window as any).__houhiMarkdownPromise = null;
+    document.addEventListener('DOMContentLoaded', () => {
+        const promise = renderMarkdown();
+        (window as any).__houhiMarkdownPromise = promise;
+        promise.finally(() => {
+            (window as any).__houhiMarkdownReady = true;
+        });
+    });
 }

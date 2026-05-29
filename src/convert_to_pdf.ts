@@ -53,15 +53,15 @@ body::before {
     display: none !important;
 }
 
-@page {
-    counter-increment: none;
-
-    @bottom-center {
-        content: "- " counter(page) " -";
-        font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
-        font-size: 12pt;
-        color: #000;
+@media print {
+    html[data-houhi-pdf-engine="chrome"] body::before {
+        content: none !important;
+        display: none !important;
     }
+}
+
+@page {
+    counter-increment: page 1;
 }
 </style>`;
 
@@ -203,7 +203,7 @@ async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput, p
         try {
             let htmlContent = fs.readFileSync(inputPath, 'utf-8');
             if (htmlContent.includes('<pre')) {
-                const newContent = renderPreTags(htmlContent);
+                const newContent = renderPreTags(htmlContent, path.dirname(inputPath));
                 if (newContent !== htmlContent) {
                     const tempRenderedPath = path.join(DEFAULT_OUTPUT_DIR, `temp_rendered_${Date.now()}.html`);
                     fs.writeFileSync(tempRenderedPath, newContent, 'utf-8');

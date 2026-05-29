@@ -243,21 +243,23 @@ ol.lvl6 { counter-reset: cnt6; }
 ol.lvl7 { counter-reset: cnt7; }
 
 /* 各レベルのスタイル */
-ol.lvl1 > li { margin-top: 1.618em; }
-ol.lvl1 > li:before {
+ol.lvl1 > li {
     counter-increment: cnt1;
+    margin-top: 1.618em;
+}
+ol.lvl1 > li:before {
     content: "第" counter(cnt1);
     display: inline-block; width: 2em;
     white-space: nowrap;
 }
 
 ol.lvl2 > li {
+    counter-increment: cnt2;
     position: relative;
     padding-left: 1em;
     text-indent: 1em;
 }
 ol.lvl2 > li:before {
-    counter-increment: cnt2;
     content: counter(cnt2) "　";
     position: absolute; left: -.5em; top: 0; width: 1.5em;
 }
@@ -316,6 +318,39 @@ ul.cssj-toc span.cssj-page {
     padding-left: 1em;
 }
 
+/* Chrome + Paged.js が生成する目次 */
+ul.houhi-chrome-toc li:before {
+    content: none;
+    border-bottom: 0;
+}
+
+ul.houhi-chrome-toc a {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    padding-right: 0;
+    text-decoration: none;
+}
+
+ul.houhi-chrome-toc span.cssj-title {
+    flex: 0 1 auto;
+    padding-right: 0;
+}
+
+ul.houhi-chrome-toc span.cssj-leader {
+    background-color: transparent;
+    border-bottom: 0.5pt dotted #000;
+    flex: 1 1 2em;
+    min-width: 2em;
+    height: 0.8em;
+}
+
+ul.houhi-chrome-toc span.cssj-page {
+    flex: 0 0 auto;
+    padding-left: 0;
+    position: static;
+}
+
 @media print {
     ul.cssj-toc a,
     ul.cssj-toc a:link,
@@ -325,37 +360,52 @@ ul.cssj-toc span.cssj-page {
     }
 }
 
-ol.lvl3 > li { position: relative; padding-left: .5em; }
-ol.lvl3 > li:before {
+ol.lvl3 > li {
     counter-increment: cnt3;
+    position: relative;
+    padding-left: .5em;
+}
+ol.lvl3 > li:before {
     content: "(" counter(cnt3) ") ";
     position: absolute; left: -1em; top: 0; width: 2em;
 }
 
-ol.lvl4 > li { position: relative; padding-left: .5em; }
-ol.lvl4 > li:before {
+ol.lvl4 > li {
     counter-increment: cnt4;
+    position: relative;
+    padding-left: .5em;
+}
+ol.lvl4 > li:before {
     content: counter(cnt4, katakana) " ";
     position: absolute; left: -1em; top: 0; width: 2em;
 }
 
-ol.lvl5 > li { position: relative; padding-left: .5em; }
-ol.lvl5 > li:before {
+ol.lvl5 > li {
     counter-increment: cnt5;
+    position: relative;
+    padding-left: .5em;
+}
+ol.lvl5 > li:before {
     content: "(" counter(cnt5, katakana) ") ";
     position: absolute; left: -1.5em; top: 0; width: 2.5em;
 }
 
-ol.lvl6 > li { position: relative; padding-left: .5em; }
-ol.lvl6 > li:before {
+ol.lvl6 > li {
     counter-increment: cnt6;
+    position: relative;
+    padding-left: .5em;
+}
+ol.lvl6 > li:before {
     content: counter(cnt6, lower-latin) " ";
     position: absolute; left: -1em; top: 0; width: 2em;
 }
 
-ol.lvl7 > li { position: relative; padding-left: .5em; }
-ol.lvl7 > li:before {
+ol.lvl7 > li {
     counter-increment: cnt7;
+    position: relative;
+    padding-left: .5em;
+}
+ol.lvl7 > li:before {
     content: "(" counter(cnt7, lower-latin) ") ";
     position: absolute; left: -1.5em; top: 0; width: 2.5em;
 }
