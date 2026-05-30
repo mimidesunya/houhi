@@ -14,11 +14,12 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 
 | ツール名 | 機能概要 | 対応形式 |
 | :--- | :--- | :--- |
-| **PDF変換** | Markdownを裁判所提出用PDF（CSS組版）に変換します。Copper PDF / Chrome を選択できます。 | `.md`, `.html` |
+| **PDF作成** | Markdown / HTML を裁判所提出用PDF（CSS組版）に変換します。既定は Chrome、必要に応じて Copper PDF へ切り替えられます。 | `.md`, `.html` |
 | **起案** | ChatGPTに渡す `houhi-drafting-kit.zip` の場所を開き、書面起案の使い方を案内します。 | `.zip` |
-| **AIアーカイブ** | フォルダ内の `.md` / `.txt` を `case/` に収録し、`START_HERE.md`・目録・manifest付きのZIPを作成します（主にChatGPT向け）。 | フォルダ |
-| **号証スタンプ** | 証拠PDFの右上に「甲第〇号証」などの証拠番号を赤文字で追記します。 | `.pdf` |
-| **mfax FAX送信** | 送付書Markdownと添付PDFを結合し、メールFAXとして送信します。 | `.pdf`, `.md` |
+| **AIアーカイブ** | フォルダ内の `.md` / `.txt` を `case/` に収録し、`START_HERE.md`・目録・manifest・起案指示書付きのZIPを作成します（主にChatGPT向け）。 | フォルダ |
+| **号証スタンプ** | ファイル名先頭の `甲1`、`乙2-1` などから証拠番号を読み取り、PDF / 画像の右上に赤文字で追記します。複数ファイルは証拠番号順に結合できます。 | `.pdf`, `.jpg`, `.png` |
+| **mfax FAX送信** | 送付書Markdownと1件以上の添付PDF、またはPDFのみをFAX用に二値化し、プレビュー確認後にメールFAXとして送信します。 | `.pdf`, `.md` |
+| **FAX PDF化** | PDFを画像化・二値化して、FAX向けのPDFを作成します（CLI向け補助ツール）。 | `.pdf` |
 
 OCR は [`mimi-ocr`](../mimi-ocr/README.md) に移管しました。OCR・ページ結合は `mimi-ocr` 側を使用してください。
 
@@ -37,6 +38,16 @@ OCR は [`mimi-ocr`](../mimi-ocr/README.md) に移管しました。OCR・ペー
 2. 対象ファイル（またはフォルダ）を中央のドロップゾーンへドラッグ＆ドロップします。
 3. 処理ログは画面下部または別ウィンドウに表示されます。
 4. 出力ファイルは、多くの場合、入力ファイルと同じ場所に生成されます。
+
+GUI には `PDF作成`、`AIアーカイブ`、`号証スタンプ`、`FAX送信`、`起案`、`設定` のカードがあります。各カードへ直接ドロップすると、そのツールに切り替えたうえで処理を実行します。
+
+選択中のツールに応じて、次のオプションが表示されます。
+
+- `PDF作成`: PDFエンジン（Chrome / Copper PDF）
+- `号証スタンプ`: 結合PDFに空白ページを入れない（FAX向け）
+- `FAX送信`: ディザリングOFF（写真なし文書向け）
+
+`FAX送信` で複数PDFを指定した場合は、送信前に結合順を確認できます。FAX用二値化後のプレビュー画面では、送信先FAX番号の確認・追加・削除と、ページ単位のディザリング切り替えができます。
 
 `起案` ボタンは、`houhi-drafting-kit.zip` のあるフォルダを開き、ChatGPTへのアップロード手順と、そのまま送れる指示文を画面下部に表示します。
 
@@ -91,23 +102,28 @@ Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%B
 
 ### 必要環境
 
-- Node.js v16 以上
-- インターネット接続（Copper PDF 公開サーバーを使用する場合）
+- Node.js v20 以上推奨
+- npm
 - Chrome PDF 生成を使う場合は Google Chrome または Chromium
+- Copper PDF 公開サーバーを使う場合はインターネット接続
+- `npm run build:launcher` でランチャーを再生成する場合は .NET SDK
 
 ### インストール
 
 ```bash
 npm install
-npm run build
 npm run setup
 ```
 
-`setup` は `houhi-drafting-kit.zip` への指示書生成と初期設定ファイルの確認を行います。
-セットアップとドキュメント再生成をまとめて行う場合は `setup.sh` も使えます。
+`npm run setup` は TypeScript のビルド後に、`houhi-drafting-kit.zip` の生成と初期設定ファイルの確認を行います。
+セットアップ、ツールドキュメント再生成、テストをまとめて行う場合は `setup.sh` または `setup.cmd` も使えます。
 
 ```bash
 sh ./setup.sh
+```
+
+```powershell
+.\setup.cmd
 ```
 
 WSL から `wsl ./setup.sh` を実行した場合、Linux 側で `node` を直接実行できなければ、`setup.sh` が公式配布の Linux 版 Node.js を `.cache/tools/` に自動取得して使います。
@@ -128,13 +144,37 @@ GUI のツール一覧にある設定ボタンから `config.json` を編集で�
     "copper": {
         "serverUri": "ctip://cti.li/",
         "user": "user",
-        "password": "kappa"
+        "password": "kappa",
+        "properties": {
+            "output.pdf.version": "1.4A-1"
+        }
+    },
+    "mail": {
+        "smtp": {
+            "host": "YOUR_MAIL_SERVER",
+            "port": 465,
+            "secure": true,
+            "tlsMinVersion": "TLSv1.2"
+        },
+        "imap": {
+            "host": "YOUR_MAIL_SERVER",
+            "port": 993,
+            "secure": true,
+            "tlsMinVersion": "TLSv1.2"
+        },
+        "user": "YOUR_MAIL_ADDRESS",
+        "password": "YOUR_MAIL_PASSWORD"
+    },
+    "mfax": {
+        "sendPassword": "YOUR_MFAX_SEND_PASSWORD",
+        "fromAddress": "YOUR_FROM_ADDRESS",
+        "selfFax": "自分のFAX番号（数字のみ。送付書への記載分を除外するために利用）"
     }
 }
 ```
 
 OCR 用の AI / `ndlocr-lite` 設定は `houhi` ではなく `mimi-ocr` 側の `config.json` で管理します。
-FAX送信を使う場合は、上記に加えて `mail` と `mfax` の設定も必要です。
+FAX送信を使う場合は、`mail` と `mfax` の設定が必要です。`mfax.fromAddress` が空の場合は `mail.user` を送信元として使います。
 
 PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine=copper` または GUI の「PDFエンジン」から Copper PDF に切り替えられます。Chrome を自動検出できない場合は `pdf.chromePath` に実行ファイルのパスを設定してください。
 
@@ -144,10 +184,12 @@ PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine
 | :--- | :--- |
 | `npm run gui` | TypeScript をビルドして GUI を起動 |
 | `npm run build` | TypeScript をビルド（`dist/` に出力） |
+| `npm run ensure:native` | `canvas` などのネイティブ依存を現在のOS向けに確認・再構築 |
 | `npm run build:launcher` | Windows 用ランチャー `bin/法匪.exe` をアイコン付きで再生成 |
-| `npm run setup` | ビルド後に指示書と初期設定を生成 |
+| `npm run setup` | ビルド後に `houhi-drafting-kit.zip` と初期設定を生成 |
 | `npm test` | ビルド後にユニットテストを実行 |
 | `npm run docs:tools` | ツールコメントから `docs/ツール詳細.md` を再生成 |
+| `sh ./setup.sh` / `.\setup.cmd` | セットアップ、ツールドキュメント再生成、テストをまとめて実行 |
 
 ### Windows ランチャーのアイコン
 
@@ -186,6 +228,8 @@ npm run build:launcher
 │   ├── ツール詳細.md            # 各ツールの詳細説明（自動生成）
 │   └── Markdown仕様書.md       # Markdown拡張書式の仕様
 ├── houhi-drafting-kit.zip      # 書面起案用の指示書一式（setupで生成）
+├── houhi-drafting-kit/         # 起案キットの展開確認用ファイル
+├── config.template.json        # 初期設定テンプレート
 ├── src/                        # TypeScript ソースコード
 │   ├── base/                   # 文書書式（CSS/HTML）定義・サンプル
 │   ├── gui/                    # GUI アプリケーション
@@ -195,7 +239,8 @@ npm run build:launcher
 ├── tests/                      # ユニットテスト
 ├── dist/                       # ビルド成果物（生成・git管理外）
 ├── config.json                 # 設定ファイル
-└── setup.sh                    # セットアップ + ドキュメント生成
+├── setup.cmd                   # Windows 用セットアップ + テスト
+└── setup.sh                    # POSIX/WSL 用セットアップ + テスト
 ```
 
 ## 技術スタック
