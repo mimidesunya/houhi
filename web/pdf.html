@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF変換 / 印刷 - 法匪 HOUHI Web</title>
+  <meta name="description" content="Markdownを裁判文書レイアウトでプレビューし、ブラウザの印刷機能でPDF保存できます。">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="法匪 HOUHI Web">
+      <span class="brand-mark">法</span>
+      <span>法匪 Web</span>
+    </a>
+    <nav class="site-nav" aria-label="主要ナビゲーション">
+      <a href="./">Home</a>
+      <a href="./drafting.html">起案</a>
+      <a href="https://github.com/mimidesunya/houhi">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="quiet-title">
+      <div>
+        <p class="eyebrow">PDF conversion / print</p>
+        <h1>PDF変換 / 印刷</h1>
+      </div>
+    </section>
+
+    <section id="preview" class="workspace" aria-label="Markdown PDF プレビュー">
+      <div class="editor-pane">
+        <div class="pane-toolbar">
+          <div>
+            <p class="eyebrow">Input</p>
+            <h2>Markdown</h2>
+          </div>
+          <button id="pasteButton" type="button">ペースト</button>
+        </div>
+
+        <div id="dropZone" class="drop-zone" tabindex="0" role="button">
+          <strong>.md をドロップ</strong>
+          <span>クリックしてファイル選択、または下の欄へ直接ペースト</span>
+          <input id="fileInput" type="file" accept=".md,text/markdown,text/plain" hidden>
+        </div>
+
+        <textarea id="markdownInput" spellcheck="false" aria-label="Markdown入力"></textarea>
+      </div>
+
+      <div class="preview-pane">
+        <div class="pane-toolbar">
+          <div>
+            <p class="eyebrow">Preview</p>
+            <h2>ページレイアウト</h2>
+          </div>
+          <div class="preview-actions">
+            <span id="previewStatus" class="status">準備中...</span>
+            <button id="renderButton" type="button" class="preview-button">プレビュー更新</button>
+            <button id="printButton" type="button" class="print-button">印刷 / PDF保存</button>
+          </div>
+        </div>
+        <iframe id="previewFrame" title="裁判文書プレビュー"></iframe>
+      </div>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

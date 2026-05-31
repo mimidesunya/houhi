@@ -85,8 +85,9 @@ test('src/base/sample.md: follows preparation brief drafting syntax rules', () =
     assert.equal(/〒\d{3}-\d{4}/.test(sample), false);
     assert.equal(/東京都千代田区|丸の内|送達場所/.test(sample), false);
     assert.match(sample, /^# 準備書面$/m);
-    assert.match(sample, /^## 第1　/m);
-    assert.match(sample, /^1　/m);
+    assert.match(sample, /^## 第1 /m);
+    assert.match(sample, /^## 1 /m);
+    assert.doesNotMatch(sample, /^1 原告/m);
     assert.match(sample, /^## 附属書類$/m);
     assert.match(sample, /^- 準備書面副本：1通$/m);
 });
@@ -97,7 +98,24 @@ test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI'
     assert.match(rules, /Never output `###` or `####` as a normal section heading/);
     assert.match(rules, /Use `##` for every normal section heading/);
     assert.match(rules, /Use `#` only for the document title/);
+    assert.match(rules, /Use one half-width space after a structure marker/);
+    assert.match(rules, /Do not remove `##` from numbered headings found in a template/);
+    assert.match(rules, /Plain numbered body items are allowed/);
+    assert.match(rules, /The difference is function, not the marker itself/);
+    assert.match(rules, /Allowed numbered argument paragraph when intentional/);
+    assert.match(rules, /simple parenthesized references/);
+    assert.match(rules, /甲1_確認メール\.pdf/);
+    assert.match(rules, /`1 争点の整理` when used as a subheading/);
     assert.match(rules, /Before finalizing output, scan every line that starts with `#`/);
+});
+
+test('src/templates/準備書面.md: keeps numbered subheadings as ## headings', () => {
+    const template = fs.readFileSync(path.resolve('src/templates/準備書面.md'), 'utf-8');
+
+    assert.match(template, /^## 1 争点の整理$/m);
+    assert.match(template, /^## \(1\) 〇〇について$/m);
+    assert.doesNotMatch(template, /^1 争点の整理$/m);
+    assert.doesNotMatch(template, /^\(1\) 〇〇について$/m);
 });
 
 test('drafting templates: use ## for regular section headings', () => {
@@ -110,6 +128,9 @@ test('drafting templates: use ## for regular section headings', () => {
 
     const forbiddenHeading = /^#{3,6}\s+(?!-{2}|---|\.{3}|目次\b).+/gm;
     const singleHashMarkerHeading = /^#\s+(?:第[0-9]+|[0-9]+[　\s]|\([0-9]+\)|[ア-ン][　\s]|\([ア-ン]\)|[a-z][　\s]|\([a-z]\)).*/gm;
+    const markdownOrderedList = /^(?:[0-9]+\.|- [0-9]+\.)\s+/gm;
+    const fullWidthMarkerSpace = /^(?:## )?(?:第[0-9０-９一二三四五六七八九十]+|[0-9０-９]+|\([0-9０-９]+\)|[ア-ン]|\([ア-ン]\)|[a-z]|\([a-z]\))　.+/gm;
+    const oldEvidenceReference = /[甲乙丙丁戊疎証](?:第)?[0-9０-９〇○]+(?:[-ー－の][0-9０-９〇○]+)?号証/gm;
     const failures = [];
 
     for (const file of files) {
@@ -119,6 +140,15 @@ test('drafting templates: use ## for regular section headings', () => {
         }
         for (const match of markdown.matchAll(singleHashMarkerHeading)) {
             failures.push(`${path.relative(process.cwd(), file)}: marker heading must use ##: ${match[0]}`);
+        }
+        for (const match of markdown.matchAll(markdownOrderedList)) {
+            failures.push(`${path.relative(process.cwd(), file)}: use court markers instead of Markdown ordered lists: ${match[0]}`);
+        }
+        for (const match of markdown.matchAll(fullWidthMarkerSpace)) {
+            failures.push(`${path.relative(process.cwd(), file)}: use a half-width space after the marker: ${match[0]}`);
+        }
+        for (const match of markdown.matchAll(oldEvidenceReference)) {
+            failures.push(`${path.relative(process.cwd(), file)}: use simple evidence references like （甲1） instead of ${match[0]}`);
         }
     }
 

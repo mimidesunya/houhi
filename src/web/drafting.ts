@@ -1,0 +1,106 @@
+type DraftingTemplate = {
+    id: string;
+    name: string;
+    content: string;
+};
+
+type DraftingData = {
+    generatedAt: string;
+    rules: string;
+    templates: DraftingTemplate[];
+};
+
+const data = (window as any).HOUHI_DRAFTING_DATA as DraftingData;
+
+const templateSelect = document.getElementById('templateSelect') as HTMLSelectElement;
+const copyButton = document.getElementById('copyHandoffButton') as HTMLButtonElement;
+const handoffOutput = document.getElementById('handoffOutput') as HTMLTextAreaElement;
+const copyStatus = document.getElementById('copyStatus') as HTMLElement;
+const aiLinks = document.getElementById('aiLinks') as HTMLElement;
+
+function setStatus(message: string) {
+    copyStatus.textContent = message;
+}
+
+function setLinksVisible(visible: boolean) {
+    aiLinks.hidden = !visible;
+}
+
+function getSelectedTemplate() {
+    const selectedId = templateSelect.value;
+    return data.templates.find(template => template.id === selectedId) || data.templates[0];
+}
+
+function buildHandoff(template: DraftingTemplate) {
+    return `# 法匪 HOUHI 書面起案 引継書
+
+## これは何のための引継書か
+
+あなたは、法匪 HOUHI でPDF化できる裁判文書Markdownを作成するために、この引継書を受け取っています。
+
+この起案は、弁護士等の専門家に依頼せず、ユーザー本人が自分で法的手続を進めるためのものです。依頼者は法律実務の素人であることを前提に、必要な確認事項を分かりやすく質問してください。
+
+ユーザーは「${template.name}」を作成したいと考えています。まず、この書面が作られる状況を具体的に想像し、ユーザーの利益のために、起案に必要な情報、文書や各種データのファイルを要求してください。不足情報がある場合は、推測で完成させず、先に質問してください。
+
+情報が揃ったら、下記のMarkdown仕様とテンプレートに従い、法匪でPDF化できるMarkdown原案を作成してください。最終出力はMarkdown本文のみをコードブロックで提示してください。
+
+テンプレート中で「##」が付いている番号行は見出しです。テンプレートの「## 1 ...」や「## (1) ...」を、本文の「1 ...」や「(1) ...」に戻さないでください。本文中の番号付き文と、見出しとして立てる番号行を区別してください。
+
+「1 ...」形式の本文番号は使えます。請求の趣旨、控訴の趣旨、附属書類、証拠項目、「記」の項目、又は番号を付けた方が読みやすい主張・事実の列挙では、本文番号として使ってください。ただし、見出しとして立てる番号行は必ず「## 1 ...」の形にしてください。
+
+Markdownを生成したら、ユーザーに、そのMarkdown本文を法匪Webの「PDF変換 / 印刷」へ貼り付けてプレビューし、印刷又はPDF保存するよう案内してください。
+
+## 書面の形式mdの仕様
+
+${data.rules.trim()}
+
+## 書面テンプレート
+
+${template.content.trim()}
+`;
+}
+
+function updateHandoff() {
+    const template = getSelectedTemplate();
+    if (!template) {
+        handoffOutput.value = '';
+        return;
+    }
+    handoffOutput.value = buildHandoff(template);
+    setStatus('未コピー');
+    setLinksVisible(false);
+}
+
+async function copyText(text: string) {
+    if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+
+    handoffOutput.focus();
+    handoffOutput.select();
+    document.execCommand('copy');
+}
+
+data.templates.forEach(template => {
+    const option = document.createElement('option');
+    option.value = template.id;
+    option.textContent = template.name;
+    templateSelect.appendChild(option);
+});
+
+templateSelect.addEventListener('change', updateHandoff);
+
+copyButton.addEventListener('click', async () => {
+    try {
+        await copyText(handoffOutput.value);
+        setStatus('コピーしました');
+        setLinksVisible(true);
+    } catch (err) {
+        console.error(err);
+        setStatus('コピーできませんでした。本文を選択してコピーしてください。');
+        setLinksVisible(false);
+    }
+});
+
+updateHandoff();

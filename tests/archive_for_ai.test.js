@@ -276,7 +276,7 @@ test('loadInstructionEntries: returns empty when instructions directory is missi
 test('scanCaseDirectory: stores case documents under case root and records skipped files', () => {
     const dir = createTempDir();
     try {
-        fs.writeFileSync(path.join(dir, '訴状.md'), '# 訴状\n2026年5月1日\n甲1の説明');
+        fs.writeFileSync(path.join(dir, '訴状.md'), '# 訴状\n2026年5月1日\n説明（甲1）');
         fs.mkdirSync(path.join(dir, 'evidence'));
         fs.writeFileSync(path.join(dir, 'evidence', '甲1_契約書.txt'), '令和6年1月2日 契約書');
         fs.writeFileSync(path.join(dir, 'evidence', 'photo.png'), Buffer.alloc(10));

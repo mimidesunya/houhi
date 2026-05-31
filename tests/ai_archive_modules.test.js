@@ -9,6 +9,7 @@ const {
     extractDateCandidates,
     extractEvidenceNumber,
     inferDocumentKind,
+    normalizeEvidenceNumber,
 } = require('../dist/src/lib/ai_archive/inference.js');
 const {
     buildInstructionStructure,
@@ -53,11 +54,17 @@ function makeInstruction(displayPath, isCommonRules = false) {
 }
 
 test('inference module: extracts evidence number, date candidates, and document kind', () => {
-    const text = '# 準備書面\n令和6年1月2日\n甲1の契約書について';
+    const text = '# 準備書面\n令和6年1月2日\n契約書（甲1）について';
 
     assert.equal(extractEvidenceNumber('brief.md', text), '甲1');
     assert.deepEqual(extractDateCandidates('brief.md', text), ['令和6年1月2日']);
     assert.equal(inferDocumentKind('brief.md', text), '準備書面');
+});
+
+test('inference module: normalizes legacy evidence number styles', () => {
+    assert.equal(normalizeEvidenceNumber('甲第1号証'), '甲1');
+    assert.equal(normalizeEvidenceNumber('乙２号証'), '乙2');
+    assert.equal(extractEvidenceNumber('brief.md', '確認メール（甲第3号証）'), '甲3');
 });
 
 test('scanner module: scans case files and skipped files directly', () => {

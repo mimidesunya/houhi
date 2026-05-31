@@ -6,6 +6,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
 const { renderPreTags } = require('./markdown_renderer');
+const { getPagedTocBrowserScript } = require('./paged_toc');
 
 function isExternalUri(value) {
     return /^(?:[a-z][a-z0-9+.-]*:|#)/i.test(value);
@@ -145,100 +146,7 @@ window.PagedConfig.auto = false;
         }
     }
 
-    function prepareChromeToc() {
-        var tocRoots = Array.prototype.slice.call(document.querySelectorAll('[data-houhi-chrome-toc]'));
-        if (tocRoots.length === 0) return;
-
-        var headings = Array.prototype.slice.call(document.querySelectorAll('h1, h2')).filter(function (heading) {
-            return !heading.closest('[data-houhi-chrome-toc]');
-        });
-
-        headings.forEach(function (heading, index) {
-            if (!heading.getAttribute('data-houhi-toc-id')) {
-                heading.setAttribute('data-houhi-toc-id', 'houhi-toc-' + (index + 1));
-            }
-        });
-
-        tocRoots.forEach(function (tocRoot) {
-            tocRoot.innerHTML = '';
-            tocRoot.setAttribute('data-houhi-chrome-toc', 'ready');
-            var currentLevel1Item = null;
-
-            headings.forEach(function (heading) {
-                var isLevel2 = heading.tagName.toLowerCase() === 'h2';
-                var li = document.createElement('li');
-                li.setAttribute('data-houhi-toc-target', heading.getAttribute('data-houhi-toc-id'));
-
-                var link = document.createElement('a');
-                var title = document.createElement('span');
-                title.className = 'cssj-title';
-                title.textContent = (heading.textContent || '').trim();
-
-                var page = document.createElement('span');
-                page.className = 'cssj-page';
-                page.textContent = ' ';
-
-                var leader = document.createElement('span');
-                leader.className = 'cssj-leader';
-
-                link.appendChild(title);
-                link.appendChild(leader);
-                link.appendChild(page);
-                li.appendChild(link);
-
-                if (isLevel2 && currentLevel1Item) {
-                    var nested = currentLevel1Item.querySelector(':scope > ul');
-                    if (!nested) {
-                        nested = document.createElement('ul');
-                        currentLevel1Item.appendChild(nested);
-                    }
-                    nested.appendChild(li);
-                } else {
-                    tocRoot.appendChild(li);
-                    currentLevel1Item = isLevel2 ? null : li;
-                }
-            });
-        });
-    }
-
-    function findPagedCloneForSource(source) {
-        var ref = source && source.getAttribute('data-ref');
-        if (ref) {
-            var clone = document.querySelector('.pagedjs_pages [data-ref="' + CSS.escape(ref) + '"]');
-            if (clone) return clone;
-        }
-
-        var tocId = source && source.getAttribute('data-houhi-toc-id');
-        if (tocId) {
-            return document.querySelector('.pagedjs_pages [data-houhi-toc-id="' + CSS.escape(tocId) + '"]');
-        }
-
-        return null;
-    }
-
-    function getPageNumberForElement(element) {
-        var page = element && element.closest('.pagedjs_page');
-        if (!page) return '';
-        return page.getAttribute('data-page-number') || page.dataset.pageNumber || '';
-    }
-
-    function fillChromeTocPageNumbers() {
-        var sourceById = {};
-        Array.prototype.forEach.call(document.querySelectorAll('h1[data-houhi-toc-id], h2[data-houhi-toc-id]'), function (heading) {
-            sourceById[heading.getAttribute('data-houhi-toc-id')] = heading;
-        });
-
-        Array.prototype.forEach.call(document.querySelectorAll('.pagedjs_pages [data-houhi-chrome-toc] li[data-houhi-toc-target]'), function (item) {
-            var targetId = item.getAttribute('data-houhi-toc-target');
-            var source = sourceById[targetId];
-            var clone = findPagedCloneForSource(source);
-            var pageNumber = getPageNumberForElement(clone);
-            var pageSpan = item.querySelector('.cssj-page');
-            if (pageSpan && pageNumber) {
-                pageSpan.textContent = pageNumber;
-            }
-        });
-    }
+    ${getPagedTocBrowserScript()}
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', runPaged, { once: true });

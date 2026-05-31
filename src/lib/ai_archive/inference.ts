@@ -2,14 +2,28 @@ import * as path from 'path';
 import { LARGE_TEXT_FILE_BYTES, MAX_DATE_CANDIDATES, VERY_SHORT_TEXT_CHARS } from './constants';
 import { uniqueLimited } from './utils';
 
+function toHalfWidthDigits(value: string) {
+    return value.replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
+}
+
+export function normalizeEvidenceNumber(value: string) {
+    const compact = toHalfWidthDigits(value.replace(/\s+/g, ''));
+    const match = compact.match(/^([甲乙丙丁戊疎証])(?:第)?([0-9]+(?:[-ー－の][0-9]+)?)(?:号証|号)?$/);
+    if (!match) {
+        return compact;
+    }
+
+    return `${match[1]}${match[2].replace(/[ー－]/g, '-')}`;
+}
+
 export function extractEvidenceNumber(relativePath: string, text: string) {
     const searchText = `${relativePath}\n${text.slice(0, 2000)}`;
-    const match = searchText.match(/(?:^|[\/\s_\-（(])([甲乙丙丁疎証]\s*(?:第\s*)?\d+(?:\s*(?:-|ー|－|の)\s*\d+)?\s*(?:号証|号)?)/);
+    const match = searchText.match(/(?:^|[\/\s_\-（(])([甲乙丙丁戊疎証]\s*(?:第\s*)?[0-9０-９]+(?:\s*(?:-|ー|－|の)\s*[0-9０-９]+)?\s*(?:号証|号)?)/);
     if (!match) {
         return null;
     }
 
-    return match[1].replace(/\s+/g, '');
+    return normalizeEvidenceNumber(match[1]);
 }
 
 export function extractDateCandidates(relativePath: string, text: string) {

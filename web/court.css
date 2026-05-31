@@ -1,0 +1,501 @@
+@charset "UTF-8";
+
+/*
+   【重要】
+   本CSSファイルは、PDF生成エンジン（Copper PDF）との互換性を確保するため、
+   原則として CSS 2.1 に準拠した記述を行ってください。
+*/
+
+/* =========================================
+   ページ設定 (Page Settings)
+   ========================================= */
+@page {
+    margin: 35mm 20mm 27mm 30mm;
+    counter-increment: page;
+}
+
+body:before {
+    -cssj-page-content: footer;
+    bottom: -15mm;
+    text-align: center;
+    width: 100%;
+    content: '- ' counter(page) ' -';
+}
+
+/* =========================================
+   基本設定 (Basic Document Settings)
+   ========================================= */
+body {
+    color: #000;
+    margin: 0;
+    background-color: #fff;
+}
+
+* {
+    font-family: "NotoSerifJP-Regular" "MS Mincho", "Hiragino Mincho ProN", serif;
+    font-size: 12pt;
+    line-height: 1.618em;
+}
+
+p {
+    margin: 0;
+    text-indent: 1em;
+    text-align: justify;
+}
+
+/* =========================================
+   タイトル・日付・宛先
+   ========================================= */
+.doc-title,
+.toc-title {
+    font-size: 12pt;
+    text-align: center;
+    margin: 1.618em 0;
+    font-weight: normal;
+    letter-spacing: 0.5em;
+    page-break-after: avoid;
+    display: block;
+}
+
+.date {
+    text-align: right;
+    margin-bottom: 1.618em;
+}
+
+.dest {
+    text-align: left;
+}
+
+/* =========================================
+   テーブル設定 (Table Settings)
+   ========================================= */
+table.info, table.att {
+    border-collapse: collapse;
+    width: auto;
+    margin-top: 0;
+}
+
+/* 事件情報・訴訟物の価格など */
+table.info {
+    margin-bottom: 1.618em;
+}
+
+table.info td {
+    text-align: justify;
+    text-align-last: justify;
+    min-width: 4em;
+}
+
+/* ヘッダー行付きテーブル（反訳書・明細等）*/
+table.has-header {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 1.618em;
+}
+
+table.has-header th,
+table.has-header td {
+    text-align: left;
+    text-align-last: left;
+    vertical-align: top;
+    padding: 0.2em 0.5em;
+    border-bottom: 0.5pt solid #ccc;
+}
+
+table.has-header thead th {
+    border-bottom: 1pt solid #000;
+    font-weight: bold;
+}
+
+table.info td:first-child {
+    padding-right: 1.5em;
+}
+
+/* 数値セルは右寄せ */
+table.info td.val {
+    text-align: right;
+    text-align-last: right;
+}
+
+/* =========================================
+   ブロック配置 (Block Alignment)
+   ========================================= */
+.right {
+    text-align: right;
+    margin: 1.618em 0;
+}
+
+.left {
+    text-align: left;
+}
+
+/* 右寄せブロック内の段落（住所・氏名など） */
+.right p {
+    margin: 0;
+    text-indent: 0;
+    text-align: left;
+    display: table; /* 内容に合わせて幅を縮小 */
+    margin-left: auto;
+    min-width: 16em;
+}
+
+.left p {
+    margin: 0;
+    text-indent: 0;
+    text-align: left;
+}
+
+/* 「以上」マーク（右寄せ） */
+.end-mark {
+    text-align: right;
+    margin: 1.618em 0;
+}
+
+/* 「記」マーク（センタリング） */
+.center-mark {
+    text-align: center;
+    margin: 1.618em 0;
+}
+
+/* 改ページ */
+.break {
+    page-break-before: always;
+    margin: 1.618em 0;
+}
+
+/* 空行（スペーサー） */
+.blank-line {
+    height: 1.618em;
+}
+
+/* 区切り線（点線） */
+hr.separator {
+    border: 0;
+    border-top: 1px dotted black;
+    margin: 1.618em 0;
+    page-break-before: avoid;
+    page-break-after: avoid;
+}
+
+/* 画像 */
+.image-block {
+    text-align: center;
+    margin: 1.618em 0;
+}
+
+.image-block img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* ブロック内のテーブル配置 */
+.right table.info {
+    margin-left: auto;
+    margin-right: 0;
+}
+
+.left table.info {
+    margin-left: 0;
+    margin-right: auto;
+}
+
+/* 複数当事者間の間隔 */
+.right table + p {
+    margin-top: 1.618em;
+}
+
+/* =========================================
+   階層リスト (Automatic Numbering)
+   ========================================= */
+ol {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* 階層ごとのインデント調整 */
+body > ol > li > ol,
+body > ol > li > ol > li > ol,
+body > ol > li > ol > li > ol > li > ol,
+body > ol > li > ol > li > ol > li > ol > li > ol,
+body > ol > li > ol > li > ol > li > ol > li > ol > li > ol {
+    margin-left: -1em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-size: 12pt;
+    font-weight: normal;
+    margin: 0;
+    display: inline;
+}
+
+h1 + *, h2 + *, h3 + *, h4 + *, h5 + *, h6 + * {
+    page-break-before: avoid;
+}
+
+/* カウンターのリセット */
+ol.lvl1 { counter-reset: cnt1; }
+ol.lvl2 { counter-reset: cnt2; }
+ol.lvl3 { counter-reset: cnt3; }
+ol.lvl4 { counter-reset: cnt4; }
+ol.lvl5 { counter-reset: cnt5; }
+ol.lvl6 { counter-reset: cnt6; }
+ol.lvl7 { counter-reset: cnt7; }
+
+/* 各レベルのスタイル */
+ol.lvl1 > li {
+    counter-increment: cnt1;
+    margin-top: 1.618em;
+}
+ol.lvl1 > li:before {
+    content: "第" counter(cnt1);
+    display: inline-block; width: 2em;
+    white-space: nowrap;
+}
+
+ol.lvl2 > li {
+    counter-increment: cnt2;
+    position: relative;
+    padding-left: 1em;
+    text-indent: 1em;
+}
+ol.lvl2 > li:before {
+    content: counter(cnt2) "　";
+    position: absolute; left: -.5em; top: 0; width: 1.5em;
+}
+ol.lvl2 > li > h2 { display: block; padding-left: 0; }
+
+/* Copper PDF が <cssj:make-toc> から生成する目次 */
+ul.cssj-toc,
+ul.cssj-toc ul {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+ul.cssj-toc {
+    margin: 1.618em 0;
+}
+
+ul.cssj-toc ul {
+    margin-left: 1.5em;
+}
+
+ul.cssj-toc li {
+    position: relative;
+    margin: 0 0 0.809em 0;
+    min-height: 1.2em;
+}
+
+ul.cssj-toc li:before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0.809em;
+    border-bottom: 0.5pt dotted #000;
+}
+
+ul.cssj-toc a {
+    position: relative;
+    display: block;
+    padding-right: 4em;
+}
+
+ul.cssj-toc span {
+    background-color: #fff;
+    position: relative;
+}
+
+ul.cssj-toc span.cssj-title {
+    padding-right: 0.5em;
+}
+
+ul.cssj-toc span.cssj-page {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    padding-left: 1em;
+}
+
+/* Chrome + Paged.js が生成する目次 */
+ul.houhi-chrome-toc li:before {
+    content: none;
+    border-bottom: 0;
+}
+
+ul.houhi-chrome-toc a {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    padding-right: 0;
+    text-decoration: none;
+}
+
+ul.houhi-chrome-toc span.cssj-title {
+    flex: 0 1 auto;
+    padding-right: 0;
+}
+
+ul.houhi-chrome-toc span.cssj-leader {
+    background-color: transparent;
+    border-bottom: 0.5pt dotted #000;
+    flex: 1 1 2em;
+    min-width: 2em;
+    height: 0.8em;
+}
+
+ul.houhi-chrome-toc span.cssj-page {
+    flex: 0 0 auto;
+    padding-left: 0;
+    position: static;
+}
+
+@media print {
+    ul.cssj-toc a,
+    ul.cssj-toc a:link,
+    ul.cssj-toc a:visited {
+        color: #000;
+        text-decoration: none;
+    }
+}
+
+ol.lvl3 > li {
+    counter-increment: cnt3;
+    position: relative;
+    padding-left: .5em;
+}
+ol.lvl3 > li:before {
+    content: "(" counter(cnt3) ") ";
+    position: absolute; left: -1em; top: 0; width: 2em;
+}
+
+ol.lvl4 > li {
+    counter-increment: cnt4;
+    position: relative;
+    padding-left: .5em;
+}
+ol.lvl4 > li:before {
+    content: counter(cnt4, katakana) " ";
+    position: absolute; left: -1em; top: 0; width: 2em;
+}
+
+ol.lvl5 > li {
+    counter-increment: cnt5;
+    position: relative;
+    padding-left: .5em;
+}
+ol.lvl5 > li:before {
+    content: "(" counter(cnt5, katakana) ") ";
+    position: absolute; left: -1.5em; top: 0; width: 2.5em;
+}
+
+ol.lvl6 > li {
+    counter-increment: cnt6;
+    position: relative;
+    padding-left: .5em;
+}
+ol.lvl6 > li:before {
+    content: counter(cnt6, lower-latin) " ";
+    position: absolute; left: -1em; top: 0; width: 2em;
+}
+
+ol.lvl7 > li {
+    counter-increment: cnt7;
+    position: relative;
+    padding-left: .5em;
+}
+ol.lvl7 > li:before {
+    content: "(" counter(cnt7, lower-latin) ") ";
+    position: absolute; left: -1.5em; top: 0; width: 2.5em;
+}
+
+ol > li.heading-item {
+    padding-left: 0;
+    text-indent: 0;
+}
+
+ol > li.heading-item:before {
+    visibility: hidden;
+    width: 0;
+}
+
+ol.lvl2 > li.heading-item > ol.lvl3 {
+    margin-left: 1em;
+}
+
+/* =========================================
+   附属書類 (Attachments)
+   ========================================= */
+table.att {
+    margin-bottom: 38.8pt;
+    margin-left: 2em;
+    counter-reset: att-cnt;
+}
+
+table.att tr { counter-increment: att-cnt; }
+table.att td {
+    padding: 0;
+    vertical-align: top;
+}
+
+table.att td:first-child {
+    padding-right: 1em;
+    white-space: nowrap;
+}
+
+table.att td:first-child:before {
+    content: counter(att-cnt) "　";
+    display: inline-block; width: 2em;
+}
+
+/* =========================================
+   証拠説明書テーブル (Evidence Table)
+   ========================================= */
+table.evidence {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1.618em 0;
+}
+
+table.evidence th,
+table.evidence td {
+    border: 0.5pt solid #000;
+    padding: 2pt 4pt;
+    vertical-align: top;
+    text-align: left;
+}
+
+table.evidence th {
+    font-weight: normal;
+    text-align: center;
+}
+
+/* 列幅の設定 */
+.evidence .col-1 {
+    width: 3em; /* 号証 */
+}
+
+.evidence .col-2 {
+    width: auto; /* 標目 */
+}
+
+.evidence .col-3 {
+    width: 2em; /* 原本／写 - 2文字固定 */
+    text-align: center;
+}
+
+.evidence .col-4 {
+    width: 5em; /* 作成年月日 */
+    white-space: nowrap; /* ラップ禁止 */
+}
+
+.evidence .col-5 {
+    width: 3em; /* 作成者 */
+}
+
+.evidence .col-6 {
+    width: auto; /* 立証趣旨 */
+}
+
+/* =========================================
