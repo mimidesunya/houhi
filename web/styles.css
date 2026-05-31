@@ -109,7 +109,7 @@ h2 {
 
 .feature-links {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border-top: 1px solid var(--line);
 }
 
@@ -199,8 +199,16 @@ button:hover {
   border-color: var(--ink);
 }
 
+button:disabled {
+  color: var(--muted);
+  background: transparent;
+  border-color: var(--line);
+  cursor: default;
+}
+
 .print-button,
-#copyHandoffButton {
+#copyHandoffButton,
+.primary-button {
   color: var(--paper);
   background: var(--ink);
   border-color: var(--ink);
@@ -318,16 +326,73 @@ select {
   border: 1px solid var(--line);
 }
 
+.archive-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  gap: 18px;
+  padding-bottom: 48px;
+}
+
+.archive-controls,
+.archive-guide {
+  min-width: 0;
+}
+
+.archive-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.archive-drop-zone {
+  min-height: 170px;
+  margin: 0;
+  background: var(--paper);
+}
+
+.archive-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.archive-guide {
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.archive-guide-output {
+  min-height: 330px;
+  border-top: 1px solid var(--line);
+}
+
+.archive-ai-links {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 14px 16px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.archive-ai-links p {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 900px) {
   .feature-links,
   .workspace,
-  .drafting-layout {
+  .drafting-layout,
+  .archive-layout {
     grid-template-columns: 1fr;
   }
 
   .feature-card + .feature-card {
     padding-left: 0;
     border-left: 0;
+  }
+
+  .archive-ai-links {
+    grid-template-columns: 1fr;
   }
 }
 

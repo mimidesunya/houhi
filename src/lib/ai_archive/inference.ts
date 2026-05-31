@@ -1,6 +1,5 @@
-import * as path from 'path';
 import { LARGE_TEXT_FILE_BYTES, MAX_DATE_CANDIDATES, VERY_SHORT_TEXT_CHARS } from './constants';
-import { uniqueLimited } from './utils';
+import { getPathBasename, getPathExtname, uniqueLimited } from './utils';
 
 function toHalfWidthDigits(value: string) {
     return value.replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
@@ -75,7 +74,7 @@ export function inferDocumentKind(relativePath: string, text: string) {
         return '証拠資料';
     }
 
-    return path.extname(relativePath).toLowerCase() === '.md' ? 'Markdown資料' : 'テキスト資料';
+    return getPathExtname(relativePath).toLowerCase() === '.md' ? 'Markdown資料' : 'テキスト資料';
 }
 
 export function buildFileWarnings(relativePath: string, content: Buffer, text: string) {
@@ -96,7 +95,7 @@ export function buildFileWarnings(relativePath: string, content: Buffer, text: s
         warnings.push('文字化けの可能性があります。UTF-8として読めない文字が含まれているようです。');
     }
 
-    if (path.basename(relativePath).trim().length === 0) {
+    if (getPathBasename(relativePath).trim().length === 0) {
         warnings.push('ファイル名が空白に見えます。参照時に取り違えないよう注意してください。');
     }
 

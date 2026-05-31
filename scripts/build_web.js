@@ -8,11 +8,24 @@ const vendorDir = path.join(webDir, 'vendor');
 
 const pdfEntryId = 'src/web/app';
 const draftingEntryId = 'src/web/drafting';
+const archiveEntryId = 'src/web/archive';
 const moduleFiles = {
   'src/base/court_markdown': path.join(projectRoot, 'src/base/court_markdown.ts'),
   'src/lib/paged_toc': path.join(projectRoot, 'src/lib/paged_toc.ts'),
+  'src/lib/ai_archive/case_index_renderer': path.join(projectRoot, 'src/lib/ai_archive/case_index_renderer.ts'),
+  'src/lib/ai_archive/constants': path.join(projectRoot, 'src/lib/ai_archive/constants.ts'),
+  'src/lib/ai_archive/inference': path.join(projectRoot, 'src/lib/ai_archive/inference.ts'),
+  'src/lib/ai_archive/instruction_structure_renderer': path.join(projectRoot, 'src/lib/ai_archive/instruction_structure_renderer.ts'),
+  'src/lib/ai_archive/manifest': path.join(projectRoot, 'src/lib/ai_archive/manifest.ts'),
+  'src/lib/ai_archive/readme_renderer': path.join(projectRoot, 'src/lib/ai_archive/readme_renderer.ts'),
+  'src/lib/ai_archive/renderers': path.join(projectRoot, 'src/lib/ai_archive/renderers.ts'),
+  'src/lib/ai_archive/start_here_renderer': path.join(projectRoot, 'src/lib/ai_archive/start_here_renderer.ts'),
+  'src/lib/ai_archive/utils': path.join(projectRoot, 'src/lib/ai_archive/utils.ts'),
+  'src/lib/ai_archive/warnings_renderer': path.join(projectRoot, 'src/lib/ai_archive/warnings_renderer.ts'),
   [pdfEntryId]: path.join(projectRoot, 'src/web/app.ts'),
-  [draftingEntryId]: path.join(projectRoot, 'src/web/drafting.ts')
+  [draftingEntryId]: path.join(projectRoot, 'src/web/drafting.ts'),
+  'src/web/zip': path.join(projectRoot, 'src/web/zip.ts'),
+  [archiveEntryId]: path.join(projectRoot, 'src/web/archive.ts')
 };
 
 const draftingTemplateOrder = [
@@ -131,6 +144,85 @@ function readDraftingData() {
   };
 }
 
+function readInstructionSources() {
+  const baseDir = path.join(projectRoot, 'src/base');
+  const templatesDir = path.join(projectRoot, 'src/templates');
+  const instructionPath = path.join(baseDir, 'court_doc_rules.md');
+  const instructionContent = fs.readFileSync(instructionPath, 'utf-8');
+  const placeholder = /```markdown\r?\n```/;
+  const files = [];
+
+  const samplePath = path.join(baseDir, 'sample.md');
+  if (fs.existsSync(samplePath)) {
+    files.push({ path: samplePath, name: 'sample.md' });
+  }
+
+  const templateFiles = fs.readdirSync(templatesDir)
+    .filter(name => name.endsWith('.md'))
+    .sort((a, b) => {
+      const rankA = draftingTemplateRank.has(a) ? draftingTemplateRank.get(a) : Number.MAX_SAFE_INTEGER;
+      const rankB = draftingTemplateRank.has(b) ? draftingTemplateRank.get(b) : Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+      return a.localeCompare(b, 'ja');
+    })
+    .map(name => ({ path: path.join(templatesDir, name), name }));
+
+  files.push(...templateFiles);
+
+  return { instructionContent, placeholder, files };
+}
+
+function buildArchiveStartHere(files) {
+  const documentTypes = files
+    .filter(file => file.name !== 'sample.md')
+    .map(file => path.basename(file.name, '.md'))
+    .map(name => `- ${name}`)
+    .join('\n');
+
+  return `# START_HERE - Chat AIへの指示
+
+あなたは「法匪（HOUHI）」の書面起案アシスタントです。
+このZIPには、日本の裁判実務向けMarkdown書面を作るための共通ルールと書面別テンプレートが入っています。
+
+ユーザーが具体的な要望を送っている場合は、その要望を優先してください。
+必要な資料や情報が不足している場合は、推測で完成させず、具体的に質問してください。
+
+最終的に書面を作るときは、法匪のMarkdown仕様に従ってMarkdown本文を生成し、法匪Webの「PDF変換 / 印刷」に貼り付けてプレビューするよう案内してください。
+
+## 利用できる書面テンプレート
+
+${documentTypes}
+`;
+}
+
+function readArchiveData() {
+  const { instructionContent, placeholder, files } = readInstructionSources();
+  const instructions = [
+    {
+      displayPath: 'instructions/00_START_HERE.md',
+      content: buildArchiveStartHere(files),
+      isCommonRules: false,
+      isWorkflowGuide: true
+    }
+  ];
+
+  for (const file of files) {
+    const content = fs.readFileSync(file.path, 'utf-8');
+    const replacement = `\`\`\`markdown\n${content.trim()}\n\`\`\``;
+    instructions.push({
+      displayPath: `instructions/${file.name}`,
+      content: instructionContent.replace(placeholder, replacement),
+      isCommonRules: file.name === 'sample.md',
+      isWorkflowGuide: false
+    });
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    instructions
+  };
+}
+
 fs.writeFileSync(path.join(webDir, 'app.js'), buildBundle(pdfEntryId, {
   'src/base/court_markdown': moduleFiles['src/base/court_markdown'],
   'src/lib/paged_toc': moduleFiles['src/lib/paged_toc'],
@@ -139,9 +231,28 @@ fs.writeFileSync(path.join(webDir, 'app.js'), buildBundle(pdfEntryId, {
 fs.writeFileSync(path.join(webDir, 'drafting.js'), buildBundle(draftingEntryId, {
   [draftingEntryId]: moduleFiles[draftingEntryId]
 }), 'utf-8');
+fs.writeFileSync(path.join(webDir, 'archive.js'), buildBundle(archiveEntryId, {
+  'src/lib/ai_archive/case_index_renderer': moduleFiles['src/lib/ai_archive/case_index_renderer'],
+  'src/lib/ai_archive/constants': moduleFiles['src/lib/ai_archive/constants'],
+  'src/lib/ai_archive/inference': moduleFiles['src/lib/ai_archive/inference'],
+  'src/lib/ai_archive/instruction_structure_renderer': moduleFiles['src/lib/ai_archive/instruction_structure_renderer'],
+  'src/lib/ai_archive/manifest': moduleFiles['src/lib/ai_archive/manifest'],
+  'src/lib/ai_archive/readme_renderer': moduleFiles['src/lib/ai_archive/readme_renderer'],
+  'src/lib/ai_archive/renderers': moduleFiles['src/lib/ai_archive/renderers'],
+  'src/lib/ai_archive/start_here_renderer': moduleFiles['src/lib/ai_archive/start_here_renderer'],
+  'src/lib/ai_archive/utils': moduleFiles['src/lib/ai_archive/utils'],
+  'src/lib/ai_archive/warnings_renderer': moduleFiles['src/lib/ai_archive/warnings_renderer'],
+  'src/web/zip': moduleFiles['src/web/zip'],
+  [archiveEntryId]: moduleFiles[archiveEntryId]
+}), 'utf-8');
 fs.writeFileSync(
   path.join(webDir, 'drafting-data.js'),
   `window.HOUHI_DRAFTING_DATA = ${JSON.stringify(readDraftingData())};\n`,
+  'utf-8'
+);
+fs.writeFileSync(
+  path.join(webDir, 'archive-data.js'),
+  `window.HOUHI_ARCHIVE_DATA = ${JSON.stringify(readArchiveData())};\n`,
   'utf-8'
 );
 fs.copyFileSync(path.join(projectRoot, 'src/base/style.css'), path.join(webDir, 'court.css'));
@@ -153,5 +264,7 @@ fs.copyFileSync(
 console.log('[web] built web/app.js');
 console.log('[web] built web/drafting.js');
 console.log('[web] built web/drafting-data.js');
+console.log('[web] built web/archive.js');
+console.log('[web] built web/archive-data.js');
 console.log('[web] copied web/court.css');
 console.log('[web] copied web/vendor/paged.polyfill.min.js');

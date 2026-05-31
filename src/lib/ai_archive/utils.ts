@@ -1,11 +1,9 @@
-import * as path from 'path';
-
 /**
  * AI に渡す資料として収録する対象ファイルか判定する。
  * 画像や PDF などの重いバイナリは除外し、本文を直接読める Markdown / text に限定する。
  */
 export function isTargetTextFile(filePath: string) {
-    const ext = path.extname(filePath).toLowerCase();
+    const ext = getPathExtname(filePath).toLowerCase();
     return ext === '.md' || ext === '.txt';
 }
 
@@ -45,6 +43,23 @@ export function compareInstructionPaths(a: string, b: string) {
 
 export function normalizeArchivePath(filePath: string) {
     return filePath.replace(/\\/g, '/');
+}
+
+export function getPathBasename(filePath: string) {
+    const normalizedPath = normalizeArchivePath(filePath);
+    const parts = normalizedPath.split('/').filter(part => part.length > 0);
+    return parts[parts.length - 1] || '';
+}
+
+export function getPathExtname(filePath: string) {
+    const basename = getPathBasename(filePath);
+    const dotIndex = basename.lastIndexOf('.');
+
+    if (dotIndex <= 0) {
+        return '';
+    }
+
+    return basename.slice(dotIndex);
 }
 
 export function getUtf8Text(content: Buffer) {
