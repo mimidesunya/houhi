@@ -30,8 +30,8 @@ copper_drivers/
 *.zip
 !houhi-drafting-kit.zip
 dist/
-src/launcher/bin/
-src/launcher/obj/
+platforms/windows/launcher/bin/
+platforms/windows/launcher/obj/
 
 # OS
 .DS_Store

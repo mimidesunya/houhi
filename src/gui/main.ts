@@ -80,8 +80,8 @@ function resolveDraftingKitInfo() {
 
 function resolveAppIconPath() {
     const candidates = [
-        path.resolve(__dirname, '../../../src/launcher/app.ico'),
-        path.resolve(process.cwd(), 'src', 'launcher', 'app.ico')
+        path.resolve(__dirname, '../../../platforms/windows/launcher/app.ico'),
+        path.resolve(process.cwd(), 'platforms', 'windows', 'launcher', 'app.ico')
     ];
 
     return candidates.find(candidate => fs.existsSync(candidate));

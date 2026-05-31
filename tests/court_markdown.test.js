@@ -109,7 +109,7 @@ test('convertMarkdownToCourtHtml: converts table of contents marker', () => {
         '',
         '1 概要',
         '',
-        '#### (1) 詳細'
+        '## (1) 詳細'
     ].join('\n');
     const result = convertMarkdownToCourtHtml(md);
     assert.ok(result.includes('<div class="toc-title">目次</div>'));

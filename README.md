@@ -193,7 +193,7 @@ PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine
 
 ### Windows ランチャーのアイコン
 
-`bin/法匪.exe` のアイコンは [src/launcher/app.ico](src/launcher/app.ico) を使って埋め込んでいます。  
+`bin/法匪.exe` のアイコンは [platforms/windows/launcher/app.ico](platforms/windows/launcher/app.ico) を使って埋め込んでいます。  
 アイコンやランチャー本体を更新した場合は、次のコマンドで再生成してください。
 
 ```bash
@@ -230,6 +230,10 @@ npm run build:launcher
 ├── houhi-drafting-kit.zip      # 書面起案用の指示書一式（setupで生成）
 ├── houhi-drafting-kit/         # 起案キットの展開確認用ファイル
 ├── config.template.json        # 初期設定テンプレート
+├── platforms/
+│   └── windows/                # Windows バイナリ生成用ファイル
+│       ├── houhi.sln           # Windows ランチャー用 Visual Studio ソリューション
+│       └── launcher/           # Windows 用ランチャー（C#）
 ├── src/                        # TypeScript ソースコード
 │   ├── base/                   # 文書書式（CSS/HTML）定義・サンプル
 │   ├── gui/                    # GUI アプリケーション

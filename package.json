@@ -5,7 +5,7 @@
   "main": "dist/src/gui/main.js",
   "scripts": {
     "build": "node scripts/clean_dist.js && tsc -p . && copyfiles -u 1 \"src/**/*.html\" \"src/**/*.css\" \"src/**/*.md\" dist/src",
-    "build:launcher": "dotnet publish src/launcher/Launcher.csproj -c Release -p:PublishDir=../../bin/",
+    "build:launcher": "dotnet publish platforms/windows/launcher/Launcher.csproj -c Release -p:PublishDir=../../../bin/",
     "ensure:native": "node scripts/ensure_native_modules.js",
     "gui": "npm run ensure:native && npm run build && electron dist/src/gui/main.js",
     "setup": "npm run build && node dist/setup.js",

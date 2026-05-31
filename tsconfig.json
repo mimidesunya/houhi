@@ -30,6 +30,6 @@
     "bin",
     "output",
     "instructions",
-    "src/launcher"
+    "platforms/windows/launcher"
   ]
 }

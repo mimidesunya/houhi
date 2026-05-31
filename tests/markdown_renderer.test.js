@@ -87,6 +87,40 @@ test('src/base/sample.md: follows preparation brief drafting syntax rules', () =
     assert.match(sample, /^# 準備書面$/m);
     assert.match(sample, /^## 第1　/m);
     assert.match(sample, /^1　/m);
-    assert.match(sample, /^# 附属書類$/m);
+    assert.match(sample, /^## 附属書類$/m);
     assert.match(sample, /^- 準備書面副本：1通$/m);
+});
+
+test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI', () => {
+    const rules = fs.readFileSync(path.resolve('src/base/court_doc_rules.md'), 'utf-8');
+
+    assert.match(rules, /Never output `###` or `####` as a normal section heading/);
+    assert.match(rules, /Use `##` for every normal section heading/);
+    assert.match(rules, /Use `#` only for the document title/);
+    assert.match(rules, /Before finalizing output, scan every line that starts with `#`/);
+});
+
+test('drafting templates: use ## for regular section headings', () => {
+    const files = [
+        path.resolve('src/base/sample.md'),
+        ...fs.readdirSync(path.resolve('src/templates'))
+            .filter(file => file.endsWith('.md'))
+            .map(file => path.resolve('src/templates', file))
+    ];
+
+    const forbiddenHeading = /^#{3,6}\s+(?!-{2}|---|\.{3}|目次\b).+/gm;
+    const singleHashMarkerHeading = /^#\s+(?:第[0-9]+|[0-9]+[　\s]|\([0-9]+\)|[ア-ン][　\s]|\([ア-ン]\)|[a-z][　\s]|\([a-z]\)).*/gm;
+    const failures = [];
+
+    for (const file of files) {
+        const markdown = fs.readFileSync(file, 'utf-8');
+        for (const match of markdown.matchAll(forbiddenHeading)) {
+            failures.push(`${path.relative(process.cwd(), file)}: use ## instead of ${match[0]}`);
+        }
+        for (const match of markdown.matchAll(singleHashMarkerHeading)) {
+            failures.push(`${path.relative(process.cwd(), file)}: marker heading must use ##: ${match[0]}`);
+        }
+    }
+
+    assert.deepEqual(failures, []);
 });
