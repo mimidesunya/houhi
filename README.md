@@ -106,7 +106,7 @@ Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%B
 - npm
 - Chrome PDF 生成を使う場合は Google Chrome または Chromium
 - Copper PDF 公開サーバーを使う場合はインターネット接続
-- `npm run build:launcher` でランチャーを再生成する場合は .NET SDK
+- `npm run build:launcher` でランチャーを再生成する場合は .NET SDK（Native AOT 対応）
 
 ### インストール
 
@@ -185,7 +185,7 @@ PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine
 | `npm run gui` | TypeScript をビルドして GUI を起動 |
 | `npm run build` | TypeScript をビルド（`dist/` に出力） |
 | `npm run ensure:native` | `canvas` などのネイティブ依存を現在のOS向けに確認・再構築 |
-| `npm run build:launcher` | Windows 用ランチャー `bin/法匪.exe` をアイコン付きで再生成 |
+| `npm run build:launcher` | Windows 用ランチャー `bin/法匪.exe` を Native AOT で再生成 |
 | `npm run setup` | ビルド後に `houhi-drafting-kit.zip` と初期設定を生成 |
 | `npm test` | ビルド後にユニットテストを実行 |
 | `npm run docs:tools` | ツールコメントから `docs/ツール詳細.md` を再生成 |
@@ -193,7 +193,7 @@ PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine
 
 ### Windows ランチャーのアイコン
 
-`bin/法匪.exe` のアイコンは [platforms/windows/launcher/app.ico](platforms/windows/launcher/app.ico) を使って埋め込んでいます。  
+`bin/法匪.exe` は Native AOT で小さく生成しています。アイコンは [platforms/windows/launcher/app.ico](platforms/windows/launcher/app.ico) を使って埋め込んでいます。  
 アイコンやランチャー本体を更新した場合は、次のコマンドで再生成してください。
 
 ```bash

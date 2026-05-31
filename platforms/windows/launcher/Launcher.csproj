@@ -6,9 +6,11 @@
     <RootNamespace>HouhiLauncher</RootNamespace>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <StartupObject>Program</StartupObject>
-    <PublishSingleFile>true</PublishSingleFile>
+    <PublishAot>true</PublishAot>
+    <PublishSingleFile>false</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IlcOptimizationPreference>Size</IlcOptimizationPreference>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
