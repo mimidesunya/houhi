@@ -731,10 +731,8 @@ const zip_1 = require("./zip");
 const archiveData = window.HOUHI_ARCHIVE_DATA;
 const encoder = new TextEncoder();
 const directoryInput = document.getElementById('directoryInput');
-const fileInput = document.getElementById('archiveFileInput');
 const dropZone = document.getElementById('archiveDropZone');
 const chooseDirectoryButton = document.getElementById('chooseDirectoryButton');
-const chooseFilesButton = document.getElementById('chooseFilesButton');
 const createArchiveButton = document.getElementById('createArchiveButton');
 const copyArchiveGuideButton = document.getElementById('copyArchiveGuideButton');
 const archiveStatus = document.getElementById('archiveStatus');
@@ -810,7 +808,7 @@ function updateSelectedFiles(files) {
     selectedFiles = files.sort((a, b) => (0, utils_1.compareInstructionPaths)(a.relativePath, b.relativePath));
     const stats = getSelectedFileStats(selectedFiles);
     fileSummary.textContent = selectedFiles.length === 0
-        ? '.md / .txt を含むフォルダまたはファイルを選択してください。'
+        ? '.md / .txt を含むフォルダを選択、またはファイルをドロップしてください。'
         : `${selectedFiles.length}件を選択中。収録対象 ${stats.targetCount}件、除外 ${stats.skippedCount}件。`;
     createArchiveButton.disabled = stats.targetCount === 0;
     setStatus(stats.targetCount === 0 ? '対象ファイルなし' : '作成できます');
@@ -1120,11 +1118,9 @@ async function filesFromDrop(dataTransfer) {
     return filesFromInput(dataTransfer.files);
 }
 chooseDirectoryButton.addEventListener('click', () => directoryInput.click());
-chooseFilesButton.addEventListener('click', () => fileInput.click());
 createArchiveButton.addEventListener('click', createArchive);
 copyArchiveGuideButton.addEventListener('click', copyGuide);
 directoryInput.addEventListener('change', () => updateSelectedFiles(filesFromInput(directoryInput.files)));
-fileInput.addEventListener('change', () => updateSelectedFiles(filesFromInput(fileInput.files)));
 dropZone.addEventListener('click', () => directoryInput.click());
 dropZone.addEventListener('dragover', event => {
     event.preventDefault();

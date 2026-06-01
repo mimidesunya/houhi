@@ -12,7 +12,6 @@ type SelectedStampFile = {
 type StampOptions = {
     allPages: boolean;
     insertBlankPages: boolean;
-    fontSize: number;
 };
 
 type StampedPdf = {
@@ -38,7 +37,6 @@ const chooseFilesButton = document.getElementById('chooseStampFilesButton') as H
 const stampButton = document.getElementById('stampButton') as HTMLButtonElement;
 const allPagesCheckbox = document.getElementById('stampAllPages') as HTMLInputElement;
 const noBlankPagesCheckbox = document.getElementById('stampNoBlankPages') as HTMLInputElement;
-const fontSizeInput = document.getElementById('stampFontSize') as HTMLInputElement;
 const stampStatus = document.getElementById('stampStatus') as HTMLElement;
 const stampSummary = document.getElementById('stampSummary') as HTMLElement;
 const stampLog = document.getElementById('stampLog') as HTMLTextAreaElement;
@@ -130,12 +128,12 @@ function getA4PrintScaleForPage(width: number, height: number) {
     return Math.min(a4W / width, a4H / height);
 }
 
-function getStampMetricsForA4Print(pageWidth: number, pageHeight: number, fontSize = DEFAULT_FONT_SIZE) {
+function getStampMetricsForA4Print(pageWidth: number, pageHeight: number) {
     const printScale = getA4PrintScaleForPage(pageWidth, pageHeight);
     const metricScale = printScale > 0 ? 1 / printScale : 1;
     return {
         printScale,
-        fontSize: fontSize * metricScale,
+        fontSize: DEFAULT_FONT_SIZE * metricScale,
         marginRight: MARGIN_RIGHT * metricScale,
         marginTop: MARGIN_TOP * metricScale,
         outline: STAMP_OUTLINE * metricScale,
@@ -268,14 +266,13 @@ async function convertImageToPdf(file: File) {
 }
 
 async function stampPdfBytes(inputBytes: Uint8Array, evidenceNumber: string, options: StampOptions) {
-    const existingPdfBytes = await ensureA4Pages(inputBytes);
-    const pdfDoc = await PDFLib.PDFDocument.load(existingPdfBytes);
+    const pdfDoc = await PDFLib.PDFDocument.load(inputBytes);
     const pages = pdfDoc.getPages();
     const pagesToStamp = options.allPages ? pages : pages.slice(0, 1);
 
     for (const page of pagesToStamp) {
         const { width, height } = page.getSize();
-        const metrics = getStampMetricsForA4Print(width, height, options.fontSize);
+        const metrics = getStampMetricsForA4Print(width, height);
         const stamp = await createStampImage(`${evidenceNumber}${STAMP_SUFFIX}`, metrics.fontSize, metrics.outline);
         const stampImage = await pdfDoc.embedPng(stamp.bytes);
 
@@ -414,11 +411,9 @@ function updateSelectedFiles(files: File[]) {
 }
 
 function getOptions(): StampOptions {
-    const fontSize = Number(fontSizeInput.value);
     return {
         allPages: allPagesCheckbox.checked,
         insertBlankPages: !noBlankPagesCheckbox.checked,
-        fontSize: Number.isFinite(fontSize) && fontSize > 0 ? fontSize : DEFAULT_FONT_SIZE,
     };
 }
 

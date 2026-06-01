@@ -38,15 +38,13 @@
 
         <div class="archive-actions">
           <button id="chooseDirectoryButton" type="button">フォルダを選択</button>
-          <button id="chooseFilesButton" type="button">ファイルを選択</button>
           <button id="createArchiveButton" type="button" class="primary-button">ZIP作成</button>
         </div>
 
-        <p id="fileSummary" class="status">.md / .txt を含むフォルダまたはファイルを選択してください。</p>
+        <p id="fileSummary" class="status">.md / .txt を含むフォルダを選択、またはファイルをドロップしてください。</p>
         <p id="archiveStatus" class="status">未選択</p>
 
         <input id="directoryInput" type="file" webkitdirectory directory multiple hidden>
-        <input id="archiveFileInput" type="file" accept=".md,.txt,text/markdown,text/plain" multiple hidden>
       </div>
 
       <div class="archive-guide">

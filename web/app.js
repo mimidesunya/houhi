@@ -841,6 +841,7 @@ const fileInput = document.getElementById('fileInput');
 const previewFrame = document.getElementById('previewFrame');
 const statusText = document.getElementById('previewStatus');
 const renderButton = document.getElementById('renderButton');
+const htmlPreviewButton = document.getElementById('htmlPreviewButton');
 const printButton = document.getElementById('printButton');
 const pasteButton = document.getElementById('pasteButton');
 let renderSeq = 0;
@@ -849,6 +850,13 @@ function setStatus(message) {
 }
 function escapeScriptEnd(value) {
     return value.replace(/<\/script/gi, '<\\/script');
+}
+function escapeHtmlAttribute(value) {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
 function prepareTocPlaceholders(html) {
     return html.replace(/<cssj:make-toc\b[^>]*>\s*<\/cssj:make-toc>/gi, () => {
@@ -890,6 +898,86 @@ ${bodyHtml}
   <script>
     window.__houhiPreviewSourceReady = true;
   </script>
+</body>
+</html>`;
+}
+function preparePlainHtmlBody(bodyHtml) {
+    const template = document.createElement('template');
+    template.innerHTML = bodyHtml;
+    const tocItems = Array.from(template.content.querySelectorAll('li.heading-item h1, li.heading-item h2, li.heading-item h3, li.heading-item h4, li.heading-item h5, li.heading-item h6'))
+        .map((heading, index) => {
+        const id = `houhi-heading-${index + 1}`;
+        heading.setAttribute('id', id);
+        return {
+            id,
+            title: heading.textContent?.trim() || '',
+        };
+    })
+        .filter(item => item.title.length > 0);
+    const container = document.createElement('div');
+    container.appendChild(template.content.cloneNode(true));
+    const preparedHtml = container.innerHTML;
+    const tocHtml = tocItems.length > 0
+        ? `<ul class="cssj-toc plain-toc">${tocItems.map(item => `<li><a href="#${item.id}"><span class="cssj-title">${escapeHtmlAttribute(item.title)}</span></a></li>`).join('')}</ul>`
+        : '';
+    return preparedHtml.replace(/<cssj:make-toc\b[^>]*>\s*<\/cssj:make-toc>/gi, tocHtml);
+}
+function buildPlainHtmlDocument(markdown) {
+    const bodyHtml = preparePlainHtmlBody((0, court_markdown_1.convertMarkdownToCourtHtml)(markdown));
+    const baseHref = new URL('./', window.location.href).href;
+    return `<!doctype html>
+<html lang="ja" data-houhi-pdf-engine="plain-html">
+<head>
+  <meta charset="utf-8">
+  <base href="${baseHref}">
+  <title>法匪 HTML表示</title>
+  <link rel="stylesheet" href="court.css">
+  <style>
+    html {
+      background: #f4f4f1;
+      scroll-behavior: smooth;
+    }
+    body {
+      margin: 0;
+      background: #f4f4f1;
+    }
+    body:before {
+      content: none;
+    }
+    body, body * {
+      font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
+    }
+    .content-container {
+      box-sizing: border-box;
+      max-width: 840px;
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 42px 54px 84px;
+      background: #fff;
+      font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
+    }
+    .break {
+      margin: 2.2em 0;
+      padding-top: 0.8em;
+      border-top: 1px dashed #bbb;
+      color: #666;
+      text-align: center;
+    }
+    ul.plain-toc span.cssj-page,
+    ul.plain-toc span.cssj-leader {
+      display: none;
+    }
+    @media (max-width: 720px) {
+      .content-container {
+        padding: 28px 22px 64px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="content-container">
+${bodyHtml}
+  </main>
 </body>
 </html>`;
 }
@@ -961,6 +1049,22 @@ async function renderPreviewNow() {
 function markPreviewDirty() {
     setStatus('未更新');
 }
+function openPlainHtmlPreview() {
+    const markdown = editor.value.trim() ? editor.value : DEFAULT_MARKDOWN;
+    const html = buildPlainHtmlDocument(markdown);
+    const blob = new Blob([escapeScriptEnd(html)], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const tab = window.open('about:blank', '_blank');
+    if (!tab) {
+        URL.revokeObjectURL(url);
+        setStatus('別タブを開けませんでした。ポップアップ許可を確認してください。');
+        return;
+    }
+    tab.opener = null;
+    tab.location.href = url;
+    setStatus('HTML表示を別タブで開きました。');
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
 async function pasteFromClipboard() {
     if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
         editor.focus();
@@ -1021,6 +1125,7 @@ fileInput.addEventListener('change', () => {
 });
 pasteButton.addEventListener('click', pasteFromClipboard);
 renderButton.addEventListener('click', renderPreviewNow);
+htmlPreviewButton.addEventListener('click', openPlainHtmlPreview);
 printButton.addEventListener('click', () => {
     const frameWindow = previewFrame.contentWindow;
     if (!frameWindow)

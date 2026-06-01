@@ -54,10 +54,8 @@ const archiveData = (window as any).HOUHI_ARCHIVE_DATA as ArchiveWebData;
 const encoder = new TextEncoder();
 
 const directoryInput = document.getElementById('directoryInput') as HTMLInputElement;
-const fileInput = document.getElementById('archiveFileInput') as HTMLInputElement;
 const dropZone = document.getElementById('archiveDropZone') as HTMLElement;
 const chooseDirectoryButton = document.getElementById('chooseDirectoryButton') as HTMLButtonElement;
-const chooseFilesButton = document.getElementById('chooseFilesButton') as HTMLButtonElement;
 const createArchiveButton = document.getElementById('createArchiveButton') as HTMLButtonElement;
 const copyArchiveGuideButton = document.getElementById('copyArchiveGuideButton') as HTMLButtonElement;
 const archiveStatus = document.getElementById('archiveStatus') as HTMLElement;
@@ -148,7 +146,7 @@ function updateSelectedFiles(files: SelectedInputFile[]) {
     const stats = getSelectedFileStats(selectedFiles);
 
     fileSummary.textContent = selectedFiles.length === 0
-        ? '.md / .txt を含むフォルダまたはファイルを選択してください。'
+        ? '.md / .txt を含むフォルダを選択、またはファイルをドロップしてください。'
         : `${selectedFiles.length}件を選択中。収録対象 ${stats.targetCount}件、除外 ${stats.skippedCount}件。`;
     createArchiveButton.disabled = stats.targetCount === 0;
     setStatus(stats.targetCount === 0 ? '対象ファイルなし' : '作成できます');
@@ -504,12 +502,10 @@ async function filesFromDrop(dataTransfer: DataTransfer) {
 }
 
 chooseDirectoryButton.addEventListener('click', () => directoryInput.click());
-chooseFilesButton.addEventListener('click', () => fileInput.click());
 createArchiveButton.addEventListener('click', createArchive);
 copyArchiveGuideButton.addEventListener('click', copyGuide);
 
 directoryInput.addEventListener('change', () => updateSelectedFiles(filesFromInput(directoryInput.files)));
-fileInput.addEventListener('change', () => updateSelectedFiles(filesFromInput(fileInput.files)));
 
 dropZone.addEventListener('click', () => directoryInput.click());
 dropZone.addEventListener('dragover', event => {
