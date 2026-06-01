@@ -230,9 +230,7 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
     const stampText = `${evidenceNumber}${STAMP_SUFFIX}`;
 
     const rawPdfBytes = fs.readFileSync(inputPath);
-    // A4未満のページをA4に中央配置
-    const existingPdfBytes = await ensureA4Pages(rawPdfBytes);
-    const pdfDoc = await PDFDocument.load(existingPdfBytes);
+    const pdfDoc = await PDFDocument.load(rawPdfBytes);
 
     // フォント登録
     pdfDoc.registerFontkit(fontkit);

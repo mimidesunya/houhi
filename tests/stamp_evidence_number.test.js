@@ -1,13 +1,18 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+const { PDFDocument } = require('pdf-lib');
 
 const {
     extractEvidenceNumber,
     naturalSortKey,
     isImageFile,
+    findJapaneseFont,
     getA4PrintScaleForPage,
     getStampMetricsForA4Print,
+    stampPdf,
 } = require('../dist/src/stamp_evidence_number.js');
 
 // ─── extractEvidenceNumber ──────────────────────────────────
@@ -127,4 +132,27 @@ test('getStampMetricsForA4Print: enlarges stamp metrics for A3 portrait page', (
     assert.ok(Math.abs(metrics.fontSize * metrics.printScale - 20) < 0.001);
     assert.ok(Math.abs(metrics.marginRight * metrics.printScale - 15) < 0.001);
     assert.ok(Math.abs(metrics.marginTop * metrics.printScale - 12) < 0.001);
+});
+
+test('stampPdf: preserves original PDF page size', async (t) => {
+    const fontPath = findJapaneseFont();
+    if (!fontPath) {
+        t.skip('Japanese font is not available');
+        return;
+    }
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-stamp-'));
+    const inputPath = path.join(tempDir, '乙1_test.pdf');
+    const outputPath = path.join(tempDir, '乙1_test_stamped.pdf');
+
+    const sourceDoc = await PDFDocument.create();
+    sourceDoc.addPage([300, 400]);
+    fs.writeFileSync(inputPath, await sourceDoc.save());
+
+    const stampedBytes = await stampPdf(inputPath, outputPath, '乙1', fs.readFileSync(fontPath), { allPages: true });
+    const stampedDoc = await PDFDocument.load(stampedBytes);
+    const { width, height } = stampedDoc.getPage(0).getSize();
+
+    assert.equal(width, 300);
+    assert.equal(height, 400);
 });
