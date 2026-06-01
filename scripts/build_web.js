@@ -9,6 +9,8 @@ const vendorDir = path.join(webDir, 'vendor');
 const pdfEntryId = 'src/web/app';
 const draftingEntryId = 'src/web/drafting';
 const archiveEntryId = 'src/web/archive';
+const stampEntryId = 'src/web/stamp';
+const faxEntryId = 'src/web/fax';
 const moduleFiles = {
   'src/base/court_markdown': path.join(projectRoot, 'src/base/court_markdown.ts'),
   'src/lib/paged_toc': path.join(projectRoot, 'src/lib/paged_toc.ts'),
@@ -25,7 +27,9 @@ const moduleFiles = {
   [pdfEntryId]: path.join(projectRoot, 'src/web/app.ts'),
   [draftingEntryId]: path.join(projectRoot, 'src/web/drafting.ts'),
   'src/web/zip': path.join(projectRoot, 'src/web/zip.ts'),
-  [archiveEntryId]: path.join(projectRoot, 'src/web/archive.ts')
+  [archiveEntryId]: path.join(projectRoot, 'src/web/archive.ts'),
+  [stampEntryId]: path.join(projectRoot, 'src/web/stamp.ts'),
+  [faxEntryId]: path.join(projectRoot, 'src/web/fax.ts')
 };
 
 const draftingTemplateOrder = [
@@ -245,6 +249,13 @@ fs.writeFileSync(path.join(webDir, 'archive.js'), buildBundle(archiveEntryId, {
   'src/web/zip': moduleFiles['src/web/zip'],
   [archiveEntryId]: moduleFiles[archiveEntryId]
 }), 'utf-8');
+fs.writeFileSync(path.join(webDir, 'stamp.js'), buildBundle(stampEntryId, {
+  'src/web/zip': moduleFiles['src/web/zip'],
+  [stampEntryId]: moduleFiles[stampEntryId]
+}), 'utf-8');
+fs.writeFileSync(path.join(webDir, 'fax.js'), buildBundle(faxEntryId, {
+  [faxEntryId]: moduleFiles[faxEntryId]
+}), 'utf-8');
 fs.writeFileSync(
   path.join(webDir, 'drafting-data.js'),
   `window.HOUHI_DRAFTING_DATA = ${JSON.stringify(readDraftingData())};\n`,
@@ -266,5 +277,7 @@ console.log('[web] built web/drafting.js');
 console.log('[web] built web/drafting-data.js');
 console.log('[web] built web/archive.js');
 console.log('[web] built web/archive-data.js');
+console.log('[web] built web/stamp.js');
+console.log('[web] built web/fax.js');
 console.log('[web] copied web/court.css');
 console.log('[web] copied web/vendor/paged.polyfill.min.js');

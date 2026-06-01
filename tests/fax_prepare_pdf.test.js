@@ -183,6 +183,13 @@ test('toFaxBinaryAuto: produces binary output for document image', () => {
     }
 });
 
+test('toFaxBinaryAuto: uses neutral threshold for dithered photo content', () => {
+    const img = makeImageData(20, 10, (x) => x < 10 ? [64, 64, 64, 255] : [192, 192, 192, 255]);
+    const result = toFaxBinaryAuto(img, 20, 10);
+    assert.equal(result.hasPhoto, true);
+    assert.equal(result.threshold, 128);
+});
+
 // ─── parseArgs ──────────────────────────────────────────────
 
 test('parseArgs: parses --auto flag', () => {

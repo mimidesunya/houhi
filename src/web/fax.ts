@@ -1,0 +1,598 @@
+declare const PDFLib: any;
+declare const pdfjsLib: any;
+
+type FaxFile = {
+    id: number;
+    file: File;
+};
+
+type FaxOptions = {
+    dpi: number;
+    auto: boolean;
+    dither: boolean;
+    threshold: number;
+};
+
+const DEFAULT_DPI = 200;
+const DEFAULT_THRESHOLD = 170;
+const DITHER_THRESHOLD = 128;
+
+const fileInput = document.getElementById('faxFileInput') as HTMLInputElement;
+const dropZone = document.getElementById('faxDropZone') as HTMLElement;
+const chooseFilesButton = document.getElementById('chooseFaxFilesButton') as HTMLButtonElement;
+const buildFaxButton = document.getElementById('buildFaxButton') as HTMLButtonElement;
+const previewFaxButton = document.getElementById('previewFaxButton') as HTMLButtonElement;
+const sortFaxFilesButton = document.getElementById('sortFaxFilesButton') as HTMLButtonElement;
+const dpiInput = document.getElementById('faxDpi') as HTMLSelectElement;
+const autoCheckbox = document.getElementById('faxAuto') as HTMLInputElement;
+const ditherCheckbox = document.getElementById('faxDither') as HTMLInputElement;
+const thresholdInput = document.getElementById('faxThreshold') as HTMLInputElement;
+const thresholdRow = document.getElementById('faxThresholdRow') as HTMLElement;
+const faxStatus = document.getElementById('faxStatus') as HTMLElement;
+const faxSummary = document.getElementById('faxSummary') as HTMLElement;
+const faxList = document.getElementById('faxList') as HTMLElement;
+const faxPreviewCanvas = document.getElementById('faxPreviewCanvas') as HTMLCanvasElement;
+const faxPreviewMeta = document.getElementById('faxPreviewMeta') as HTMLElement;
+const faxLog = document.getElementById('faxLog') as HTMLTextAreaElement;
+const faxProgress = document.getElementById('faxProgress') as HTMLProgressElement;
+const faxProgressText = document.getElementById('faxProgressText') as HTMLElement;
+
+let files: FaxFile[] = [];
+let selectedId: number | null = null;
+let draggingId: number | null = null;
+let nextId = 1;
+
+function setStatus(message: string) {
+    faxStatus.textContent = message;
+}
+
+function appendLog(message: string) {
+    faxLog.value = faxLog.value ? `${faxLog.value}\n${message}` : message;
+    faxLog.scrollTop = faxLog.scrollHeight;
+}
+
+function setProgress(done: number, total: number) {
+    const safeTotal = Math.max(1, total);
+    faxProgress.max = safeTotal;
+    faxProgress.value = Math.min(done, safeTotal);
+    faxProgressText.textContent = `${Math.round((faxProgress.value / safeTotal) * 100)}%`;
+}
+
+function getOptions(): FaxOptions {
+    const dpi = Number(dpiInput.value);
+    const threshold = Number(thresholdInput.value);
+    return {
+        dpi: Number.isFinite(dpi) ? dpi : DEFAULT_DPI,
+        auto: autoCheckbox.checked,
+        dither: ditherCheckbox.checked,
+        threshold: Number.isFinite(threshold) ? Math.max(0, Math.min(255, threshold)) : DEFAULT_THRESHOLD,
+    };
+}
+
+function isPdfFile(file: File) {
+    return file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+}
+
+function updateThresholdVisibility() {
+    thresholdRow.hidden = autoCheckbox.checked;
+    ditherCheckbox.disabled = !autoCheckbox.checked;
+}
+
+function renderList() {
+    faxList.textContent = '';
+
+    files.forEach((entry, index) => {
+        const row = document.createElement('div');
+        row.className = 'fax-file-row';
+        row.draggable = true;
+        row.dataset.id = String(entry.id);
+        if (entry.id === selectedId) {
+            row.classList.add('selected');
+        }
+        if (entry.id === draggingId) {
+            row.classList.add('dragging');
+        }
+
+        const nameButton = document.createElement('button');
+        nameButton.type = 'button';
+        nameButton.className = 'fax-file-name';
+        nameButton.textContent = `${index + 1}. ${entry.file.name}`;
+        nameButton.addEventListener('click', () => {
+            selectedId = entry.id;
+            renderList();
+            previewSelected();
+        });
+
+        const upButton = document.createElement('button');
+        upButton.type = 'button';
+        upButton.textContent = '上';
+        upButton.disabled = index === 0;
+        upButton.addEventListener('click', () => moveFile(index, -1));
+
+        const downButton = document.createElement('button');
+        downButton.type = 'button';
+        downButton.textContent = '下';
+        downButton.disabled = index === files.length - 1;
+        downButton.addEventListener('click', () => moveFile(index, 1));
+
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.textContent = '削除';
+        removeButton.addEventListener('click', () => removeFile(entry.id));
+
+        row.addEventListener('dragstart', event => {
+            draggingId = entry.id;
+            event.dataTransfer?.setData('text/plain', String(entry.id));
+            event.dataTransfer?.setDragImage(row, 18, 18);
+            row.classList.add('dragging');
+        });
+        row.addEventListener('dragover', event => {
+            event.preventDefault();
+            row.classList.add('drag-over');
+        });
+        row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
+        row.addEventListener('drop', event => {
+            event.preventDefault();
+            row.classList.remove('drag-over');
+            const sourceId = Number(event.dataTransfer?.getData('text/plain') || draggingId);
+            moveFileById(sourceId, entry.id);
+        });
+        row.addEventListener('dragend', () => {
+            draggingId = null;
+            renderList();
+        });
+
+        row.append(nameButton, upButton, downButton, removeButton);
+        faxList.appendChild(row);
+    });
+
+    faxSummary.textContent = files.length === 0
+        ? 'PDFを選択してください。'
+        : `${files.length}件を結合順に処理します。`;
+    buildFaxButton.disabled = files.length === 0;
+    previewFaxButton.disabled = files.length === 0;
+    setStatus(files.length === 0 ? '未選択' : '作成できます');
+}
+
+function moveFileById(sourceId: number, targetId: number) {
+    if (!sourceId || !targetId || sourceId === targetId) {
+        return;
+    }
+
+    const sourceIndex = files.findIndex(entry => entry.id === sourceId);
+    const targetIndex = files.findIndex(entry => entry.id === targetId);
+    if (sourceIndex < 0 || targetIndex < 0) {
+        return;
+    }
+
+    const [entry] = files.splice(sourceIndex, 1);
+    files.splice(targetIndex, 0, entry);
+    selectedId = entry.id;
+    draggingId = null;
+    renderList();
+}
+
+function moveFile(index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= files.length) {
+        return;
+    }
+
+    const [entry] = files.splice(index, 1);
+    files.splice(targetIndex, 0, entry);
+    renderList();
+}
+
+function removeFile(id: number) {
+    files = files.filter(entry => entry.id !== id);
+    if (selectedId === id) {
+        selectedId = files[0]?.id || null;
+    }
+    renderList();
+    if (files.length > 0) {
+        previewSelected();
+    } else {
+        const context = faxPreviewCanvas.getContext('2d');
+        context?.clearRect(0, 0, faxPreviewCanvas.width, faxPreviewCanvas.height);
+        faxPreviewMeta.textContent = 'プレビューなし';
+    }
+}
+
+function updateFiles(selectedFiles: File[]) {
+    files = selectedFiles
+        .filter(isPdfFile)
+        .map(file => ({ id: nextId++, file }));
+    selectedId = files[0]?.id || null;
+    faxLog.value = '';
+    if (selectedFiles.length !== files.length) {
+        appendLog(`PDF以外 ${selectedFiles.length - files.length}件を除外しました。`);
+    }
+    renderList();
+    if (files.length > 0) {
+        previewSelected();
+    }
+}
+
+function sortFilesByName() {
+    files.sort((a, b) => a.file.name.localeCompare(b.file.name, 'ja', { numeric: true, sensitivity: 'base' }));
+    selectedId = files[0]?.id || null;
+    renderList();
+    if (files.length > 0) {
+        previewSelected();
+    }
+}
+
+function computeLuminanceData(imageData: ImageData, width: number, height: number) {
+    const pixels = imageData.data;
+    const totalPixels = width * height;
+    const isRedInk = new Uint8Array(totalPixels);
+    const histogram = new Uint32Array(256);
+    const luminance = new Float32Array(totalPixels);
+
+    for (let index = 0; index < totalPixels; index++) {
+        const position = index * 4;
+        const red = pixels[position];
+        const green = pixels[position + 1];
+        const blue = pixels[position + 2];
+
+        if ((red - Math.min(green, blue)) > 30 && red > 60) {
+            isRedInk[index] = 1;
+        }
+
+        const value = 0.299 * red + 0.587 * green + 0.114 * blue;
+        luminance[index] = value;
+        histogram[Math.min(255, Math.round(value))]++;
+    }
+
+    return { isRedInk, histogram, luminance, totalPixels };
+}
+
+function otsuThreshold(histogram: Uint32Array, totalPixels: number) {
+    let sum = 0;
+    for (let index = 0; index < 256; index++) {
+        sum += index * histogram[index];
+    }
+
+    let sumB = 0;
+    let wB = 0;
+    let maxVariance = 0;
+    let bestThreshold = 128;
+
+    for (let threshold = 0; threshold < 256; threshold++) {
+        wB += histogram[threshold];
+        if (wB === 0) continue;
+
+        const wF = totalPixels - wB;
+        if (wF === 0) break;
+
+        sumB += threshold * histogram[threshold];
+        const mB = sumB / wB;
+        const mF = (sum - sumB) / wF;
+        const variance = wB * wF * (mB - mF) * (mB - mF);
+
+        if (variance > maxVariance) {
+            maxVariance = variance;
+            bestThreshold = threshold;
+        }
+    }
+
+    return bestThreshold;
+}
+
+function detectPhotoContent(histogram: Uint32Array, totalPixels: number) {
+    let midTonePixels = 0;
+    for (let value = 32; value < 224; value++) {
+        midTonePixels += histogram[value];
+    }
+    const midToneRatio = midTonePixels / totalPixels;
+    return { hasPhoto: midToneRatio > 0.15, midToneRatio };
+}
+
+function toFaxBinary(imageData: ImageData, threshold: number) {
+    const pixels = imageData.data;
+    for (let position = 0; position < pixels.length; position += 4) {
+        const red = pixels[position];
+        const green = pixels[position + 1];
+        const blue = pixels[position + 2];
+        const isRedInk = (red - Math.min(green, blue)) > 30 && red > 60;
+        const luminance = 0.299 * red + 0.587 * green + 0.114 * blue;
+        const binary = isRedInk ? 0 : (luminance >= threshold ? 255 : 0);
+
+        pixels[position] = binary;
+        pixels[position + 1] = binary;
+        pixels[position + 2] = binary;
+        pixels[position + 3] = 255;
+    }
+
+    return { threshold, hasPhoto: false, midToneRatio: 0 };
+}
+
+function toFaxBinaryAuto(imageData: ImageData, width: number, height: number, useDither: boolean) {
+    const pixels = imageData.data;
+    const { isRedInk, histogram, luminance, totalPixels } = computeLuminanceData(imageData, width, height);
+    const threshold = otsuThreshold(histogram, totalPixels);
+    const { hasPhoto, midToneRatio } = detectPhotoContent(histogram, totalPixels);
+    const dithered = hasPhoto && useDither;
+    const effectiveThreshold = dithered ? DITHER_THRESHOLD : threshold;
+
+    if (dithered) {
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const index = y * width + x;
+                if (isRedInk[index]) continue;
+
+                const oldValue = luminance[index];
+                const newValue = oldValue >= effectiveThreshold ? 255 : 0;
+                const error = oldValue - newValue;
+                luminance[index] = newValue;
+
+                if (x + 1 < width && !isRedInk[index + 1]) luminance[index + 1] += error * 7 / 16;
+                if (y + 1 < height) {
+                    const nextRow = (y + 1) * width;
+                    if (x > 0 && !isRedInk[nextRow + x - 1]) luminance[nextRow + x - 1] += error * 3 / 16;
+                    if (!isRedInk[nextRow + x]) luminance[nextRow + x] += error * 5 / 16;
+                    if (x + 1 < width && !isRedInk[nextRow + x + 1]) luminance[nextRow + x + 1] += error * 1 / 16;
+                }
+            }
+        }
+
+        for (let index = 0; index < totalPixels; index++) {
+            const position = index * 4;
+            const value = isRedInk[index] ? 0 : (luminance[index] >= effectiveThreshold ? 255 : 0);
+            pixels[position] = value;
+            pixels[position + 1] = value;
+            pixels[position + 2] = value;
+            pixels[position + 3] = 255;
+        }
+    } else {
+        for (let index = 0; index < totalPixels; index++) {
+            const position = index * 4;
+            const value = isRedInk[index] ? 0 : (luminance[index] >= threshold ? 255 : 0);
+            pixels[position] = value;
+            pixels[position + 1] = value;
+            pixels[position + 2] = value;
+            pixels[position + 3] = 255;
+        }
+    }
+
+    return { threshold: effectiveThreshold, hasPhoto, midToneRatio, dithered };
+}
+
+async function renderPdfPage(file: File, pageNumber: number, dpi: number) {
+    const pdfBytes = new Uint8Array(await file.arrayBuffer());
+    const task = pdfjsLib.getDocument({
+        data: new Uint8Array(pdfBytes),
+        cMapPacked: true,
+        useSystemFonts: true,
+        isEvalSupported: false,
+    });
+    const pdf = await task.promise;
+    const page = await pdf.getPage(pageNumber);
+    const originalViewport = page.getViewport({ scale: 1 });
+    const renderViewport = page.getViewport({ scale: dpi / 72 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(renderViewport.width);
+    canvas.height = Math.ceil(renderViewport.height);
+    const context = canvas.getContext('2d');
+    if (!context) {
+        throw new Error('Canvasを初期化できませんでした。');
+    }
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({
+        canvasContext: context,
+        viewport: renderViewport,
+        background: 'rgb(255,255,255)',
+    }).promise;
+
+    return { pdf, page, canvas, context, originalViewport };
+}
+
+function applyBinary(context: CanvasRenderingContext2D, width: number, height: number, options: FaxOptions) {
+    const imageData = context.getImageData(0, 0, width, height);
+    const result = options.auto
+        ? toFaxBinaryAuto(imageData, width, height, options.dither)
+        : { ...toFaxBinary(imageData, options.threshold), dithered: false };
+    context.putImageData(imageData, 0, 0);
+    return result;
+}
+
+function drawPreview(source: HTMLCanvasElement) {
+    const context = faxPreviewCanvas.getContext('2d');
+    if (!context) {
+        return;
+    }
+
+    const maxWidth = 780;
+    const scale = Math.min(1, maxWidth / source.width);
+    faxPreviewCanvas.width = Math.max(1, Math.round(source.width * scale));
+    faxPreviewCanvas.height = Math.max(1, Math.round(source.height * scale));
+    context.drawImage(source, 0, 0, faxPreviewCanvas.width, faxPreviewCanvas.height);
+}
+
+async function previewSelected() {
+    const selected = files.find(entry => entry.id === selectedId) || files[0];
+    if (!selected || !(window as any).pdfjsLib) {
+        return;
+    }
+
+    previewFaxButton.disabled = true;
+    setStatus('プレビュー作成中...');
+
+    try {
+        const options = getOptions();
+        const rendered = await renderPdfPage(selected.file, 1, Math.min(options.dpi, 150));
+        const result = applyBinary(rendered.context, rendered.canvas.width, rendered.canvas.height, options);
+        drawPreview(rendered.canvas);
+        faxPreviewMeta.textContent = `${selected.file.name} / 1ページ目 / 閾値 ${result.threshold}${result.dithered ? ' / ディザリング' : ''}`;
+        setStatus('作成できます');
+        if (typeof rendered.page.cleanup === 'function') rendered.page.cleanup();
+        if (typeof rendered.pdf.cleanup === 'function') rendered.pdf.cleanup();
+    } catch (err) {
+        console.error(err);
+        faxPreviewMeta.textContent = 'プレビューに失敗しました。';
+        setStatus('プレビューに失敗しました');
+    } finally {
+        previewFaxButton.disabled = files.length === 0;
+    }
+}
+
+async function canvasToPngBytes(canvas: HTMLCanvasElement) {
+    const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(result => {
+            if (result) resolve(result);
+            else reject(new Error('PNGを作成できませんでした。'));
+        }, 'image/png');
+    });
+
+    return new Uint8Array(await blob.arrayBuffer());
+}
+
+async function buildFaxPdf() {
+    if (!(window as any).PDFLib || !(window as any).pdfjsLib) {
+        setStatus('PDF処理ライブラリを読み込めませんでした。ネットワークを確認してください。');
+        return;
+    }
+    if (files.length === 0) {
+        return;
+    }
+
+    buildFaxButton.disabled = true;
+    previewFaxButton.disabled = true;
+    setStatus('作成中...');
+    setProgress(0, Math.max(1, files.length));
+    faxLog.value = '';
+
+    try {
+        const options = getOptions();
+        const outputPdf = await PDFLib.PDFDocument.create();
+        let pageTotal = 0;
+        let totalPages = 0;
+
+        for (const entry of files) {
+            const pdfBytes = new Uint8Array(await entry.file.arrayBuffer());
+            const task = pdfjsLib.getDocument({
+                data: new Uint8Array(pdfBytes),
+                cMapPacked: true,
+                useSystemFonts: true,
+                isEvalSupported: false,
+            });
+            const pdf = await task.promise;
+            totalPages += pdf.numPages;
+            if (typeof pdf.cleanup === 'function') pdf.cleanup();
+        }
+        setProgress(0, totalPages);
+
+        for (const entry of files) {
+            appendLog(`読込: ${entry.file.name}`);
+            const pdfBytes = new Uint8Array(await entry.file.arrayBuffer());
+            const task = pdfjsLib.getDocument({
+                data: new Uint8Array(pdfBytes),
+                cMapPacked: true,
+                useSystemFonts: true,
+                isEvalSupported: false,
+            });
+            const pdf = await task.promise;
+
+            for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+                const page = await pdf.getPage(pageNumber);
+                const originalViewport = page.getViewport({ scale: 1 });
+                const renderViewport = page.getViewport({ scale: options.dpi / 72 });
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.ceil(renderViewport.width);
+                canvas.height = Math.ceil(renderViewport.height);
+                const context = canvas.getContext('2d');
+                if (!context) {
+                    throw new Error('Canvasを初期化できませんでした。');
+                }
+
+                context.fillStyle = '#ffffff';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                await page.render({
+                    canvasContext: context,
+                    viewport: renderViewport,
+                    background: 'rgb(255,255,255)',
+                }).promise;
+
+                const result = applyBinary(context, canvas.width, canvas.height, options);
+                const image = await outputPdf.embedPng(await canvasToPngBytes(canvas));
+                const outputPage = outputPdf.addPage([originalViewport.width, originalViewport.height]);
+                outputPage.drawImage(image, {
+                    x: 0,
+                    y: 0,
+                    width: originalViewport.width,
+                    height: originalViewport.height,
+                });
+
+                pageTotal++;
+                setProgress(pageTotal, totalPages);
+                appendLog(`  ${pageNumber}/${pdf.numPages} ページ / 閾値 ${result.threshold}${result.dithered ? ' / ディザリング' : ''}`);
+                if (typeof page.cleanup === 'function') page.cleanup();
+            }
+
+            if (typeof pdf.cleanup === 'function') pdf.cleanup();
+        }
+
+        const bytes = await outputPdf.save({ useObjectStreams: false });
+        downloadPdf('fax_送信用.pdf', bytes);
+        setProgress(totalPages, totalPages);
+        appendLog(`完了: ${pageTotal}ページ`);
+        setStatus('作成しました。');
+    } catch (err) {
+        console.error(err);
+        appendLog(`エラー: ${err instanceof Error ? err.message : String(err)}`);
+        setStatus('作成に失敗しました。ファイルを確認してください。');
+    } finally {
+        buildFaxButton.disabled = files.length === 0;
+        previewFaxButton.disabled = files.length === 0;
+    }
+}
+
+function downloadPdf(filename: string, bytes: Uint8Array) {
+    const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function filesFromInput(fileList: FileList | null) {
+    return Array.from(fileList || []);
+}
+
+chooseFilesButton.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => updateFiles(filesFromInput(fileInput.files)));
+buildFaxButton.addEventListener('click', buildFaxPdf);
+previewFaxButton.addEventListener('click', previewSelected);
+sortFaxFilesButton.addEventListener('click', sortFilesByName);
+autoCheckbox.addEventListener('change', () => {
+    updateThresholdVisibility();
+    previewSelected();
+});
+ditherCheckbox.addEventListener('change', previewSelected);
+thresholdInput.addEventListener('change', previewSelected);
+dpiInput.addEventListener('change', previewSelected);
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', event => {
+    event.preventDefault();
+    dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', event => {
+    event.preventDefault();
+    dropZone.classList.remove('drag-over');
+    updateFiles(filesFromInput(event.dataTransfer?.files || null));
+});
+
+updateThresholdVisibility();
+buildFaxButton.disabled = true;
+previewFaxButton.disabled = true;
+setProgress(0, 1);
+setStatus('未選択');

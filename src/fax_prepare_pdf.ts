@@ -34,6 +34,7 @@ const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 
 const DEFAULT_DPI = 200;
 const DEFAULT_THRESHOLD = 170;
+const DITHER_THRESHOLD = 128;
 
 const JAPANESE_FONT_CANDIDATES = [
     { path: 'C:/Windows/Fonts/msgothic.ttc', family: 'MS Gothic' },
@@ -156,6 +157,7 @@ function toFaxBinaryAuto(imageData, width, height) {
     const { isRedInk, histogram, luminance, totalPixels } = computeLuminanceData(imageData, width, height);
     const threshold = otsuThreshold(histogram, totalPixels);
     const { hasPhoto, midToneRatio } = detectPhotoContent(histogram, totalPixels);
+    const effectiveThreshold = hasPhoto ? DITHER_THRESHOLD : threshold;
 
     if (hasPhoto) {
         // Floyd-Steinberg ディザリング（写真の階調を保持）
@@ -165,7 +167,7 @@ function toFaxBinaryAuto(imageData, width, height) {
                 if (isRedInk[idx]) continue;
 
                 const oldVal = luminance[idx];
-                const newVal = oldVal >= threshold ? 255 : 0;
+                const newVal = oldVal >= effectiveThreshold ? 255 : 0;
                 const error = oldVal - newVal;
                 luminance[idx] = newVal;
 
@@ -185,7 +187,7 @@ function toFaxBinaryAuto(imageData, width, height) {
 
         for (let i = 0; i < totalPixels; i++) {
             const p = i * 4;
-            const val = isRedInk[i] ? 0 : (luminance[i] >= 128 ? 255 : 0);
+            const val = isRedInk[i] ? 0 : (luminance[i] >= effectiveThreshold ? 255 : 0);
             pixels[p] = val;
             pixels[p + 1] = val;
             pixels[p + 2] = val;
@@ -203,7 +205,7 @@ function toFaxBinaryAuto(imageData, width, height) {
         }
     }
 
-    return { threshold, hasPhoto, midToneRatio };
+    return { threshold: effectiveThreshold, hasPhoto, midToneRatio };
 }
 
 function parseArgs(args) {

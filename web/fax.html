@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FAX用PDF - 法匪 HOUHI Web</title>
+  <meta name="description" content="PDFを結合し、FAX向けに白黒二値化します。">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="法匪 HOUHI Web">
+      <span class="brand-mark">法</span>
+      <span>法匪 Web</span>
+    </a>
+    <nav class="site-nav" aria-label="主要ナビゲーション">
+      <a href="./">Home</a>
+      <a href="./drafting.html">起案</a>
+      <a href="./archive.html">AIアーカイブ</a>
+      <a href="./pdf.html">PDF</a>
+      <a href="./stamp.html">号証スタンプ</a>
+      <a href="https://github.com/mimidesunya/houhi">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="quiet-title">
+      <p class="eyebrow">Fax PDF</p>
+      <h1>FAX用PDF</h1>
+    </section>
+
+    <section class="fax-layout" aria-label="FAX用PDF作成">
+      <div class="fax-controls">
+        <div id="faxDropZone" class="drop-zone fax-drop-zone" tabindex="0" role="button">
+          <strong>PDFをドロップ</strong>
+          <span>並び順どおりに結合し、白黒二値化したPDFを作成します。</span>
+        </div>
+
+        <div class="stamp-options">
+          <label for="faxDpi">解像度</label>
+          <select id="faxDpi">
+            <option value="150">150 dpi</option>
+            <option value="200" selected>200 dpi</option>
+            <option value="300">300 dpi</option>
+          </select>
+          <label class="check-row">
+            <input id="faxAuto" type="checkbox" checked>
+            <span>自動二値化</span>
+          </label>
+          <label class="check-row">
+            <input id="faxDither" type="checkbox" checked>
+            <span>写真ページをディザリング</span>
+          </label>
+          <div id="faxThresholdRow" class="setting-row">
+            <label for="faxThreshold">しきい値</label>
+            <input id="faxThreshold" type="number" min="0" max="255" step="1" value="170">
+          </div>
+        </div>
+
+        <div class="archive-actions">
+          <button id="chooseFaxFilesButton" type="button">ファイルを選択</button>
+          <button id="previewFaxButton" type="button">プレビュー更新</button>
+          <button id="buildFaxButton" type="button" class="primary-button">PDF作成</button>
+        </div>
+
+        <p id="faxSummary" class="status">PDFを選択してください。</p>
+        <p id="faxStatus" class="status">未選択</p>
+        <div class="progress-block" aria-label="FAX用PDF進捗">
+          <progress id="faxProgress" max="1" value="0"></progress>
+          <span id="faxProgressText" class="status">0%</span>
+        </div>
+        <input id="faxFileInput" type="file" accept=".pdf,application/pdf" multiple hidden>
+      </div>
+
+      <div class="fax-list-pane">
+        <div class="pane-toolbar">
+          <div>
+            <p class="eyebrow">Order</p>
+            <h2>結合順</h2>
+          </div>
+          <button id="sortFaxFilesButton" type="button">名前順</button>
+        </div>
+        <div id="faxList" class="fax-list" aria-label="結合順"></div>
+      </div>
+
+      <div class="fax-preview-pane">
+        <div class="pane-toolbar">
+          <div>
+            <p class="eyebrow">Preview</p>
+            <h2>プレビュー</h2>
+          </div>
+          <span id="faxPreviewMeta" class="status">プレビューなし</span>
+        </div>
+        <div class="fax-preview-surface">
+          <canvas id="faxPreviewCanvas"></canvas>
+        </div>
+      </div>
+
+      <div class="fax-log-pane">
+        <div class="pane-toolbar">
+          <div>
+            <p class="eyebrow">Log</p>
+            <h2>処理内容</h2>
+          </div>
+        </div>
+        <textarea id="faxLog" class="stamp-log" readonly aria-label="FAX用PDF処理内容"></textarea>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  </script>
+  <script src="./fax.js"></script>
+</body>
+</html>
