@@ -6,7 +6,7 @@ type SelectedStampFile = {
     file: File;
     evidenceNumber: string | null;
     supported: boolean;
-    sortKey: [number, number];
+    sortKey: [number, number, number];
 };
 
 type StampOptions = {
@@ -65,6 +65,10 @@ function toHalfWidthDigits(value: string) {
     return value.replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
 }
 
+function toHalfWidthAscii(value: string) {
+    return value.replace(/[Ａ-Ｚａ-ｚ]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
+}
+
 function getBasename(filePath: string) {
     const normalized = filePath.replace(/\\/g, '/');
     const parts = normalized.split('/').filter(Boolean);
@@ -89,8 +93,8 @@ function stripExtname(filePath: string) {
 }
 
 function extractEvidenceNumber(filename: string) {
-    const normalizedName = toHalfWidthDigits(getBasename(filename));
-    const match = normalizedName.match(/^([甲乙丙丁戊証疎][0-9]+(?:[\-ー－の][0-9]+)?)/);
+    const normalizedName = toHalfWidthAscii(toHalfWidthDigits(getBasename(filename))).replace(/[a-z]/g, char => char.toUpperCase());
+    const match = normalizedName.match(/^([甲乙丙丁戊証疎][A-Z]?[0-9]+(?:[\-ー－の][0-9]+)?)/);
 
     if (!match) {
         return null;
@@ -99,15 +103,16 @@ function extractEvidenceNumber(filename: string) {
     return match[1].replace(/[ー－]/g, '-');
 }
 
-function naturalSortKey(filename: string): [number, number] {
+function naturalSortKey(filename: string): [number, number, number] {
     const evidenceNumber = extractEvidenceNumber(filename);
-    const match = evidenceNumber?.match(/[甲乙丙丁戊証疎]([0-9]+)(?:[\-の]([0-9]+))?/);
+    const match = evidenceNumber?.match(/[甲乙丙丁戊証疎]([A-Z]?)([0-9]+)(?:[\-の]([0-9]+))?/);
 
     if (!match) {
-        return [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER];
+        return [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER];
     }
 
-    return [Number(match[1]), match[2] ? Number(match[2]) : 0];
+    const letterRank = match[1] ? match[1].charCodeAt(0) - 64 : 0;
+    return [letterRank, Number(match[2]), match[3] ? Number(match[3]) : 0];
 }
 
 function isImageFile(file: File) {
@@ -382,7 +387,7 @@ function updateSelectedFiles(files: File[]) {
             supported: isSupportedFile(file),
             sortKey: naturalSortKey(file.name),
         }))
-        .sort((a, b) => a.sortKey[0] - b.sortKey[0] || a.sortKey[1] - b.sortKey[1] || a.file.name.localeCompare(b.file.name, 'ja'));
+        .sort((a, b) => a.sortKey[0] - b.sortKey[0] || a.sortKey[1] - b.sortKey[1] || a.sortKey[2] - b.sortKey[2] || a.file.name.localeCompare(b.file.name, 'ja'));
 
     const supported = selectedFiles.filter(item => item.supported);
     const stampable = selectedFiles.filter(item => item.supported && item.evidenceNumber);

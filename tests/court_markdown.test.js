@@ -59,6 +59,26 @@ test('convertMarkdownToCourtHtml: converts list-style table', () => {
     assert.ok(result.includes('値'));
 });
 
+test('convertMarkdownToCourtHtml: converts numbered colon rows as attachment-style list rows', () => {
+    const md = [
+        '# 送付書',
+        '',
+        '令和7年（ワ）第36723号 損害賠償等請求事件について、下記のとおり送付します。',
+        '',
+        '記',
+        '',
+        '1 乙B1号証の1ないし4写し（クリーンコピー）:各1通',
+        '',
+        '以上'
+    ].join('\n');
+    const result = convertMarkdownToCourtHtml(md);
+    assert.ok(result.includes('<table class="att">'));
+    assert.ok(result.includes('<td class="col-1">乙B1号証の1ないし4写し（クリーンコピー）</td>'));
+    assert.ok(result.includes('<td class="col-2">各1通</td>'));
+    assert.ok(!result.includes('<h2>1　乙B1号証の1ないし4写し（クリーンコピー）:各1通</h2>'));
+    assert.ok(!result.includes('</ol>\n</li>'));
+});
+
 // ─── 改ページ ──────────────────────────────────────────────
 
 test('convertMarkdownToCourtHtml: handles page break marker', () => {

@@ -94,7 +94,8 @@ function convertMarkdownToCourtHtml(markdown) {
         }
         const tableMatch = trimmed.match(/^\|(.*)\|$/);
         const listTableMatch = trimmed.match(/^[-*] (.*?)[：:](.*)$/);
-        if (tableMatch || listTableMatch) {
+        const numberedListTableMatch = trimmed.match(/^([0-9０-９]+)[　\s]+(.+?)[：:](.*)$/);
+        if (tableMatch || listTableMatch || numberedListTableMatch) {
             // 証拠説明書テーブルの開始を検出
             // 「号証」を含むヘッダー行を証拠説明書テーブルとして扱う
             if (tableMatch && (tableMatch[1].includes('号証'))) {
@@ -110,12 +111,15 @@ function convertMarkdownToCourtHtml(markdown) {
                 if (tableMatch) {
                     cells = tableMatch[1].split('|');
                 }
+                else if (numberedListTableMatch) {
+                    cells = [numberedListTableMatch[2], numberedListTableMatch[3]];
+                }
                 else {
                     cells = [listTableMatch[1], listTableMatch[2]];
                 }
                 // どの幅配列を使うか決定
                 let targetWidths = defaultColWidths;
-                if (scanHeader === '附属書類' || scanHeader === '証拠書類') {
+                if (numberedListTableMatch || scanHeader === '附属書類' || scanHeader === '証拠書類') {
                     targetWidths = attColWidths;
                 }
                 else if (scanInRight) {
@@ -338,10 +342,11 @@ function convertMarkdownToCourtHtml(markdown) {
                 continue;
             }
         }
-        // テーブル行の処理: |書類名|通数| または - 書類名：通数
+        // テーブル行の処理: |書類名|通数|、- 書類名：通数、1 書類名：通数
         const tableMatch = trimmedLine.match(/^\|(.*)\|$/);
         const listTableMatch = trimmedLine.match(/^[-*] (.*?)[：:](.*)$/);
-        if (tableMatch || listTableMatch) {
+        const numberedListTableMatch = trimmedLine.match(/^([0-9０-９]+)[　\s]+(.+?)[：:](.*)$/);
+        if (tableMatch || listTableMatch || numberedListTableMatch) {
             // セパレーター行（|:---|:---|...）をチェック
             const isSeparator = tableMatch && /^[\s|:-]+$/.test(tableMatch[1]);
             if (isSeparator) {
@@ -372,7 +377,7 @@ function convertMarkdownToCourtHtml(markdown) {
                     lastLevel--;
                 }
                 tableHasHeader = false;
-                if (lastHeader === '附属書類' || lastHeader === '証拠書類') {
+                if (numberedListTableMatch || lastHeader === '附属書類' || lastHeader === '証拠書類') {
                     tableClass = 'att';
                 }
                 else if (inRightBlock) {
@@ -389,6 +394,9 @@ function convertMarkdownToCourtHtml(markdown) {
             let cells;
             if (tableMatch) {
                 cells = tableMatch[1].split('|');
+            }
+            else if (numberedListTableMatch) {
+                cells = [numberedListTableMatch[2], numberedListTableMatch[3]];
             }
             else {
                 cells = [listTableMatch[1], listTableMatch[2]];
@@ -507,7 +515,7 @@ function convertMarkdownToCourtHtml(markdown) {
         const markerText = levelInfo
             ? trimmedLine.replace(/^#*\s*/, '').replace(levelInfo.marker, '').trim()
             : '';
-        const isTocHeading = !!levelInfo && (isHeader || (levelInfo.level <= 2 && !markerText.includes('。')));
+        const isTocHeading = !!levelInfo && (isHeader || (levelInfo.level <= 2 && !markerText.includes('。') && !/[：:]/.test(markerText)));
         const liClass = isTocHeading ? ' class="heading-item"' : '';
         let level, text;
         if (levelInfo) {
@@ -557,6 +565,8 @@ function convertMarkdownToCourtHtml(markdown) {
                 lastLevel--;
             }
             html += `<div class="doc-title">${text}</div>` + nl;
+            lastLevel = 0;
+            continue;
         }
         else if (text === '以上') {
             // 「以上」のみの行は特別扱い（リストを閉じて右寄せ）
@@ -565,6 +575,8 @@ function convertMarkdownToCourtHtml(markdown) {
                 lastLevel--;
             }
             html += `<div class="end-mark">${text}</div>` + nl;
+            lastLevel = 0;
+            continue;
         }
         else if (text === '記') {
             // 「記」のみの行は特別扱い（リストを閉じてセンタリング）
@@ -573,6 +585,8 @@ function convertMarkdownToCourtHtml(markdown) {
                 lastLevel--;
             }
             html += `<div class="center-mark">${text}</div>` + nl;
+            lastLevel = 0;
+            continue;
         }
         else if (/^(?:(?:令和|平成|昭和|大正|明治)\s*(?:[0-9０-９]{1,2}|[元〇○一二三四五六七八九十]{1,3})|[0-9０-９]{1,4})\s*年\s*(?:[0-9０-９]{1,2}|[〇○一二三四五六七八九十]{1,3})\s*月\s*(?:[0-9０-９]{1,2}|[元〇○一二三四五六七八九十]{1,3})\s*日$/.test(text)) {
             // 日付の識別 (和暦・西暦、数字・漢数字、元年などに対応)

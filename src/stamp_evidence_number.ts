@@ -1,12 +1,12 @@
 /**
  * 証拠番号スタンプツール
- * PDF／画像ファイル名から証拠番号（例: 甲1_契約書.pdf）を抽出し、各ページの右上に赤文字でスタンプする。
+ * PDF／画像ファイル名から証拠番号（例: 甲1_契約書.pdf、乙A1_写真.pdf）を抽出し、各ページの右上に赤文字でスタンプする。
  * 出力先: 入力ディレクトリ内の stamped/ フォルダ
  *
  * 入力:
  * - PDF または画像ファイル（JPG, PNG）を 1 件以上指定できます。
  * - 画像ファイルは自動的にA4サイズのPDFに変換してから処理します。
- * - ファイル名先頭の `甲1_契約書.pdf`, `乙2_メール.pdf`, `甲3-1_領収書.pdf` などから証拠番号を抽出します。
+ * - ファイル名先頭の `甲1_契約書.pdf`, `乙2_メール.pdf`, `甲3-1_領収書.pdf`, `乙A1の2_写真.pdf` などから証拠番号を抽出します。
  *
  * 出力:
  * - 最初の入力ファイルの親フォルダに `stamped/` を作成し、その中へ個別PDFを出力します。
@@ -199,22 +199,27 @@ async function convertImageToPdf(imagePath) {
 }
 
 /**
- * ファイル名から証拠番号を抽出（枝番対応: 甲4-1 など）
+ * ファイル名から証拠番号を抽出（枝番・英字分類対応: 甲4-1, 乙A1の2 など）
  */
 function extractEvidenceNumber(filename) {
-    const match = filename.match(/^([甲乙丙丁戊証疎]\d+(?:[\-の]\d+)?)/);
-    return match ? match[1] : null;
+    const normalizedName = path.basename(filename)
+        .replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+        .replace(/[Ａ-Ｚａ-ｚ]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+        .replace(/[a-z]/g, char => char.toUpperCase());
+    const match = normalizedName.match(/^([甲乙丙丁戊証疎][A-Z]?\d+(?:[\-ー－の]\d+)?)/);
+    return match ? match[1].replace(/[ー－]/g, '-') : null;
 }
 
 /**
- * 自然順ソート用キー（枝番対応）
- * @returns {[number, number]} [主番号, 枝番号]
+ * 自然順ソート用キー（枝番・英字分類対応）
+ * @returns {[number, number, number]} [英字分類, 主番号, 枝番号]
  */
 function naturalSortKey(filepath) {
-    const name = path.basename(filepath);
-    const match = name.match(/[甲乙丙丁戊証疎](\d+)(?:[\-の](\d+))?/);
-    if (!match) return [0, 0];
-    return [parseInt(match[1], 10), match[2] ? parseInt(match[2], 10) : 0];
+    const evidenceNumber = extractEvidenceNumber(filepath);
+    const match = evidenceNumber && evidenceNumber.match(/[甲乙丙丁戊証疎]([A-Z]?)(\d+)(?:[\-の](\d+))?/);
+    if (!match) return [0, 0, 0];
+    const letterRank = match[1] ? match[1].charCodeAt(0) - 64 : 0;
+    return [letterRank, parseInt(match[2], 10), match[3] ? parseInt(match[3], 10) : 0];
 }
 
 /**
@@ -358,9 +363,9 @@ async function main() {
     // ソート
     // 甲*.pdf に限定せず、乙・丙等も対象
     const sortedPaths = [...filePaths].sort((a, b) => {
-        const [aMain, aBranch] = naturalSortKey(a);
-        const [bMain, bBranch] = naturalSortKey(b);
-        return aMain !== bMain ? aMain - bMain : aBranch - bBranch;
+        const [aLetter, aMain, aBranch] = naturalSortKey(a);
+        const [bLetter, bMain, bBranch] = naturalSortKey(b);
+        return aLetter - bLetter || aMain - bMain || aBranch - bBranch;
     });
 
     const stampMode = allPages ? '全ページ' : '1ページ目のみ';

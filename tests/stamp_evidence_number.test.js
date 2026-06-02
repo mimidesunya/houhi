@@ -41,6 +41,18 @@ test('extractEvidenceNumber: extracts 証1', () => {
     assert.equal(extractEvidenceNumber('証1_記録.pdf'), '証1');
 });
 
+test('extractEvidenceNumber: extracts 乙A1', () => {
+    assert.equal(extractEvidenceNumber('乙A1_写真.pdf'), '乙A1');
+});
+
+test('extractEvidenceNumber: extracts 乙A1の2', () => {
+    assert.equal(extractEvidenceNumber('乙A1の2_写真.pdf'), '乙A1の2');
+});
+
+test('extractEvidenceNumber: normalizes full-width latin and digits', () => {
+    assert.equal(extractEvidenceNumber('乙ａ１の２_写真.pdf'), '乙A1の2');
+});
+
 test('extractEvidenceNumber: returns null for non-matching filename', () => {
     assert.equal(extractEvidenceNumber('契約書.pdf'), null);
 });
@@ -55,34 +67,48 @@ test('extractEvidenceNumber: must start at beginning of filename', () => {
 
 // ─── naturalSortKey ─────────────────────────────────────────
 
-test('naturalSortKey: returns [main, 0] for simple number', () => {
-    assert.deepEqual(naturalSortKey('甲3_契約書.pdf'), [3, 0]);
+test('naturalSortKey: returns [letter, main, 0] for simple number', () => {
+    assert.deepEqual(naturalSortKey('甲3_契約書.pdf'), [0, 3, 0]);
 });
 
 test('naturalSortKey: returns [main, branch] for branch number', () => {
-    assert.deepEqual(naturalSortKey('甲3-2_資料.pdf'), [3, 2]);
+    assert.deepEqual(naturalSortKey('甲3-2_資料.pdf'), [0, 3, 2]);
 });
 
 test('naturalSortKey: returns [main, branch] for の-style branch', () => {
-    assert.deepEqual(naturalSortKey('乙5の3_写真.pdf'), [5, 3]);
+    assert.deepEqual(naturalSortKey('乙5の3_写真.pdf'), [0, 5, 3]);
+});
+
+test('naturalSortKey: supports alphabetic evidence groups', () => {
+    assert.deepEqual(naturalSortKey('乙A5の3_写真.pdf'), [1, 5, 3]);
 });
 
 test('naturalSortKey: returns [0, 0] for non-matching file', () => {
-    assert.deepEqual(naturalSortKey('readme.txt'), [0, 0]);
+    assert.deepEqual(naturalSortKey('readme.txt'), [0, 0, 0]);
 });
 
 test('naturalSortKey: works with full path', () => {
-    assert.deepEqual(naturalSortKey(path.join('C:', 'docs', '甲12-5_test.pdf')), [12, 5]);
+    assert.deepEqual(naturalSortKey(path.join('C:', 'docs', '甲12-5_test.pdf')), [0, 12, 5]);
 });
 
 test('naturalSortKey: sorting produces correct order', () => {
     const files = ['甲3.pdf', '甲1.pdf', '甲2-1.pdf', '甲2.pdf', '甲10.pdf'];
     const sorted = files.sort((a, b) => {
-        const [am, ab] = naturalSortKey(a);
-        const [bm, bb] = naturalSortKey(b);
-        return am - bm || ab - bb;
+        const [al, am, ab] = naturalSortKey(a);
+        const [bl, bm, bb] = naturalSortKey(b);
+        return al - bl || am - bm || ab - bb;
     });
     assert.deepEqual(sorted, ['甲1.pdf', '甲2.pdf', '甲2-1.pdf', '甲3.pdf', '甲10.pdf']);
+});
+
+test('naturalSortKey: sorting handles alphabetic evidence groups', () => {
+    const files = ['乙B1.pdf', '乙A2.pdf', '乙A1の2.pdf', '乙A1.pdf'];
+    const sorted = files.sort((a, b) => {
+        const [al, am, ab] = naturalSortKey(a);
+        const [bl, bm, bb] = naturalSortKey(b);
+        return al - bl || am - bm || ab - bb;
+    });
+    assert.deepEqual(sorted, ['乙A1.pdf', '乙A1の2.pdf', '乙A2.pdf', '乙B1.pdf']);
 });
 
 // ─── isImageFile ────────────────────────────────────────────
