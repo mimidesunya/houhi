@@ -255,12 +255,29 @@ textarea {
   line-height: 1.65;
 }
 
-iframe {
+.preview-surface {
   flex: 1;
   width: 100%;
   min-height: 720px;
+  overflow: auto;
+  background: #ecece7;
+  border-top: 1px solid var(--line);
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
+}
+
+.preview-viewport {
+  margin: 16px auto;
+  transform-origin: top left;
+}
+
+iframe {
+  display: block;
+  width: 840px;
+  min-height: 720px;
   background: var(--paper);
   border: 0;
+  transform-origin: top left;
 }
 
 .drafting-layout {
@@ -561,6 +578,8 @@ progress::-moz-progress-bar {
   padding: 16px;
   background: #ecece7;
   border-top: 1px solid var(--line);
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
 }
 
 #faxPreviewCanvas {

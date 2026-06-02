@@ -20,6 +20,7 @@ const faxStatus = document.getElementById('faxStatus');
 const faxSummary = document.getElementById('faxSummary');
 const faxList = document.getElementById('faxList');
 const faxPreviewCanvas = document.getElementById('faxPreviewCanvas');
+const faxPreviewSurface = faxPreviewCanvas.parentElement;
 const faxPreviewMeta = document.getElementById('faxPreviewMeta');
 const faxLog = document.getElementById('faxLog');
 const faxProgress = document.getElementById('faxProgress');
@@ -28,8 +29,26 @@ let files = [];
 let selectedId = null;
 let draggingId = null;
 let nextId = 1;
+let canvasZoom = {
+    scale: 1,
+    fitScale: 1,
+    manual: false,
+    startDistance: 0,
+    startScale: 1,
+};
+const MAX_CANVAS_ZOOM = 3;
 function setStatus(message) {
     faxStatus.textContent = message;
+}
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+function getTouchDistance(touches) {
+    if (touches.length < 2)
+        return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
 }
 function appendLog(message) {
     faxLog.value = faxLog.value ? `${faxLog.value}\n${message}` : message;
@@ -349,11 +368,32 @@ function drawPreview(source) {
     if (!context) {
         return;
     }
-    const maxWidth = 780;
-    const scale = Math.min(1, maxWidth / source.width);
-    faxPreviewCanvas.width = Math.max(1, Math.round(source.width * scale));
-    faxPreviewCanvas.height = Math.max(1, Math.round(source.height * scale));
+    faxPreviewCanvas.width = Math.max(1, source.width);
+    faxPreviewCanvas.height = Math.max(1, source.height);
     context.drawImage(source, 0, 0, faxPreviewCanvas.width, faxPreviewCanvas.height);
+    resetCanvasZoom();
+}
+function applyCanvasZoom() {
+    if (!faxPreviewCanvas.width || !faxPreviewSurface) {
+        return;
+    }
+    const availableWidth = Math.max(1, faxPreviewSurface.clientWidth - 32);
+    const fitScale = Math.min(1, availableWidth / faxPreviewCanvas.width);
+    canvasZoom.fitScale = fitScale;
+    canvasZoom.scale = clamp(canvasZoom.manual ? Math.max(canvasZoom.scale, fitScale) : fitScale, fitScale, MAX_CANVAS_ZOOM);
+    faxPreviewCanvas.style.maxWidth = 'none';
+    faxPreviewCanvas.style.width = `${Math.max(1, Math.round(faxPreviewCanvas.width * canvasZoom.scale))}px`;
+    faxPreviewCanvas.style.height = 'auto';
+}
+function resetCanvasZoom() {
+    canvasZoom = {
+        scale: 1,
+        fitScale: 1,
+        manual: false,
+        startDistance: 0,
+        startScale: 1,
+    };
+    applyCanvasZoom();
 }
 async function previewSelected() {
     const selected = files.find(entry => entry.id === selectedId) || files[0];
@@ -515,6 +555,39 @@ autoCheckbox.addEventListener('change', () => {
 ditherCheckbox.addEventListener('change', previewSelected);
 thresholdInput.addEventListener('change', previewSelected);
 dpiInput.addEventListener('change', previewSelected);
+window.addEventListener('resize', applyCanvasZoom);
+faxPreviewSurface.addEventListener('wheel', event => {
+    if (!event.ctrlKey && !event.metaKey)
+        return;
+    event.preventDefault();
+    canvasZoom.manual = true;
+    const factor = Math.exp(-event.deltaY * 0.0015);
+    canvasZoom.scale = clamp(canvasZoom.scale * factor, canvasZoom.fitScale, MAX_CANVAS_ZOOM);
+    applyCanvasZoom();
+}, { passive: false });
+faxPreviewSurface.addEventListener('touchstart', event => {
+    if (event.touches.length !== 2)
+        return;
+    canvasZoom.startDistance = getTouchDistance(event.touches);
+    canvasZoom.startScale = canvasZoom.scale;
+}, { passive: true });
+faxPreviewSurface.addEventListener('touchmove', event => {
+    if (event.touches.length !== 2 || canvasZoom.startDistance <= 0)
+        return;
+    event.preventDefault();
+    canvasZoom.manual = true;
+    const distance = getTouchDistance(event.touches);
+    canvasZoom.scale = clamp(canvasZoom.startScale * (distance / canvasZoom.startDistance), canvasZoom.fitScale, MAX_CANVAS_ZOOM);
+    applyCanvasZoom();
+}, { passive: false });
+faxPreviewSurface.addEventListener('touchend', () => {
+    canvasZoom.startDistance = 0;
+    canvasZoom.startScale = canvasZoom.scale;
+});
+faxPreviewSurface.addEventListener('touchcancel', () => {
+    canvasZoom.startDistance = 0;
+    canvasZoom.startScale = canvasZoom.scale;
+});
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('dragover', event => {
     event.preventDefault();

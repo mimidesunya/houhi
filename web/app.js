@@ -852,6 +852,8 @@ const DEFAULT_MARKDOWN = `# 準備書面
 const editor = document.getElementById('markdownInput');
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
+const previewSurface = document.getElementById('previewSurface');
+const previewViewport = document.getElementById('previewViewport');
 const previewFrame = document.getElementById('previewFrame');
 const statusText = document.getElementById('previewStatus');
 const renderButton = document.getElementById('renderButton');
@@ -859,8 +861,31 @@ const htmlPreviewButton = document.getElementById('htmlPreviewButton');
 const printButton = document.getElementById('printButton');
 const pasteButton = document.getElementById('pasteButton');
 let renderSeq = 0;
+const PREVIEW_BASE_WIDTH = 840;
+const PREVIEW_BASE_HEIGHT = 720;
+const MIN_PREVIEW_SCALE = 0.18;
+const MAX_PREVIEW_SCALE = 3;
+let previewZoom = {
+    scale: 1,
+    fitScale: 1,
+    manual: false,
+    baseWidth: PREVIEW_BASE_WIDTH,
+    baseHeight: PREVIEW_BASE_HEIGHT,
+    startDistance: 0,
+    startScale: 1,
+};
 function setStatus(message) {
     statusText.textContent = message;
+}
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+function getTouchDistance(touches) {
+    if (touches.length < 2)
+        return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
 }
 function escapeScriptEnd(value) {
     return value.replace(/<\/script/gi, '<\\/script');
@@ -894,6 +919,7 @@ function buildPreviewDocument(markdown) {
     }
     .content-container { background: #fff; font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif; }
     @media screen {
+      html, body { overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; }
       .pagedjs_pages { margin: 24px auto; }
       .pagedjs_page { background: #fff; }
       .pagedjs_sheet { background: #fff; }
@@ -1024,11 +1050,56 @@ function nextFrame(frameWindow) {
         });
     });
 }
+function resetPreviewZoom() {
+    previewZoom = {
+        scale: 1,
+        fitScale: 1,
+        manual: false,
+        baseWidth: PREVIEW_BASE_WIDTH,
+        baseHeight: PREVIEW_BASE_HEIGHT,
+        startDistance: 0,
+        startScale: 1,
+    };
+    previewFrame.style.width = `${PREVIEW_BASE_WIDTH}px`;
+    previewFrame.style.height = `${PREVIEW_BASE_HEIGHT}px`;
+    previewFrame.style.transform = 'scale(1)';
+    applyPreviewZoom();
+}
+function measurePreviewSize(frameDocument) {
+    const pages = frameDocument.querySelector('.pagedjs_pages');
+    const doc = frameDocument.documentElement;
+    const body = frameDocument.body;
+    const width = Math.ceil(Math.max(PREVIEW_BASE_WIDTH, pages?.scrollWidth || 0, pages?.offsetWidth || 0));
+    const height = Math.ceil(Math.max(PREVIEW_BASE_HEIGHT, doc?.scrollHeight || 0, body?.scrollHeight || 0, pages?.scrollHeight || 0, pages?.offsetHeight || 0));
+    return { width, height };
+}
+function applyPreviewZoom() {
+    const baseWidth = Math.max(1, previewZoom.baseWidth);
+    const baseHeight = Math.max(1, previewZoom.baseHeight);
+    const availableWidth = Math.max(1, previewSurface.clientWidth - 32);
+    const fitScale = clamp(Math.min(1, availableWidth / baseWidth), MIN_PREVIEW_SCALE, 1);
+    previewZoom.fitScale = fitScale;
+    previewZoom.scale = clamp(previewZoom.manual ? Math.max(previewZoom.scale, fitScale) : fitScale, fitScale, MAX_PREVIEW_SCALE);
+    previewFrame.style.width = `${baseWidth}px`;
+    previewFrame.style.height = `${baseHeight}px`;
+    previewViewport.style.width = `${Math.ceil(baseWidth * previewZoom.scale)}px`;
+    previewViewport.style.height = `${Math.ceil(baseHeight * previewZoom.scale)}px`;
+    previewViewport.style.transform = 'none';
+    previewFrame.style.transform = `scale(${previewZoom.scale.toFixed(4)})`;
+}
+function updatePreviewSize(frameDocument) {
+    const size = measurePreviewSize(frameDocument);
+    previewZoom.baseWidth = size.width;
+    previewZoom.baseHeight = size.height;
+    previewZoom.manual = false;
+    applyPreviewZoom();
+}
 async function renderPreviewNow() {
     const seq = ++renderSeq;
     const markdown = editor.value.trim() ? editor.value : DEFAULT_MARKDOWN;
     setStatus('組版中...');
     renderButton.disabled = true;
+    resetPreviewZoom();
     const loaded = waitForFrameLoad(previewFrame);
     previewFrame.srcdoc = buildPreviewDocument(markdown);
     await loaded;
@@ -1050,6 +1121,7 @@ async function renderPreviewNow() {
         await frameWindow.PagedPolyfill.preview();
         (0, paged_toc_1.fillChromeTocPageNumbers)(frameDocument);
         (0, paged_toc_1.applyManualPageNumbers)(frameDocument);
+        updatePreviewSize(frameDocument);
         setStatus('プレビュー更新済み');
     }
     catch (err) {
@@ -1146,6 +1218,39 @@ printButton.addEventListener('click', () => {
         return;
     frameWindow.focus();
     frameWindow.print();
+});
+window.addEventListener('resize', applyPreviewZoom);
+previewSurface.addEventListener('wheel', event => {
+    if (!event.ctrlKey && !event.metaKey)
+        return;
+    event.preventDefault();
+    previewZoom.manual = true;
+    const factor = Math.exp(-event.deltaY * 0.0015);
+    previewZoom.scale = clamp(previewZoom.scale * factor, previewZoom.fitScale, MAX_PREVIEW_SCALE);
+    applyPreviewZoom();
+}, { passive: false });
+previewSurface.addEventListener('touchstart', event => {
+    if (event.touches.length !== 2)
+        return;
+    previewZoom.startDistance = getTouchDistance(event.touches);
+    previewZoom.startScale = previewZoom.scale;
+}, { passive: true });
+previewSurface.addEventListener('touchmove', event => {
+    if (event.touches.length !== 2 || previewZoom.startDistance <= 0)
+        return;
+    event.preventDefault();
+    previewZoom.manual = true;
+    const distance = getTouchDistance(event.touches);
+    previewZoom.scale = clamp(previewZoom.startScale * (distance / previewZoom.startDistance), previewZoom.fitScale, MAX_PREVIEW_SCALE);
+    applyPreviewZoom();
+}, { passive: false });
+previewSurface.addEventListener('touchend', () => {
+    previewZoom.startDistance = 0;
+    previewZoom.startScale = previewZoom.scale;
+});
+previewSurface.addEventListener('touchcancel', () => {
+    previewZoom.startDistance = 0;
+    previewZoom.startScale = previewZoom.scale;
 });
 editor.value = DEFAULT_MARKDOWN;
 renderPreviewNow();
