@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>使い方 - 法匪 HOUHI Web</title>
+  <meta name="description" content="法匪 HOUHI Web の各ツールの使い方。起案、AIアーカイブ、PDF変換、号証スタンプ、FAX用PDF。">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="法匪 HOUHI Web">
+      <span class="brand-mark">法</span>
+      <span>法匪 Web</span>
+    </a>
+    <nav class="site-nav" aria-label="主要ナビゲーション">
+      <a href="./">Home</a>
+      <a href="./usage.html">使い方</a>
+      <a href="./drafting.html">起案</a>
+      <a href="./archive.html">AIアーカイブ</a>
+      <a href="./pdf.html">PDF</a>
+      <a href="./stamp.html">号証スタンプ</a>
+      <a href="./fax.html">FAX用PDF</a>
+      <a href="https://github.com/mimidesunya/houhi">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="quiet-title usage-title">
+      <p class="eyebrow">Guide</p>
+      <h1>使い方</h1>
+    </section>
+
+    <section class="usage-overview" aria-label="法匪 Web の全体像">
+      <div class="usage-lead">
+        <p class="eyebrow">Overview</p>
+        <h2>裁判の書類作りを、AIで少し楽にする道具です</h2>
+        <p>
+          本人訴訟では、相手の書面を読む、証拠を整理する、自分の主張を書く、PDFを作る、といった作業を自分で進めます。
+          法匪 Web は、その中の「読む」「整理する」「下書きする」を <a href="https://chatgpt.com/" target="_blank" rel="noreferrer">ChatGPT</a>、<a href="https://claude.ai/" target="_blank" rel="noreferrer">Claude</a>、<a href="https://gemini.google.com/" target="_blank" rel="noreferrer">Gemini</a> などのAIに手伝わせるための道具です。
+        </p>
+        <p>
+          AIにはMarkdownで書かせます。
+          Markdownは「# 見出し」「- 箇条書き」のような簡単な記号で、文章の形を分かりやすくする書き方です。
+          AIはMarkdownを読み書きしやすく、PDF変換もしやすくなります。
+        </p>
+        <p>
+          紙の書面は、ADF付きドキュメントスキャナでPDFにします。
+          そのPDFを <a href="https://github.com/mimidesunya/mimi-ocr" target="_blank" rel="noreferrer">mimi-ocr</a> でMarkdownに変えると、AIに読ませやすくなります。
+        </p>
+        <p>
+          無料のAIだけで、長い裁判記録を読ませたり、書面を何度も直したりするのは厳しいです。
+          実際には有料プランを使う前提が現実的です。
+          それでも、弁護士費用と比べれば、調査、整理、下書きの費用を抑えられる可能性があります。
+        </p>
+      </div>
+
+      <div class="usage-flow" aria-label="基本の流れ">
+        <div>
+          <span>1</span>
+          <p>紙の書面があれば、スキャンしてPDFにします。</p>
+        </div>
+        <div>
+          <span>2</span>
+          <p>mimi-ocrでPDFをMarkdownに変えます。</p>
+        </div>
+        <div>
+          <span>3</span>
+          <p>起案でAIへの頼み方を作り、書面案を作らせます。</p>
+        </div>
+        <div>
+          <span>4</span>
+          <p>PDF変換、号証スタンプ、FAX用PDFで提出しやすくします。</p>
+        </div>
+      </div>
+
+      <div class="usage-note">
+        <p>
+          AIアーカイブは、事件の資料をまとめてZIPにする道具です。
+          ZIPをチャットAIに渡すと、状況整理、争点整理、次に出す書面の相談がしやすくなります。
+        </p>
+        <p>
+          号証スタンプは、証拠に「甲1」「乙1」のような番号を押す道具です。
+          FAX用PDFは、FAXで送りやすい白黒PDFを作る道具です。
+        </p>
+        <p>
+          AIは間違えます。
+          提出前には、日付、金額、名前、証拠番号、相手の主張を必ず自分で確認してください。
+          不安なときは、弁護士や法律相談も使いましょう。
+        </p>
+      </div>
+
+      <div class="usage-practical">
+        <section>
+          <h2>記録フォルダの置き方</h2>
+          <p>
+            裁判ごとに1つのフォルダを作ります。
+            Windowsなら、まずは「ドキュメント」の中に「裁判」フォルダを作るのが分かりやすいです。
+            中は「日付＋内容」で分けると、後で探しやすくなります。
+          </p>
+          <pre><code>C:\Users\ユーザー名\Documents\裁判\2024-01-24-事件名
+├─ MEMO.txt
+├─ 資料
+├─ 2024-01-24-最初の書面
+│  ├─ 自分の書面
+│  └─ 自分の証拠
+├─ 2024-04-19-申立て
+├─ 2025-03-05-第1回期日
+│  ├─ 自分の書面
+│  ├─ 相手の書面
+│  └─ 証拠
+├─ 2025-06-25-第2回期日
+│  ├─ 自分の書面
+│  ├─ 相手の書面
+│  └─ 証拠
+└─ AIアーカイブ用
+   └─ 今回AIに読ませる資料</code></pre>
+          <p>
+            最初は <code>自分の書面</code>、<code>相手の書面</code>、<code>証拠</code> くらいに分ければ十分です。
+            「甲号証」は原告側の証拠、「乙号証」は被告側の証拠です。
+            スキャンしたPDFとmimi-ocrで作ったMarkdownは、同じ場所に並べて置くと見比べやすくなります。
+            AIにまとめて読ませるときは、必要なファイルだけを <code>AIアーカイブ用</code> に集めます。
+          </p>
+        </section>
+
+        <section>
+          <h2>実務で必要になりやすいもの</h2>
+          <ul>
+            <li>プリンタ: 裁判所や相手方へ、紙で出す場面があります。</li>
+            <li>ADF付きドキュメントスキャナ: 紙をまとめてPDFにできます。ADFは、紙を1枚ずつ自動で送る機能です。購入する場合は <a href="https://www.amazon.co.jp/s?k=ADF+%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88%E3%82%B9%E3%82%AD%E3%83%A3%E3%83%8A" target="_blank" rel="noreferrer">Amazonでドキュメントスキャナを検索</a> できます。</li>
+            <li>インターネットFAX: FAX機がなくてもPDFを送れます。例として <a href="https://mfax.jp/" target="_blank" rel="noreferrer">モバイルFAX</a> があります。</li>
+            <li>PDFを扱える環境: PDF保存、印刷、ファイル名の整理をよく使います。</li>
+          </ul>
+        </section>
+      </div>
+    </section>
+
+    <section class="usage-layout" aria-label="ツールの使い方">
+      <article class="usage-section">
+        <div>
+          <p class="eyebrow">Drafting</p>
+          <h2>起案</h2>
+        </div>
+        <ol>
+          <li>作成したい書面を選びます。</li>
+          <li>「引継書をコピー」を押します。</li>
+          <li>コピーした文章をチャットAIに貼り付けます。</li>
+          <li>できたMarkdownをPDF変換 / 印刷へ貼り付けます。</li>
+        </ol>
+        <a class="usage-tool-link" href="./drafting.html">起案を開く</a>
+      </article>
+
+      <article class="usage-section">
+        <div>
+          <p class="eyebrow">AI archive</p>
+          <h2>AIアーカイブ</h2>
+        </div>
+        <ol>
+          <li>事件資料を入れたフォルダ、または .md / .txt ファイルを選びます。</li>
+          <li>「ZIP作成」を押します。</li>
+          <li>ZIPファイルをチャットAIにアップロードします。</li>
+          <li>画面右側の指示文もAIに貼り付けます。</li>
+        </ol>
+        <a class="usage-tool-link" href="./archive.html">AIアーカイブを開く</a>
+      </article>
+
+      <article class="usage-section">
+        <div>
+          <p class="eyebrow">PDF conversion / print</p>
+          <h2>PDF変換 / 印刷</h2>
+        </div>
+        <ol>
+          <li>Markdownを入力欄へ貼り付けるか、.mdファイルを読み込みます。</li>
+          <li>「プレビュー更新」で見た目を確認します。</li>
+          <li>スマホでは横幅に収まります。ピンチアウトで拡大できます。</li>
+          <li>「印刷 / PDF保存」で保存します。</li>
+        </ol>
+        <a class="usage-tool-link" href="./pdf.html">PDF変換 / 印刷を開く</a>
+      </article>
+
+      <article class="usage-section">
+        <div>
+          <p class="eyebrow">Evidence stamp</p>
+          <h2>号証スタンプ</h2>
+        </div>
+        <ol>
+          <li>証拠にしたいPDF、JPG、PNGを選びます。</li>
+          <li>ファイル名の先頭を「甲1_契約書.pdf」のようにします。</li>
+          <li>必要に応じて「全ページに押す」「空白ページを入れない」を選びます。</li>
+          <li>「スタンプ」を押して、個別PDFと結合PDFを保存します。</li>
+        </ol>
+        <a class="usage-tool-link" href="./stamp.html">号証スタンプを開く</a>
+      </article>
+
+      <article class="usage-section">
+        <div>
+          <p class="eyebrow">Fax PDF</p>
+          <h2>FAX用PDF</h2>
+        </div>
+        <ol>
+          <li>FAXで送りたいPDFを選びます。</li>
+          <li>結合順を確認し、必要なら並べ替えます。</li>
+          <li>プレビューで白黒の状態を確認します。</li>
+          <li>「PDF作成」で保存します。</li>
+        </ol>
+        <a class="usage-tool-link" href="./fax.html">FAX用PDFを開く</a>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
