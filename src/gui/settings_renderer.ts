@@ -67,6 +67,7 @@ function fillForm(config: ConfigMap) {
     const smtp = asObject(mail.smtp);
     const imap = asObject(mail.imap);
     const mfax = asObject(config.mfax);
+    const transcription = asObject(config.transcription);
 
     setValue('pdfEngine', pdf.engine || 'copper');
     setValue('chromePath', pdf.chromePath);
@@ -92,6 +93,14 @@ function fillForm(config: ConfigMap) {
     setValue('mfaxSendPassword', mfax.sendPassword);
     setValue('mfaxFromAddress', mfax.fromAddress);
     setValue('mfaxSelfFax', mfax.selfFax);
+
+    setValue('transcriptionProvider', transcription.provider || 'openai');
+    setValue('transcriptionLanguage', transcription.language || 'ja');
+    setValue('transcriptionModel', transcription.model);
+    setValue('transcriptionOpenaiApiKey', transcription.openaiApiKey);
+    setValue('transcriptionGeminiApiKey', transcription.geminiApiKey);
+    setValue('transcriptionOpenaiModel', transcription.openaiModel || 'gpt-4o-transcribe-diarize');
+    setValue('transcriptionGeminiModel', transcription.geminiModel || 'gemini-3.5-flash');
 }
 
 function buildConfigFromForm() {
@@ -102,6 +111,7 @@ function buildConfigFromForm() {
     const smtp = { ...asObject(mail.smtp) };
     const imap = { ...asObject(mail.imap) };
     const mfax = { ...asObject(config.mfax) };
+    const transcription = { ...asObject(config.transcription) };
 
     pdf.engine = input('pdfEngine').value.trim() || 'copper';
     pdf.chromePath = input('chromePath').value.trim();
@@ -128,12 +138,21 @@ function buildConfigFromForm() {
     mfax.fromAddress = input('mfaxFromAddress').value.trim();
     mfax.selfFax = input('mfaxSelfFax').value.trim();
 
+    transcription.provider = input('transcriptionProvider').value.trim() || 'openai';
+    transcription.language = input('transcriptionLanguage').value.trim() || 'ja';
+    transcription.model = input('transcriptionModel').value.trim();
+    transcription.openaiApiKey = input('transcriptionOpenaiApiKey').value;
+    transcription.geminiApiKey = input('transcriptionGeminiApiKey').value;
+    transcription.openaiModel = input('transcriptionOpenaiModel').value.trim() || 'gpt-4o-transcribe-diarize';
+    transcription.geminiModel = input('transcriptionGeminiModel').value.trim() || 'gemini-3.5-flash';
+
     mail.smtp = smtp;
     mail.imap = imap;
     config.pdf = pdf;
     config.copper = copper;
     config.mail = mail;
     config.mfax = mfax;
+    config.transcription = transcription;
 
     return config;
 }

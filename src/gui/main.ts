@@ -206,7 +206,8 @@ const SCRIPTS = {
     'pdf': { path: 'src/convert_to_pdf.js', name: '裁判文書PDF作成' },
     'ai_archive': { path: 'src/archive_for_ai.js', name: 'AI分析用アーカイブ作成' },
     'stamp': { path: 'src/stamp_evidence_number.js', name: '号証スタンプ' },
-    'fax_send': { path: 'src/fax_send.js', name: 'mfax FAX送信' }
+    'fax_send': { path: 'src/fax_send.js', name: 'mfax FAX送信' },
+    'transcribe_audio': { path: 'src/transcribe_audio.js', name: '音声認識' }
 };
 
 ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, options }) => {

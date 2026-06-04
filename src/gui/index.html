@@ -217,6 +217,7 @@
         .options-bar {
             padding: 4px 20px 8px;
             display: flex;
+            flex-wrap: wrap;
             gap: 16px;
         }
 
@@ -428,6 +429,10 @@
                 <div class="tool-icon">📨</div>
                 <div class="tool-name">FAX送信</div>
             </div>
+            <div class="tool-card" data-script="transcribe_audio">
+                <div class="tool-icon">🎙</div>
+                <div class="tool-name">音声認識</div>
+            </div>
             <div class="tool-card" data-action="drafting">
                 <div class="tool-icon">✍</div>
                 <div class="tool-name">起案</div>
@@ -461,6 +466,20 @@
             <label class="option-toggle">
                 <input type="checkbox" id="optNoDither">
                 <span>ディザリングOFF（写真なし文書向け）</span>
+            </label>
+            <label class="option-toggle" id="audioTargetOption">
+                <span>出力</span>
+                <select id="optAudioTarget">
+                    <option value="houhi" selected>法匪（反訳書）</option>
+                    <option value="general">一般</option>
+                </select>
+            </label>
+            <label class="option-toggle" id="audioModelOption">
+                <span>AIモデル</span>
+                <select id="optAudioModel">
+                    <option value="openai:gpt-4o-transcribe-diarize" selected>OpenAI diarize</option>
+                    <option value="gemini:gemini-3.5-flash">Gemini 3.5 Flash</option>
+                </select>
             </label>
         </div>
 

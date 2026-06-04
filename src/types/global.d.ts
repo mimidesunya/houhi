@@ -7,7 +7,8 @@ declare global {
         | 'pdf'
         | 'ai_archive'
         | 'stamp'
-        | 'fax_send';
+        | 'fax_send'
+        | 'transcribe_audio';
 
     interface ScriptExecutionResult {
         success: boolean;

@@ -18,6 +18,7 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 | **起案** | ChatGPTに渡す `houhi-drafting-kit.zip` の場所を開き、書面起案の使い方を案内します。 | `.zip` |
 | **AIアーカイブ** | フォルダ内の `.md` / `.txt` を `case/` に収録し、`START_HERE.md`・目録・manifest・起案指示書付きのZIPを作成します（主にChatGPT向け）。 | フォルダ |
 | **号証スタンプ** | `甲1_契約書.pdf`、`乙2_メール.pdf` のようなファイル名先頭から証拠番号を読み取り、PDF / 画像の右上に赤文字で追記します。複数ファイルは証拠番号順に結合できます。 | `.pdf`, `.jpg`, `.png` |
+| **音声認識** | 音声ファイルをOpenAIまたはGeminiで文字起こしし、一般Markdownまたは `houhi-drafting-kit/反訳書.md` の形式に沿った法匪向け反訳書Markdownを作成します。 | `.mp3`, `.wav`, `.m4a`, `.webm` など |
 | **mfax FAX送信** | 送付書Markdownと1件以上の添付PDF、またはPDFのみをFAX用に二値化し、プレビュー確認後にメールFAXとして送信します。 | `.pdf`, `.md` |
 | **FAX PDF化** | PDFを画像化・二値化して、FAX向けのPDFを作成します（CLI向け補助ツール）。 | `.pdf` |
 
@@ -46,6 +47,8 @@ GUI には `PDF作成`、`AIアーカイブ`、`号証スタンプ`、`FAX送信
 - `PDF作成`: PDFエンジン（Chrome / Copper PDF）
 - `号証スタンプ`: 結合PDFに空白ページを入れない（FAX向け）
 - `FAX送信`: ディザリングOFF（写真なし文書向け）
+
+`音声認識` は、音声ファイルをドロップすると同じフォルダにMarkdownを生成します。画面のオプションで `一般` と `法匪（反訳書）`、および OpenAI `gpt-4o-transcribe-diarize` / Gemini `gemini-3.5-flash` を選択できます。法匪では `YYYY-MM-DD_反訳書_表題.md`、一般では `YYYY-MM-DD_音声認識_表題.md` になります。日付は反訳結果から推定し、取れない場合は音声ファイルの更新日を使います。
 
 `FAX送信` で複数PDFを指定した場合は、送信前に結合順を確認できます。FAX用二値化後のプレビュー画面では、送信先FAX番号の確認・追加・削除と、ページ単位のディザリング切り替えができます。
 
@@ -169,11 +172,21 @@ GUI のツール一覧にある設定ボタンから `config.json` を編集で�
         "sendPassword": "YOUR_MFAX_SEND_PASSWORD",
         "fromAddress": "YOUR_FROM_ADDRESS",
         "selfFax": "自分のFAX番号（数字のみ。送付書への記載分を除外するために利用）"
+    },
+    "transcription": {
+        "provider": "openai",
+        "language": "ja",
+        "model": "",
+        "openaiApiKey": "",
+        "geminiApiKey": "",
+        "openaiModel": "gpt-4o-transcribe-diarize",
+        "geminiModel": "gemini-3.5-flash"
     }
 }
 ```
 
 OCR 用の AI / `ndlocr-lite` 設定は `houhi` ではなく `mimi-ocr` 側の `config.json` で管理します。
+音声反訳を使う場合は、`transcription.openaiApiKey` または環境変数 `OPENAI_API_KEY`、Geminiの場合は `transcription.geminiApiKey` または `GEMINI_API_KEY` を設定してください。
 FAX送信を使う場合は、`mail` と `mfax` の設定が必要です。`mfax.fromAddress` が空の場合は `mail.user` を送信元として使います。
 
 PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine=copper` または GUI の「PDFエンジン」から Copper PDF に切り替えられます。Chrome を自動検出できない場合は `pdf.chromePath` に実行ファイルのパスを設定してください。

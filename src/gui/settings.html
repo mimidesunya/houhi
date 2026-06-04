@@ -350,6 +350,43 @@
                     </div>
                 </div>
             </section>
+
+            <section>
+                <h2>音声認識</h2>
+                <div class="grid">
+                    <div class="field">
+                        <label for="transcriptionProvider">既定プロバイダー</label>
+                        <select id="transcriptionProvider">
+                            <option value="openai">OpenAI</option>
+                            <option value="gemini">Gemini</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="transcriptionLanguage">言語</label>
+                        <input id="transcriptionLanguage" autocomplete="off" placeholder="ja">
+                    </div>
+                    <div class="field full">
+                        <label for="transcriptionModel">モデル上書き（空欄なら下の既定モデル）</label>
+                        <input id="transcriptionModel" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="transcriptionOpenaiModel">OpenAIモデル</label>
+                        <input id="transcriptionOpenaiModel" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="transcriptionGeminiModel">Geminiモデル</label>
+                        <input id="transcriptionGeminiModel" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="transcriptionOpenaiApiKey">OpenAI APIキー</label>
+                        <input id="transcriptionOpenaiApiKey" type="password" autocomplete="off" placeholder="空欄なら OPENAI_API_KEY">
+                    </div>
+                    <div class="field">
+                        <label for="transcriptionGeminiApiKey">Gemini APIキー</label>
+                        <input id="transcriptionGeminiApiKey" type="password" autocomplete="off" placeholder="空欄なら GEMINI_API_KEY">
+                    </div>
+                </div>
+            </section>
         </main>
 
         <footer>

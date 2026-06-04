@@ -37,6 +37,15 @@ const DEFAULT_CONFIG: AnyConfig = {
         fromAddress: 'YOUR_FROM_ADDRESS',
         selfFax: '自分のFAX番号（数字のみ。送付書への記載分を除外するために利用）',
     },
+    transcription: {
+        provider: 'openai',
+        language: 'ja',
+        model: '',
+        openaiApiKey: '',
+        geminiApiKey: '',
+        openaiModel: 'gpt-4o-transcribe-diarize',
+        geminiModel: 'gemini-3.5-flash',
+    },
 };
 
 function isObject(value: any): value is AnyConfig {
