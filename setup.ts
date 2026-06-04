@@ -2,6 +2,39 @@ const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
 
+const draftingTemplateOrder = [
+    '訴訟.訴状.md',
+    '訴訟.答弁書.md',
+    '訴訟.準備書面.md',
+    '訴訟.証拠説明書.md',
+    '訴訟.送付書.md',
+    '訴訟.期日請書.md',
+    '訴訟.事務連絡.md',
+    '訴訟.移送申立書.md',
+    '訴訟.控訴状.md',
+    '訴訟.控訴理由書.md',
+    '訴訟.上告状兼上告受理申立書.md',
+    '訴訟.上告理由書.md',
+    '訴訟.上告受理申立て理由書.md',
+    '訴訟.忌避申立書.md',
+    '反訳書.md',
+    '行政.住民監査請求書.md',
+    '行政.審査請求書.md',
+    '行政.反論書.md',
+    '行政.開示請求.md',
+    '行政.個人情報開示請求の取下書.md',
+    '刑事.告訴状.md'
+];
+
+const draftingTemplateRank = new Map(draftingTemplateOrder.map((name, index) => [name, index]));
+
+function compareTemplateNames(a, b) {
+    const rankA = draftingTemplateRank.has(a) ? draftingTemplateRank.get(a) : Number.MAX_SAFE_INTEGER;
+    const rankB = draftingTemplateRank.has(b) ? draftingTemplateRank.get(b) : Number.MAX_SAFE_INTEGER;
+    if (rankA !== rankB) return rankA - rankB;
+    return a.localeCompare(b, 'ja');
+}
+
 /**
  * src/base/court_doc_rules.md の中の空の Markdown ブロックに
  * src/base/sample.md および src/templates/*.md の内容を挿入し、
@@ -46,8 +79,7 @@ function ensureConfigFile(projectRoot) {
 function buildChatGptStartHere(filesToProcess) {
     const documentTypes = filesToProcess
         .filter(file => file.name !== 'sample.md')
-        .map(file => path.basename(file.name, '.md'))
-        .sort((a, b) => a.localeCompare(b, 'ja'));
+        .map(file => path.basename(file.name, '.md'));
 
     const documentTypeList = documentTypes
         .map(name => `- ${name}`)
@@ -90,7 +122,7 @@ function buildChatGptStartHere(filesToProcess) {
 ## 出力形式
 
 - 最終成果物はMarkdownコードブロックで提示してください。
-- ファイル名の候補も示してください。例: \`訴状.md\`
+- ファイル名の候補も示してください。例: \`訴訟.訴状.md\`
 - Markdown本文以外の説明は、本文の前後に分けて簡潔に書いてください。
 - PDF化の案内は最後に短く添えてください。
 
@@ -141,7 +173,7 @@ function setup() {
     if (fs.existsSync(templatesDir)) {
         const templateFiles = fs.readdirSync(templatesDir)
             .filter(f => f.endsWith('.md'))
-            .sort((a, b) => a.localeCompare(b, 'ja'))
+            .sort(compareTemplateNames)
             .map(f => ({ path: path.join(templatesDir, f), name: f }));
         filesToProcess.push(...templateFiles);
     }

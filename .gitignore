@@ -49,4 +49,7 @@ src/base/preview.html
 src/base/preview.pdf
 temp_rendered.html
 .cache/
+
+# Local reference manuals
+docs/*民事保全・非訟マニュアル*
 ```

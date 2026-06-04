@@ -109,8 +109,8 @@ test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI'
     assert.match(rules, /Before finalizing output, scan every line that starts with `#`/);
 });
 
-test('src/templates/準備書面.md: keeps numbered subheadings as ## headings', () => {
-    const template = fs.readFileSync(path.resolve('src/templates/準備書面.md'), 'utf-8');
+test('src/templates/訴訟.準備書面.md: keeps numbered subheadings as ## headings', () => {
+    const template = fs.readFileSync(path.resolve('src/templates/訴訟.準備書面.md'), 'utf-8');
 
     assert.match(template, /^## 1 争点の整理$/m);
     assert.match(template, /^## \(1\) 〇〇について$/m);
