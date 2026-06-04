@@ -39,8 +39,29 @@ const renderButton = document.getElementById('renderButton') as HTMLButtonElemen
 const htmlPreviewButton = document.getElementById('htmlPreviewButton') as HTMLButtonElement;
 const printButton = document.getElementById('printButton') as HTMLButtonElement;
 const pasteButton = document.getElementById('pasteButton') as HTMLButtonElement;
+const assetDropZone = document.getElementById('assetDropZone') as HTMLElement;
+const imageFileButton = document.getElementById('imageFileButton') as HTMLButtonElement;
+const imageFolderButton = document.getElementById('imageFolderButton') as HTMLButtonElement;
+const imageFileInput = document.getElementById('imageFileInput') as HTMLInputElement;
+const imageDirectoryInput = document.getElementById('imageDirectoryInput') as HTMLInputElement;
+const imageAssetList = document.getElementById('imageAssetList') as HTMLElement;
 
 let renderSeq = 0;
+
+type LocalInputFile = {
+    file: File;
+    path: string;
+};
+
+type ImageAsset = {
+    file: File;
+    sourcePath: string;
+    url: string;
+};
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+const imageAssets = new Map<string, ImageAsset>();
+let currentMarkdownPath = '';
 
 type PreviewZoomState = {
     scale: number;
@@ -94,6 +115,311 @@ function escapeHtmlAttribute(value: string) {
         .replace(/>/g, '&gt;');
 }
 
+function normalizeLocalPath(value: string) {
+    return String(value || '')
+        .replace(/\\/g, '/')
+        .replace(/^\/+/, '')
+        .replace(/^\.\//, '')
+        .replace(/\/{2,}/g, '/')
+        .trim();
+}
+
+function getExtname(value: string) {
+    const name = normalizeLocalPath(value).split('/').pop() || '';
+    const index = name.lastIndexOf('.');
+    return index >= 0 ? name.slice(index).toLowerCase() : '';
+}
+
+function getBasename(value: string) {
+    const normalized = normalizeLocalPath(value);
+    return normalized.split('/').pop() || normalized;
+}
+
+function getDirname(value: string) {
+    const normalized = normalizeLocalPath(value);
+    const index = normalized.lastIndexOf('/');
+    return index >= 0 ? normalized.slice(0, index) : '';
+}
+
+function joinLocalPath(base: string, leaf: string) {
+    const raw = base ? `${base}/${leaf}` : leaf;
+    const parts = normalizeLocalPath(raw).split('/').filter(Boolean);
+    const out: string[] = [];
+    for (const part of parts) {
+        if (part === '.') continue;
+        if (part === '..') {
+            out.pop();
+            continue;
+        }
+        out.push(part);
+    }
+    return out.join('/');
+}
+
+function relativeLocalPath(fromDir: string, toPath: string) {
+    const fromParts = normalizeLocalPath(fromDir).split('/').filter(Boolean);
+    const toParts = normalizeLocalPath(toPath).split('/').filter(Boolean);
+    let common = 0;
+    while (common < fromParts.length && common < toParts.length && fromParts[common] === toParts[common]) {
+        common++;
+    }
+
+    const up = fromParts.slice(common).map(() => '..');
+    const down = toParts.slice(common);
+    const relative = [...up, ...down].join('/');
+    return relative || getBasename(toPath);
+}
+
+function displayPathForAsset(asset: ImageAsset) {
+    if (!currentMarkdownPath) {
+        return asset.sourcePath;
+    }
+
+    return relativeLocalPath(getDirname(currentMarkdownPath), asset.sourcePath);
+}
+
+function markdownTagForAsset(asset: ImageAsset) {
+    return `![説明](${displayPathForAsset(asset)})`;
+}
+
+function isImagePath(value: string) {
+    return IMAGE_EXTENSIONS.has(getExtname(value));
+}
+
+function isExternalImageSrc(value: string) {
+    return /^(?:https?:|data:|blob:|about:|#)/i.test(String(value || '').trim());
+}
+
+function decodeImageSrc(value: string) {
+    const withoutHash = String(value || '').split('#')[0];
+    const withoutQuery = withoutHash.split('?')[0];
+    try {
+        return decodeURIComponent(withoutQuery);
+    } catch (_err) {
+        return withoutQuery;
+    }
+}
+
+function makeLocalInputFile(file: File, fallbackPath = ''): LocalInputFile {
+    const filePath = (file as any).webkitRelativePath || fallbackPath || file.name;
+    return {
+        file,
+        path: normalizeLocalPath(filePath || file.name),
+    };
+}
+
+function filesFromFileList(fileList: FileList | null) {
+    return Array.from(fileList || []).map(file => makeLocalInputFile(file));
+}
+
+function fileFromEntry(entry: any) {
+    return new Promise<File>((resolve, reject) => {
+        entry.file(resolve, reject);
+    });
+}
+
+function readDirectoryEntries(reader: any) {
+    return new Promise<any[]>((resolve, reject) => {
+        reader.readEntries(resolve, reject);
+    });
+}
+
+async function collectEntryFiles(entry: any): Promise<LocalInputFile[]> {
+    if (!entry) {
+        return [];
+    }
+
+    if (entry.isFile) {
+        const file = await fileFromEntry(entry);
+        return [makeLocalInputFile(file, entry.fullPath || file.name)];
+    }
+
+    if (!entry.isDirectory) {
+        return [];
+    }
+
+    const reader = entry.createReader();
+    const files: LocalInputFile[] = [];
+    for (;;) {
+        const entries = await readDirectoryEntries(reader);
+        if (!entries.length) {
+            break;
+        }
+        for (const child of entries) {
+            files.push(...await collectEntryFiles(child));
+        }
+    }
+    return files;
+}
+
+async function collectDroppedFiles(dataTransfer: DataTransfer | null) {
+    if (!dataTransfer) {
+        return [];
+    }
+
+    const items = Array.from(dataTransfer.items || []);
+    const entries = items
+        .map(item => typeof (item as any).webkitGetAsEntry === 'function' ? (item as any).webkitGetAsEntry() : null)
+        .filter(Boolean);
+
+    if (entries.length > 0) {
+        const nested = await Promise.all(entries.map(entry => collectEntryFiles(entry)));
+        return nested.flat();
+    }
+
+    return filesFromFileList(dataTransfer.files);
+}
+
+function resolveImageAsset(src: string) {
+    const raw = decodeImageSrc(src);
+    if (!raw || isExternalImageSrc(raw)) {
+        return null;
+    }
+
+    const normalized = normalizeLocalPath(raw);
+    const markdownDir = getDirname(currentMarkdownPath);
+    const candidates = new Set<string>([
+        normalized,
+        markdownDir ? joinLocalPath(markdownDir, normalized) : normalized,
+    ]);
+
+    for (const candidate of candidates) {
+        const exact = imageAssets.get(candidate);
+        if (exact) {
+            return exact;
+        }
+    }
+
+    for (const asset of imageAssets.values()) {
+        if (displayPathForAsset(asset) === normalized) {
+            return asset;
+        }
+    }
+
+    const basename = getBasename(normalized);
+    const basenameMatches = Array.from(imageAssets.values()).filter(asset => getBasename(asset.sourcePath) === basename);
+    return basenameMatches.length === 1 ? basenameMatches[0] : null;
+}
+
+function prepareImageSources(bodyHtml: string) {
+    const template = document.createElement('template');
+    template.innerHTML = bodyHtml;
+
+    for (const img of Array.from(template.content.querySelectorAll('img[src]'))) {
+        const src = img.getAttribute('src') || '';
+        const asset = resolveImageAsset(src);
+        if (!asset) {
+            img.setAttribute('data-houhi-image-missing', src);
+            continue;
+        }
+        img.setAttribute('src', asset.url);
+        img.setAttribute('data-houhi-source-path', displayPathForAsset(asset));
+    }
+
+    const container = document.createElement('div');
+    container.appendChild(template.content.cloneNode(true));
+    return container.innerHTML;
+}
+
+function waitForImages(frameDocument: Document) {
+    const images = Array.from(frameDocument.images || []);
+    const pending = images
+        .filter(img => !img.complete)
+        .map(img => new Promise<void>(resolve => {
+            const done = () => resolve();
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', done, { once: true });
+        }));
+
+    if (!pending.length) {
+        return Promise.resolve();
+    }
+
+    return Promise.race([
+        Promise.all(pending).then(() => undefined),
+        new Promise<void>(resolve => (frameDocument.defaultView || window).setTimeout(resolve, 10000)),
+    ]);
+}
+
+function addImageFiles(files: LocalInputFile[]) {
+    let added = 0;
+    for (const item of files) {
+        if (!isImagePath(item.path || item.file.name)) {
+            continue;
+        }
+
+        const sourcePath = normalizeLocalPath(item.path || item.file.name);
+        const old = imageAssets.get(sourcePath);
+        if (old) {
+            URL.revokeObjectURL(old.url);
+        }
+        imageAssets.set(sourcePath, {
+            file: item.file,
+            sourcePath,
+            url: URL.createObjectURL(item.file),
+        });
+        added++;
+    }
+    renderImageAssetList();
+    return added;
+}
+
+function insertAtCursor(text: string) {
+    const start = editor.selectionStart ?? editor.value.length;
+    const end = editor.selectionEnd ?? editor.value.length;
+    const before = editor.value.slice(0, start);
+    const after = editor.value.slice(end);
+    const prefix = before && !before.endsWith('\n') ? '\n' : '';
+    const suffix = after && !after.startsWith('\n') ? '\n' : '';
+    const insertion = `${prefix}${text}${suffix}`;
+    editor.value = before + insertion + after;
+    const cursor = before.length + insertion.length;
+    editor.focus();
+    editor.setSelectionRange(cursor, cursor);
+    markPreviewDirty();
+}
+
+function renderImageAssetList() {
+    imageAssetList.textContent = '';
+    const assets = Array.from(imageAssets.values()).sort((a, b) => displayPathForAsset(a).localeCompare(displayPathForAsset(b), 'ja'));
+
+    if (!assets.length) {
+        const empty = document.createElement('p');
+        empty.className = 'asset-empty';
+        empty.textContent = '画像未読込';
+        imageAssetList.appendChild(empty);
+        return;
+    }
+
+    for (const asset of assets) {
+        const row = document.createElement('div');
+        row.className = 'image-asset-row';
+
+        const thumb = document.createElement('img');
+        thumb.className = 'image-asset-thumb';
+        thumb.src = asset.url;
+        thumb.alt = '';
+
+        const meta = document.createElement('div');
+        const name = document.createElement('div');
+        name.className = 'image-asset-name';
+        name.title = displayPathForAsset(asset);
+        name.textContent = displayPathForAsset(asset);
+        const code = document.createElement('code');
+        code.className = 'image-asset-code';
+        code.textContent = markdownTagForAsset(asset);
+        meta.append(name, code);
+
+        const insertButton = document.createElement('button');
+        insertButton.type = 'button';
+        insertButton.textContent = '挿入';
+        insertButton.dataset.insertImagePath = displayPathForAsset(asset);
+
+        row.append(thumb, meta, insertButton);
+        imageAssetList.appendChild(row);
+    }
+}
+
 function prepareTocPlaceholders(html: string) {
     return html.replace(/<cssj:make-toc\b[^>]*>\s*<\/cssj:make-toc>/gi, () => {
         return '<ul class="cssj-toc houhi-chrome-toc" data-houhi-chrome-toc="pending"></ul>';
@@ -101,7 +427,7 @@ function prepareTocPlaceholders(html: string) {
 }
 
 function buildPreviewDocument(markdown: string) {
-    const bodyHtml = prepareTocPlaceholders(convertMarkdownToCourtHtml(markdown));
+    const bodyHtml = prepareTocPlaceholders(prepareImageSources(convertMarkdownToCourtHtml(markdown)));
     const baseHref = new URL('./', window.location.href).href;
 
     return `<!doctype html>
@@ -167,7 +493,7 @@ function preparePlainHtmlBody(bodyHtml: string) {
 }
 
 function buildPlainHtmlDocument(markdown: string) {
-    const bodyHtml = preparePlainHtmlBody(convertMarkdownToCourtHtml(markdown));
+    const bodyHtml = preparePlainHtmlBody(prepareImageSources(convertMarkdownToCourtHtml(markdown)));
     const baseHref = new URL('./', window.location.href).href;
 
     return `<!doctype html>
@@ -344,6 +670,7 @@ async function renderPreviewNow() {
 
     try {
         await waitForPaged(frameWindow);
+        await waitForImages(frameDocument);
         if (frameDocument.fonts && frameDocument.fonts.ready) {
             await frameDocument.fonts.ready;
         }
@@ -411,14 +738,47 @@ async function pasteFromClipboard() {
     }
 }
 
-async function loadFile(file: File) {
+async function loadMarkdownFile(file: File, filePath = file.name) {
     if (!/\.md$/i.test(file.name)) {
         setStatus('.md ファイルを指定してください。');
         return;
     }
+    currentMarkdownPath = normalizeLocalPath(filePath || file.name);
     editor.value = await file.text();
     setStatus(`${file.name} を読み込みました。`);
+    renderImageAssetList();
     renderPreviewNow();
+}
+
+async function handleInputFiles(files: LocalInputFile[]) {
+    const markdownFile = files.find(item => /\.md$/i.test(item.path || item.file.name));
+    const imageCount = addImageFiles(files);
+
+    if (markdownFile) {
+        await loadMarkdownFile(markdownFile.file, markdownFile.path);
+        if (imageCount > 0) {
+            setStatus(`${markdownFile.file.name} と画像 ${imageCount} 件を読み込みました。`);
+        }
+        return;
+    }
+
+    if (imageCount > 0) {
+        setStatus(`画像 ${imageCount} 件を読み込みました。`);
+        await renderPreviewNow();
+        return;
+    }
+
+    setStatus('.md または画像ファイルを指定してください。');
+}
+
+async function handleAssetFiles(files: LocalInputFile[]) {
+    const imageCount = addImageFiles(files);
+    if (imageCount > 0) {
+        setStatus(`画像 ${imageCount} 件を読み込みました。`);
+        await renderPreviewNow();
+        return;
+    }
+    setStatus('画像ファイルを指定してください。');
 }
 
 editor.addEventListener('input', markPreviewDirty);
@@ -435,10 +795,10 @@ dropZone.addEventListener('dragleave', () => {
 dropZone.addEventListener('drop', event => {
     event.preventDefault();
     dropZone.classList.remove('drag-over');
-    const file = event.dataTransfer?.files?.[0];
-    if (file) {
-        loadFile(file);
-    }
+    collectDroppedFiles(event.dataTransfer).then(handleInputFiles).catch(err => {
+        console.error(err);
+        setStatus('ファイルの読み込みに失敗しました。');
+    });
 });
 
 dropZone.addEventListener('click', () => fileInput.click());
@@ -446,8 +806,52 @@ dropZone.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
     if (file) {
-        loadFile(file);
+        loadMarkdownFile(file, (file as any).webkitRelativePath || file.name);
     }
+});
+
+assetDropZone.addEventListener('dragover', event => {
+    event.preventDefault();
+    assetDropZone.classList.add('drag-over');
+});
+
+assetDropZone.addEventListener('dragleave', () => {
+    assetDropZone.classList.remove('drag-over');
+});
+
+assetDropZone.addEventListener('drop', event => {
+    event.preventDefault();
+    assetDropZone.classList.remove('drag-over');
+    collectDroppedFiles(event.dataTransfer).then(handleAssetFiles).catch(err => {
+        console.error(err);
+        setStatus('画像の読み込みに失敗しました。');
+    });
+});
+
+assetDropZone.addEventListener('click', () => imageFileInput.click());
+
+imageFileButton.addEventListener('click', () => imageFileInput.click());
+imageFolderButton.addEventListener('click', () => imageDirectoryInput.click());
+
+imageFileInput.addEventListener('change', () => {
+    handleAssetFiles(filesFromFileList(imageFileInput.files)).finally(() => {
+        imageFileInput.value = '';
+    });
+});
+
+imageDirectoryInput.addEventListener('change', () => {
+    handleAssetFiles(filesFromFileList(imageDirectoryInput.files)).finally(() => {
+        imageDirectoryInput.value = '';
+    });
+});
+
+imageAssetList.addEventListener('click', event => {
+    const target = event.target as HTMLElement;
+    const button = target.closest('button[data-insert-image-path]') as HTMLButtonElement | null;
+    if (!button) {
+        return;
+    }
+    insertAtCursor(`![説明](${button.dataset.insertImagePath || ''})`);
 });
 
 pasteButton.addEventListener('click', pasteFromClipboard);
@@ -502,5 +906,12 @@ previewSurface.addEventListener('touchcancel', () => {
     previewZoom.startScale = previewZoom.scale;
 });
 
+window.addEventListener('beforeunload', () => {
+    for (const asset of imageAssets.values()) {
+        URL.revokeObjectURL(asset.url);
+    }
+});
+
 editor.value = DEFAULT_MARKDOWN;
+renderImageAssetList();
 renderPreviewNow();

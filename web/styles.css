@@ -448,7 +448,7 @@ button:disabled {
 }
 
 textarea {
-  flex: 1;
+  flex: 0 0 420px;
   width: 100%;
   min-height: 520px;
   padding: 16px;
@@ -461,6 +461,80 @@ textarea {
   font-family: Consolas, "Yu Gothic UI", Meiryo, monospace;
   font-size: 14px;
   line-height: 1.65;
+}
+
+.image-assets-panel {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+
+.asset-toolbar {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.asset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.image-drop-zone {
+  min-height: 76px;
+}
+
+.image-asset-list {
+  max-height: 290px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+
+.asset-empty {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.image-asset-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.image-asset-thumb {
+  width: 58px;
+  height: 44px;
+  object-fit: contain;
+  background: #fbfbfa;
+  border: 1px solid var(--line);
+}
+
+.image-asset-name {
+  overflow: hidden;
+  margin-bottom: 4px;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-asset-code {
+  display: block;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: Consolas, "Yu Gothic UI", Meiryo, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .preview-surface {

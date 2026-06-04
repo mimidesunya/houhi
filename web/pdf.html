@@ -43,12 +43,34 @@
         </div>
 
         <div id="dropZone" class="drop-zone" tabindex="0" role="button">
-          <strong>.md をドロップ</strong>
-          <span>クリックしてファイル選択、または下の欄へ直接ペースト</span>
+          <strong>.md または書面フォルダをドロップ</strong>
+          <span>クリックしてMarkdownを選択、または下の欄へ直接ペースト</span>
           <input id="fileInput" type="file" accept=".md,text/markdown,text/plain" hidden>
         </div>
 
         <textarea id="markdownInput" spellcheck="false" aria-label="Markdown入力"></textarea>
+
+        <section class="image-assets-panel" aria-label="画像">
+          <div class="asset-toolbar">
+            <div>
+              <p class="eyebrow">Images</p>
+              <h2>画像</h2>
+            </div>
+            <div class="asset-actions">
+              <button id="imageFileButton" type="button">画像追加</button>
+              <button id="imageFolderButton" type="button">フォルダ追加</button>
+            </div>
+          </div>
+          <div id="assetDropZone" class="drop-zone image-drop-zone" tabindex="0" role="button">
+            <strong>画像・画像フォルダをドロップ</strong>
+            <span>Markdownタグ例を下に表示</span>
+          </div>
+          <input id="imageFileInput" type="file" accept="image/*" multiple hidden>
+          <input id="imageDirectoryInput" type="file" webkitdirectory directory multiple hidden>
+          <div id="imageAssetList" class="image-asset-list" aria-live="polite">
+            <p class="asset-empty">画像未読込</p>
+          </div>
+        </section>
       </div>
 
       <div class="preview-pane">
