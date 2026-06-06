@@ -103,6 +103,7 @@ test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI'
     assert.match(rules, /Plain numbered body items are allowed/);
     assert.match(rules, /The difference is function, not the marker itself/);
     assert.match(rules, /Allowed numbered argument paragraph when intentional/);
+    assert.match(rules, /Use half-width Arabic numerals and half-width English alphabet letters throughout the Markdown/);
     assert.match(rules, /simple parenthesized references/);
     assert.match(rules, /甲1_確認メール\.pdf/);
     assert.match(rules, /`1 争点の整理` when used as a subheading/);
@@ -116,6 +117,20 @@ test('src/templates/訴訟.準備書面.md: keeps numbered subheadings as ## hea
     assert.match(template, /^## \(1\) 〇〇について$/m);
     assert.doesNotMatch(template, /^1 争点の整理$/m);
     assert.doesNotMatch(template, /^\(1\) 〇〇について$/m);
+});
+
+test('preservation templates: keep preserved right as a normal paragraph', () => {
+    const files = [
+        '保全.発信者情報開示仮処分命令申立書.md',
+        '保全.発信者情報消去禁止仮処分命令申立書.md'
+    ];
+    const preservedRight = '被保全権利　情報流通プラットフォーム対処法に基づく発信者情報開示請求権';
+
+    for (const file of files) {
+        const template = fs.readFileSync(path.resolve('src/templates', file), 'utf-8');
+        assert.match(template, new RegExp(`^${preservedRight}$`, 'm'));
+        assert.doesNotMatch(template, /^- 被保全権利:/m);
+    }
 });
 
 test('drafting templates: use ## for regular section headings', () => {

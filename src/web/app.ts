@@ -1,6 +1,16 @@
 import { convertMarkdownToCourtHtml } from '../base/court_markdown';
 import { applyManualPageNumbers, fillChromeTocPageNumbers, prepareChromeToc } from '../lib/paged_toc';
 
+type DraftingTemplate = {
+    id: string;
+    name: string;
+    content: string;
+};
+
+type DraftingData = {
+    templates?: DraftingTemplate[];
+};
+
 const DEFAULT_MARKDOWN = `# 準備書面
 
 ### 目次
@@ -39,6 +49,8 @@ const renderButton = document.getElementById('renderButton') as HTMLButtonElemen
 const htmlPreviewButton = document.getElementById('htmlPreviewButton') as HTMLButtonElement;
 const printButton = document.getElementById('printButton') as HTMLButtonElement;
 const pasteButton = document.getElementById('pasteButton') as HTMLButtonElement;
+const templateLoader = document.getElementById('templateLoader') as HTMLElement | null;
+const templateSelect = document.getElementById('templateSelect') as HTMLSelectElement | null;
 const assetDropZone = document.getElementById('assetDropZone') as HTMLElement;
 const imageFileButton = document.getElementById('imageFileButton') as HTMLButtonElement;
 const imageFolderButton = document.getElementById('imageFolderButton') as HTMLButtonElement;
@@ -89,6 +101,11 @@ let previewZoom: PreviewZoomState = {
 
 function setStatus(message: string) {
     statusText.textContent = message;
+}
+
+function getDraftingTemplates() {
+    const data = (window as any).HOUHI_DRAFTING_DATA as DraftingData | undefined;
+    return Array.isArray(data?.templates) ? data.templates : [];
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -693,6 +710,47 @@ function markPreviewDirty() {
     setStatus('未更新');
 }
 
+async function loadTemplate(template: DraftingTemplate) {
+    currentMarkdownPath = template.id;
+    editor.value = template.content.trim();
+    editor.focus();
+    editor.setSelectionRange(0, 0);
+    renderImageAssetList();
+    setStatus(`${template.name} を読み込みました。`);
+    await renderPreviewNow();
+}
+
+function setupTemplateLoader() {
+    if (!templateLoader || !templateSelect) {
+        return;
+    }
+
+    const templates = getDraftingTemplates();
+    if (!templates.length) {
+        return;
+    }
+
+    for (const template of templates) {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = template.name;
+        templateSelect.appendChild(option);
+    }
+
+    templateLoader.hidden = false;
+    templateSelect.addEventListener('change', () => {
+        const selected = templates.find(template => template.id === templateSelect.value);
+        if (!selected) {
+            editor.focus();
+            return;
+        }
+        loadTemplate(selected).catch(err => {
+            console.error(err);
+            setStatus('テンプレートの読み込みに失敗しました。');
+        });
+    });
+}
+
 function openPlainHtmlPreview() {
     const markdown = editor.value.trim() ? editor.value : DEFAULT_MARKDOWN;
     const html = buildPlainHtmlDocument(markdown);
@@ -913,5 +971,6 @@ window.addEventListener('beforeunload', () => {
 });
 
 editor.value = DEFAULT_MARKDOWN;
+setupTemplateLoader();
 renderImageAssetList();
 renderPreviewNow();

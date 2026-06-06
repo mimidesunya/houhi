@@ -43,6 +43,10 @@ p {
     text-align: justify;
 }
 
+.underline {
+    text-decoration: underline;
+}
+
 /* =========================================
    タイトル・日付・宛先
    ========================================= */
@@ -109,6 +113,7 @@ table.has-header thead th {
 
 table.info td:first-child {
     padding-right: 1.5em;
+    white-space: nowrap;
 }
 
 /* 数値セルは右寄せ */

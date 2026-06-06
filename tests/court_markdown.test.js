@@ -15,6 +15,28 @@ test('convertMarkdownToCourtHtml: converts paragraph text', () => {
     assert.ok(result.includes('これは本文のテストです。'));
 });
 
+test('convertMarkdownToCourtHtml: converts underline inline syntax', () => {
+    const result = convertMarkdownToCourtHtml('これは++重要な部分++です。');
+    assert.ok(result.includes('<p>これは<span class="underline">重要な部分</span>です。</p>'));
+});
+
+test('convertMarkdownToCourtHtml: escapes text inside underline inline syntax', () => {
+    const result = convertMarkdownToCourtHtml('++<重要>&確認++');
+    assert.ok(result.includes('<span class="underline">&lt;重要&gt;&amp;確認</span>'));
+});
+
+test('convertMarkdownToCourtHtml: converts underline syntax in table cells', () => {
+    const md = '| 項目 | 内容 |\n|:---|:---|\n| 争点 | ++投稿者の同一性++ |';
+    const result = convertMarkdownToCourtHtml(md);
+    assert.ok(result.includes('<td class="col-1">争点</td>'));
+    assert.ok(result.includes('<td class="col-2"><span class="underline">投稿者の同一性</span></td>'));
+});
+
+test('convertMarkdownToCourtHtml: keeps escaped underline delimiter literal', () => {
+    const result = convertMarkdownToCourtHtml('これは\\++下線にしない\\++です。');
+    assert.ok(result.includes('<p>これは++下線にしない++です。</p>'));
+});
+
 test('convertMarkdownToCourtHtml: handles empty input', () => {
     const result = convertMarkdownToCourtHtml('');
     assert.ok(typeof result === 'string');

@@ -42,6 +42,13 @@
           <button id="pasteButton" type="button">ペースト</button>
         </div>
 
+        <div id="templateLoader" class="template-loader" hidden>
+          <label for="templateSelect">テンプレート</label>
+          <select id="templateSelect">
+            <option value="">選択なし</option>
+          </select>
+        </div>
+
         <div id="dropZone" class="drop-zone" tabindex="0" role="button">
           <strong>.md または書面フォルダをドロップ</strong>
           <span>クリックしてMarkdownを選択、または下の欄へ直接ペースト</span>
@@ -95,6 +102,7 @@
     </section>
   </main>
 
+  <script src="./drafting-data.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>

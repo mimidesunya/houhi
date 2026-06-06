@@ -33,6 +33,24 @@ function escapeHtmlAttribute(value) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 }
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+function stripInlineMarkdown(value) {
+    return String(value)
+        .replace(/\\\+\+/g, '++')
+        .replace(/\+\+(.+?)\+\+/g, '$1');
+}
+function renderInlineMarkdown(value) {
+    const escapedPlus = '\uE000';
+    return escapeHtml(value)
+        .replace(/\\\+\+/g, escapedPlus)
+        .replace(/\+\+(.+?)\+\+/g, (_match, text) => `<span class="underline">${text}</span>`)
+        .replace(new RegExp(escapedPlus, 'g'), '++');
+}
 /**
  * Markdownテキストを裁判文書用のHTMLに変換します。
  */
@@ -129,7 +147,7 @@ function convertMarkdownToCourtHtml(markdown) {
                     targetWidths = leftColWidths;
                 }
                 cells.forEach((cell, i) => {
-                    const w = getVisualWidth(cell.trim());
+                    const w = getVisualWidth(stripInlineMarkdown(cell.trim()));
                     if (!targetWidths[i] || w > targetWidths[i])
                         targetWidths[i] = w;
                 });
@@ -151,14 +169,15 @@ function convertMarkdownToCourtHtml(markdown) {
             let rowHtml = indent(lastLevel + 2) + '<tr>' + nl;
             row.forEach((cell, i) => {
                 const text = cell.trim();
-                const isAmount = tag === 'td' && i > 0 && /^[0-9０-９,，．.]+円?$/.test(text);
+                const displayText = stripInlineMarkdown(text);
+                const isAmount = tag === 'td' && i > 0 && /^[0-9０-９,，．.]+円?$/.test(displayText);
                 const classes = [];
                 if (tableClass.includes('info') || tableClass.includes('att'))
                     classes.push(`col-${i + 1}`);
                 if (isAmount)
                     classes.push('val');
                 const classAttr = classes.length > 0 ? ` class="${classes.join(' ')}"` : '';
-                rowHtml += indent(lastLevel + 3) + `<${tag}${classAttr}>${text}</${tag}>` + nl;
+                rowHtml += indent(lastLevel + 3) + `<${tag}${classAttr}>${renderInlineMarkdown(text)}</${tag}>` + nl;
             });
             rowHtml += indent(lastLevel + 2) + '</tr>' + nl;
             return rowHtml;
@@ -193,7 +212,7 @@ function convertMarkdownToCourtHtml(markdown) {
         tableHtml += indent(lastLevel + 2) + '<tr>' + nl;
         headerRow.forEach((cell, i) => {
             const text = cell.trim();
-            tableHtml += indent(lastLevel + 3) + `<th class="col-${i + 1}">${text}</th>` + nl;
+            tableHtml += indent(lastLevel + 3) + `<th class="col-${i + 1}">${renderInlineMarkdown(text)}</th>` + nl;
         });
         tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
         tableHtml += indent(lastLevel + 1) + '</thead>' + nl;
@@ -268,7 +287,7 @@ function convertMarkdownToCourtHtml(markdown) {
                     rowspanMap.set(colIndex, { rowIndex, span: rowspan, text });
                 }
                 const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
-                tableHtml += indent(lastLevel + 3) + `<td class="col-${colIndex + 1}"${rowspanAttr}>${text}</td>` + nl;
+                tableHtml += indent(lastLevel + 3) + `<td class="col-${colIndex + 1}"${rowspanAttr}>${renderInlineMarkdown(text)}</td>` + nl;
             });
             tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
         });
@@ -423,7 +442,7 @@ function convertMarkdownToCourtHtml(markdown) {
                 html += '<ul>' + nl;
                 inSimpleList = true;
             }
-            html += indent(1) + `<li>${simpleListMatch[1]}</li>` + nl;
+            html += indent(1) + `<li>${renderInlineMarkdown(simpleListMatch[1])}</li>` + nl;
             continue;
         }
         else if (inSimpleList) {
@@ -507,7 +526,7 @@ function convertMarkdownToCourtHtml(markdown) {
                 html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                 lastLevel--;
             }
-            html += `<div class="break">(${breakText})</div>` + nl;
+            html += `<div class="break">(${renderInlineMarkdown(breakText)})</div>` + nl;
             continue;
         }
         const levelInfo = getLevelInfo(trimmedLine);
@@ -554,7 +573,7 @@ function convertMarkdownToCourtHtml(markdown) {
             lastHeader = text; // ヘッダテキストを保存
             if (levelInfo) {
                 const tagName = headingTag(levelInfo.level);
-                html += currentIndent + `<${tagName}>${levelInfo.marker}　${text}</${tagName}>` + nl;
+                html += currentIndent + `<${tagName}>${levelInfo.marker}　${renderInlineMarkdown(text)}</${tagName}>` + nl;
             }
         }
         else if (isHeader) {
@@ -564,7 +583,7 @@ function convertMarkdownToCourtHtml(markdown) {
                 html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                 lastLevel--;
             }
-            html += `<div class="doc-title">${text}</div>` + nl;
+            html += `<div class="doc-title">${renderInlineMarkdown(text)}</div>` + nl;
             lastLevel = 0;
             continue;
         }
@@ -574,7 +593,7 @@ function convertMarkdownToCourtHtml(markdown) {
                 html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                 lastLevel--;
             }
-            html += `<div class="end-mark">${text}</div>` + nl;
+            html += `<div class="end-mark">${renderInlineMarkdown(text)}</div>` + nl;
             lastLevel = 0;
             continue;
         }
@@ -584,20 +603,20 @@ function convertMarkdownToCourtHtml(markdown) {
                 html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                 lastLevel--;
             }
-            html += `<div class="center-mark">${text}</div>` + nl;
+            html += `<div class="center-mark">${renderInlineMarkdown(text)}</div>` + nl;
             lastLevel = 0;
             continue;
         }
         else if (/^(?:(?:令和|平成|昭和|大正|明治)\s*(?:[0-9０-９]{1,2}|[元〇○一二三四五六七八九十]{1,3})|[0-9０-９]{1,4})\s*年\s*(?:[0-9０-９]{1,2}|[〇○一二三四五六七八九十]{1,3})\s*月\s*(?:[0-9０-９]{1,2}|[元〇○一二三四五六七八九十]{1,3})\s*日$/.test(text)) {
             // 日付の識別 (和暦・西暦、数字・漢数字、元年などに対応)
-            html += currentIndent + `<div class="date">${text}</div>` + nl;
+            html += currentIndent + `<div class="date">${renderInlineMarkdown(text)}</div>` + nl;
         }
         else if (/.*[　\s](?:御中|様)$/.test(text)) {
             // 宛先の識別
-            html += currentIndent + `<div class="dest">${text}</div>` + nl;
+            html += currentIndent + `<div class="dest">${renderInlineMarkdown(text)}</div>` + nl;
         }
         else {
-            html += currentIndent + `<p>${text}</p>` + nl;
+            html += currentIndent + `<p>${renderInlineMarkdown(text)}</p>` + nl;
         }
         lastLevel = level;
     }
@@ -860,6 +879,8 @@ const renderButton = document.getElementById('renderButton');
 const htmlPreviewButton = document.getElementById('htmlPreviewButton');
 const printButton = document.getElementById('printButton');
 const pasteButton = document.getElementById('pasteButton');
+const templateLoader = document.getElementById('templateLoader');
+const templateSelect = document.getElementById('templateSelect');
 const assetDropZone = document.getElementById('assetDropZone');
 const imageFileButton = document.getElementById('imageFileButton');
 const imageFolderButton = document.getElementById('imageFolderButton');
@@ -885,6 +906,10 @@ let previewZoom = {
 };
 function setStatus(message) {
     statusText.textContent = message;
+}
+function getDraftingTemplates() {
+    const data = window.HOUHI_DRAFTING_DATA;
+    return Array.isArray(data?.templates) ? data.templates : [];
 }
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -1406,6 +1431,42 @@ async function renderPreviewNow() {
 function markPreviewDirty() {
     setStatus('未更新');
 }
+async function loadTemplate(template) {
+    currentMarkdownPath = template.id;
+    editor.value = template.content.trim();
+    editor.focus();
+    editor.setSelectionRange(0, 0);
+    renderImageAssetList();
+    setStatus(`${template.name} を読み込みました。`);
+    await renderPreviewNow();
+}
+function setupTemplateLoader() {
+    if (!templateLoader || !templateSelect) {
+        return;
+    }
+    const templates = getDraftingTemplates();
+    if (!templates.length) {
+        return;
+    }
+    for (const template of templates) {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = template.name;
+        templateSelect.appendChild(option);
+    }
+    templateLoader.hidden = false;
+    templateSelect.addEventListener('change', () => {
+        const selected = templates.find(template => template.id === templateSelect.value);
+        if (!selected) {
+            editor.focus();
+            return;
+        }
+        loadTemplate(selected).catch(err => {
+            console.error(err);
+            setStatus('テンプレートの読み込みに失敗しました。');
+        });
+    });
+}
 function openPlainHtmlPreview() {
     const markdown = editor.value.trim() ? editor.value : DEFAULT_MARKDOWN;
     const html = buildPlainHtmlDocument(markdown);
@@ -1593,6 +1654,7 @@ window.addEventListener('beforeunload', () => {
     }
 });
 editor.value = DEFAULT_MARKDOWN;
+setupTemplateLoader();
 renderImageAssetList();
 renderPreviewNow();
 

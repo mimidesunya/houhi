@@ -447,6 +447,23 @@ button:disabled {
   outline-offset: 2px;
 }
 
+.template-loader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin: 16px 16px 0;
+}
+
+.template-loader[hidden] {
+  display: none;
+}
+
+.template-loader select {
+  min-width: 0;
+  width: 100%;
+}
+
 textarea {
   flex: 0 0 420px;
   width: 100%;

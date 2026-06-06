@@ -28,7 +28,6 @@ Follow this structure exactly. Omit unused sections.
 
 ### --右
 - 被告:乙山　次郎
-- 上記代理人:丙川　三郎
 ### --
 
 被告は、乙1（電子メール）及び乙2（サーバーログ）を提出するとともに、以下のとおり主張を補充する。

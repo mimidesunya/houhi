@@ -198,3 +198,11 @@ test('base stylesheet increments list counters on real li elements for Paged.js'
         assert.equal(beforeRule.test(css), false);
     }
 });
+
+test('base stylesheet keeps info table labels on one line', () => {
+    const stylePath = path.resolve('src/base/style.css');
+    const css = fs.readFileSync(stylePath, 'utf-8');
+    const rule = /table\.info\s+td:first-child\s*\{[^}]*white-space:\s*nowrap\b/s;
+
+    assert.match(css, rule);
+});
