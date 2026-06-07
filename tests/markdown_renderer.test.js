@@ -88,8 +88,8 @@ test('src/base/sample.md: follows preparation brief drafting syntax rules', () =
     assert.match(sample, /^## 第1 /m);
     assert.match(sample, /^## 1 /m);
     assert.doesNotMatch(sample, /^1 原告/m);
-    assert.match(sample, /^## 附属書類$/m);
-    assert.match(sample, /^- 準備書面副本：1通$/m);
+    assert.doesNotMatch(sample, /^## 附属書類$/m);
+    assert.doesNotMatch(sample, /証拠説明書/);
 });
 
 test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI', () => {
@@ -104,10 +104,24 @@ test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI'
     assert.match(rules, /The difference is function, not the marker itself/);
     assert.match(rules, /Allowed numbered argument paragraph when intentional/);
     assert.match(rules, /Use half-width Arabic numerals and half-width English alphabet letters throughout the Markdown/);
+    assert.match(rules, /draft only that one document/);
+    assert.match(rules, /Do not draft related documents such as 証拠説明書/);
+    assert.match(rules, /Mentions of related documents in attachment lists or templates are filing information only/);
     assert.match(rules, /simple parenthesized references/);
     assert.match(rules, /甲1_確認メール\.pdf/);
     assert.match(rules, /`1 争点の整理` when used as a subheading/);
     assert.match(rules, /Before finalizing output, scan every line that starts with `#`/);
+});
+
+test('AI start guides: do not invite drafting related documents by default', () => {
+    const setupSource = fs.readFileSync(path.resolve('setup.ts'), 'utf-8');
+    const webBuildSource = fs.readFileSync(path.resolve('scripts/build_web.js'), 'utf-8');
+
+    for (const source of [setupSource, webBuildSource]) {
+        assert.match(source, /その書面1通だけを作成してください/);
+        assert.match(source, /関連書面は、ユーザーが明示的に依頼した場合に限り作成してください/);
+        assert.match(source, /必要であれば別途作成できます/);
+    }
 });
 
 test('src/templates/訴訟.準備書面.md: keeps numbered subheadings as ## headings', () => {
