@@ -415,12 +415,20 @@ ol.lvl7 > li:before {
     position: absolute; left: -1.5em; top: 0; width: 2.5em;
 }
 
+li.heading-item {
+    list-style-type: none;
+}
+
+li.heading-item::marker {
+    content: "";
+}
+
 ol > li.heading-item {
     padding-left: 0;
     text-indent: 0;
 }
 
-ol > li.heading-item:before {
+li.heading-item:before {
     visibility: hidden;
     width: 0;
 }

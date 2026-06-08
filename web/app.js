@@ -103,7 +103,7 @@ function convertMarkdownToCourtHtml(markdown) {
         }
         if (trimmed.startsWith('#')) {
             // 改ページマーカー等はヘッダーとして扱わない
-            if (/^### --.*--$/.test(trimmed) || trimmed === '### ---' || trimmed === '### ...')
+            if (/^### --.*--$/.test(trimmed) || trimmed === '### ---' || trimmed === '### -')
                 continue;
             scanHeader = trimmed.replace(/^#*\s*/, '').trim();
             if (scanHeader === '送付書') {
@@ -468,16 +468,16 @@ function convertMarkdownToCourtHtml(markdown) {
             html += currentIndent + `<div class="image-block"><img src="${src}" alt="${alt}" /></div>` + nl;
             continue;
         }
-        // 空行（スペーサー）マーカーの処理: ### ...
+        // 空行（スペーサー）マーカーの処理: ### -
         // 空行は入力上は捨てられるため、見た目の空行を挿入する
-        if (trimmedLine === '### ...') {
+        if (trimmedLine === '### -') {
             const currentIndent = indent(lastLevel + (lastLevel > 0 ? 1 : 0));
             html += currentIndent + '<div class="blank-line"></div>' + nl;
             continue;
         }
-        // 目次マーカーの処理: ### 目次
+        // 目次マーカーの処理: ### --目次
         // Copper PDF の cssj:make-toc により、文書内の h1-h6 から目次を生成する
-        if (trimmedLine === '### 目次') {
+        if (trimmedLine === '### --目次') {
             if (inRightBlock || inLeftBlock) {
                 while (lastLevel > 0) {
                     html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
@@ -837,14 +837,92 @@ function applyManualPageNumbers(){(${applyManualPageNumbers.toString()})(documen
 }
 
 },
+"src/web/document_title": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.extractMarkdownDocumentTitle = extractMarkdownDocumentTitle;
+exports.sanitizeDownloadTitle = sanitizeDownloadTitle;
+exports.buildPdfDocumentTitle = buildPdfDocumentTitle;
+const DEFAULT_PDF_DOCUMENT_TITLE = '法匪 PDF';
+function extractMarkdownDocumentTitle(markdown) {
+    let inFence = false;
+    let fenceMarker = '';
+    for (const rawLine of String(markdown || '').split(/\r?\n/)) {
+        const fenceMatch = rawLine.match(/^\s*(`{3,}|~{3,})/);
+        if (fenceMatch) {
+            const marker = fenceMatch[1][0];
+            if (!inFence) {
+                inFence = true;
+                fenceMarker = marker;
+                continue;
+            }
+            if (marker === fenceMarker) {
+                inFence = false;
+                fenceMarker = '';
+                continue;
+            }
+        }
+        if (inFence) {
+            continue;
+        }
+        const titleMatch = rawLine.match(/^#\s+(.+?)\s*$/);
+        if (!titleMatch) {
+            continue;
+        }
+        return titleMatch[1].replace(/\s+#+\s*$/, '').trim();
+    }
+    return '';
+}
+function sanitizeDownloadTitle(value, fallback = DEFAULT_PDF_DOCUMENT_TITLE) {
+    const sanitized = String(value || '')
+        .replace(/[\u0000-\u001f\u007f\\/:*?"<>|]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/[.\s]+$/g, '')
+        .slice(0, 120)
+        .trim();
+    return sanitized || fallback;
+}
+function buildPdfDocumentTitle(markdown) {
+    return sanitizeDownloadTitle(extractMarkdownDocumentTitle(markdown));
+}
+
+},
+"src/web/markdown_normalizer": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.normalizeEditableMarkdown = normalizeEditableMarkdown;
+function normalizeEditableMarkdown(markdown) {
+    return String(markdown || '')
+        .split(/(\r?\n)/)
+        .map(part => {
+        if (/^\r?\n$/.test(part)) {
+            return part;
+        }
+        const match = part.match(/^([ \t]*)(#{3,})([ \t]*)(.*)$/);
+        if (!match) {
+            return part;
+        }
+        const [, indent, _hashes, space, text] = match;
+        if (text.startsWith('-')) {
+            return part;
+        }
+        return `${indent}##${space}${text}`;
+    })
+        .join('');
+}
+
+},
 "src/web/app": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const court_markdown_1 = require("../base/court_markdown");
+const document_title_1 = require("./document_title");
+const markdown_normalizer_1 = require("./markdown_normalizer");
 const paged_toc_1 = require("../lib/paged_toc");
 const DEFAULT_MARKDOWN = `# 準備書面
 
-### 目次
+### --目次
 
 ## 第1 請求の趣旨
 原告の請求をいずれも棄却する。
@@ -1200,10 +1278,12 @@ function prepareTocPlaceholders(html) {
 function buildPreviewDocument(markdown) {
     const bodyHtml = prepareTocPlaceholders(prepareImageSources((0, court_markdown_1.convertMarkdownToCourtHtml)(markdown)));
     const baseHref = new URL('./', window.location.href).href;
+    const documentTitle = escapeHtmlAttribute((0, document_title_1.buildPdfDocumentTitle)(markdown));
     return `<!doctype html>
 <html lang="ja" data-houhi-pdf-engine="chrome">
 <head>
   <meta charset="utf-8">
+  <title>${documentTitle}</title>
   <base href="${baseHref}">
   <link rel="stylesheet" href="court.css">
   <style>
@@ -1391,6 +1471,7 @@ function updatePreviewSize(frameDocument) {
 }
 async function renderPreviewNow() {
     const seq = ++renderSeq;
+    normalizeEditorMarkdownForRender();
     const markdown = editor.value.trim() ? editor.value : DEFAULT_MARKDOWN;
     setStatus('組版中...');
     renderButton.disabled = true;
@@ -1430,6 +1511,23 @@ async function renderPreviewNow() {
 }
 function markPreviewDirty() {
     setStatus('未更新');
+}
+function normalizeEditorMarkdownForRender() {
+    const original = editor.value;
+    const normalized = (0, markdown_normalizer_1.normalizeEditableMarkdown)(original);
+    if (normalized === original) {
+        return;
+    }
+    const selectionStart = editor.selectionStart ?? original.length;
+    const selectionEnd = editor.selectionEnd ?? original.length;
+    const nextSelectionStart = (0, markdown_normalizer_1.normalizeEditableMarkdown)(original.slice(0, selectionStart)).length;
+    const nextSelectionEnd = (0, markdown_normalizer_1.normalizeEditableMarkdown)(original.slice(0, selectionEnd)).length;
+    editor.value = normalized;
+    editor.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+}
+function getCurrentPdfDocumentTitle() {
+    const markdown = editor.value.trim() ? editor.value : DEFAULT_MARKDOWN;
+    return (0, document_title_1.buildPdfDocumentTitle)(markdown);
 }
 async function loadTemplate(template) {
     currentMarkdownPath = template.id;
@@ -1612,6 +1710,18 @@ printButton.addEventListener('click', () => {
     const frameWindow = previewFrame.contentWindow;
     if (!frameWindow)
         return;
+    const title = getCurrentPdfDocumentTitle();
+    const oldTitle = document.title;
+    document.title = title;
+    if (frameWindow.document) {
+        frameWindow.document.title = title;
+    }
+    const restoreTitle = () => {
+        document.title = oldTitle;
+        window.removeEventListener('focus', restoreTitle);
+    };
+    window.addEventListener('focus', restoreTitle, { once: true });
+    window.setTimeout(restoreTitle, 30000);
     frameWindow.focus();
     frameWindow.print();
 });

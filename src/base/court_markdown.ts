@@ -95,7 +95,7 @@ export function convertMarkdownToCourtHtml(markdown) {
 
         if (trimmed.startsWith('#')) {
             // 改ページマーカー等はヘッダーとして扱わない
-            if (/^### --.*--$/.test(trimmed) || trimmed === '### ---' || trimmed === '### ...') continue;
+            if (/^### --.*--$/.test(trimmed) || trimmed === '### ---' || trimmed === '### -') continue;
 
             scanHeader = trimmed.replace(/^#*\s*/, '').trim();
             if (scanHeader === '送付書') {
@@ -473,17 +473,17 @@ export function convertMarkdownToCourtHtml(markdown) {
             continue;
         }
 
-        // 空行（スペーサー）マーカーの処理: ### ...
+        // 空行（スペーサー）マーカーの処理: ### -
         // 空行は入力上は捨てられるため、見た目の空行を挿入する
-        if (trimmedLine === '### ...') {
+        if (trimmedLine === '### -') {
             const currentIndent = indent(lastLevel + (lastLevel > 0 ? 1 : 0));
             html += currentIndent + '<div class="blank-line"></div>' + nl;
             continue;
         }
 
-        // 目次マーカーの処理: ### 目次
+        // 目次マーカーの処理: ### --目次
         // Copper PDF の cssj:make-toc により、文書内の h1-h6 から目次を生成する
-        if (trimmedLine === '### 目次') {
+        if (trimmedLine === '### --目次') {
             if (inRightBlock || inLeftBlock) {
                 while (lastLevel > 0) {
                     html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;

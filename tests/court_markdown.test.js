@@ -109,6 +109,16 @@ test('convertMarkdownToCourtHtml: handles page break marker', () => {
     assert.ok(typeof result === 'string');
 });
 
+test('convertMarkdownToCourtHtml: converts blank-space marker', () => {
+    const result = convertMarkdownToCourtHtml('本文\n### -\n続き');
+    assert.ok(result.includes('<div class="blank-line"></div>'));
+});
+
+test('convertMarkdownToCourtHtml: does not support legacy blank-space marker', () => {
+    const result = convertMarkdownToCourtHtml('本文\n### ...\n続き');
+    assert.ok(!result.includes('<div class="blank-line"></div>'));
+});
+
 test('convertMarkdownToCourtHtml: converts image syntax to centered image block', () => {
     const md = '![本件記事の表示例](images/article.png)';
     const result = convertMarkdownToCourtHtml(md);
@@ -145,7 +155,7 @@ test('convertMarkdownToCourtHtml: preserves list hierarchy around images', () =>
 
 test('convertMarkdownToCourtHtml: converts table of contents marker', () => {
     const md = [
-        '### 目次',
+        '### --目次',
         '',
         '## 第1 はじめに',
         '',
@@ -160,6 +170,12 @@ test('convertMarkdownToCourtHtml: converts table of contents marker', () => {
     assert.ok(result.includes('<h1>第1　はじめに</h1>'));
     assert.ok(result.includes('<h2>1　概要</h2>'));
     assert.ok(result.includes('<h3>(1)　詳細</h3>'));
+});
+
+test('convertMarkdownToCourtHtml: does not support legacy table of contents marker', () => {
+    const result = convertMarkdownToCourtHtml('### 目次\n\n## 第1 はじめに');
+    assert.ok(!result.includes('<cssj:make-toc'));
+    assert.ok(!result.includes('<div class="toc-title">目次</div>'));
 });
 
 test('convertMarkdownToCourtHtml: converts first two marker levels to headings for toc', () => {

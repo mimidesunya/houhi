@@ -24,6 +24,8 @@ const moduleFiles = {
   'src/lib/ai_archive/start_here_renderer': path.join(projectRoot, 'src/lib/ai_archive/start_here_renderer.ts'),
   'src/lib/ai_archive/utils': path.join(projectRoot, 'src/lib/ai_archive/utils.ts'),
   'src/lib/ai_archive/warnings_renderer': path.join(projectRoot, 'src/lib/ai_archive/warnings_renderer.ts'),
+  'src/web/document_title': path.join(projectRoot, 'src/web/document_title.ts'),
+  'src/web/markdown_normalizer': path.join(projectRoot, 'src/web/markdown_normalizer.ts'),
   [pdfEntryId]: path.join(projectRoot, 'src/web/app.ts'),
   [draftingEntryId]: path.join(projectRoot, 'src/web/drafting.ts'),
   'src/web/zip': path.join(projectRoot, 'src/web/zip.ts'),
@@ -245,6 +247,8 @@ function readArchiveData() {
 fs.writeFileSync(path.join(webDir, 'app.js'), buildBundle(pdfEntryId, {
   'src/base/court_markdown': moduleFiles['src/base/court_markdown'],
   'src/lib/paged_toc': moduleFiles['src/lib/paged_toc'],
+  'src/web/document_title': moduleFiles['src/web/document_title'],
+  'src/web/markdown_normalizer': moduleFiles['src/web/markdown_normalizer'],
   [pdfEntryId]: moduleFiles[pdfEntryId]
 }), 'utf-8');
 fs.writeFileSync(path.join(webDir, 'drafting.js'), buildBundle(draftingEntryId, {

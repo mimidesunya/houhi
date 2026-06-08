@@ -1,4 +1,6 @@
 import { convertMarkdownToCourtHtml } from '../base/court_markdown';
+import { buildPdfDocumentTitle } from './document_title';
+import { normalizeEditableMarkdown } from './markdown_normalizer';
 import { applyManualPageNumbers, fillChromeTocPageNumbers, prepareChromeToc } from '../lib/paged_toc';
 
 type DraftingTemplate = {
@@ -13,7 +15,7 @@ type DraftingData = {
 
 const DEFAULT_MARKDOWN = `# 準備書面
 
-### 目次
+### --目次
 
 ## 第1 請求の趣旨
 原告の請求をいずれも棄却する。
@@ -446,11 +448,13 @@ function prepareTocPlaceholders(html: string) {
 function buildPreviewDocument(markdown: string) {
     const bodyHtml = prepareTocPlaceholders(prepareImageSources(convertMarkdownToCourtHtml(markdown)));
     const baseHref = new URL('./', window.location.href).href;
+    const documentTitle = escapeHtmlAttribute(buildPdfDocumentTitle(markdown));
 
     return `<!doctype html>
 <html lang="ja" data-houhi-pdf-engine="chrome">
 <head>
   <meta charset="utf-8">
+  <title>${documentTitle}</title>
   <base href="${baseHref}">
   <link rel="stylesheet" href="court.css">
   <style>
@@ -668,6 +672,7 @@ function updatePreviewSize(frameDocument: Document) {
 
 async function renderPreviewNow() {
     const seq = ++renderSeq;
+    normalizeEditorMarkdownForRender();
     const markdown = editor.value.trim() ? editor.value : DEFAULT_MARKDOWN;
     setStatus('組版中...');
     renderButton.disabled = true;
@@ -708,6 +713,26 @@ async function renderPreviewNow() {
 
 function markPreviewDirty() {
     setStatus('未更新');
+}
+
+function normalizeEditorMarkdownForRender() {
+    const original = editor.value;
+    const normalized = normalizeEditableMarkdown(original);
+    if (normalized === original) {
+        return;
+    }
+
+    const selectionStart = editor.selectionStart ?? original.length;
+    const selectionEnd = editor.selectionEnd ?? original.length;
+    const nextSelectionStart = normalizeEditableMarkdown(original.slice(0, selectionStart)).length;
+    const nextSelectionEnd = normalizeEditableMarkdown(original.slice(0, selectionEnd)).length;
+    editor.value = normalized;
+    editor.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+}
+
+function getCurrentPdfDocumentTitle() {
+    const markdown = editor.value.trim() ? editor.value : DEFAULT_MARKDOWN;
+    return buildPdfDocumentTitle(markdown);
 }
 
 async function loadTemplate(template: DraftingTemplate) {
@@ -921,6 +946,21 @@ htmlPreviewButton.addEventListener('click', openPlainHtmlPreview);
 printButton.addEventListener('click', () => {
     const frameWindow = previewFrame.contentWindow;
     if (!frameWindow) return;
+
+    const title = getCurrentPdfDocumentTitle();
+    const oldTitle = document.title;
+    document.title = title;
+    if (frameWindow.document) {
+        frameWindow.document.title = title;
+    }
+
+    const restoreTitle = () => {
+        document.title = oldTitle;
+        window.removeEventListener('focus', restoreTitle);
+    };
+    window.addEventListener('focus', restoreTitle, { once: true });
+    window.setTimeout(restoreTitle, 30000);
+
     frameWindow.focus();
     frameWindow.print();
 });

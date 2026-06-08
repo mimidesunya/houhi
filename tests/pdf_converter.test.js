@@ -206,3 +206,12 @@ test('base stylesheet keeps info table labels on one line', () => {
 
     assert.match(css, rule);
 });
+
+test('base stylesheet suppresses browser markers on heading list items', () => {
+    const stylePath = path.resolve('src/base/style.css');
+    const css = fs.readFileSync(stylePath, 'utf-8');
+
+    assert.match(css, /li\.heading-item\s*\{[^}]*list-style-type:\s*none\b/s);
+    assert.match(css, /li\.heading-item::marker\s*\{[^}]*content:\s*""\s*;/s);
+    assert.match(css, /li\.heading-item:before\s*\{[^}]*visibility:\s*hidden\b/s);
+});
