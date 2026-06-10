@@ -207,6 +207,13 @@ test('base stylesheet keeps info table labels on one line', () => {
     assert.match(css, rule);
 });
 
+test('base stylesheet keeps ruby text small', () => {
+    const stylePath = path.resolve('src/base/style.css');
+    const css = fs.readFileSync(stylePath, 'utf-8');
+
+    assert.match(css, /rt\s*\{[^}]*font-size:\s*50%\s*;[^}]*line-height:\s*1\s*;/s);
+});
+
 test('base stylesheet suppresses browser markers on heading list items', () => {
     const stylePath = path.resolve('src/base/style.css');
     const css = fs.readFileSync(stylePath, 'utf-8');
@@ -214,4 +221,7 @@ test('base stylesheet suppresses browser markers on heading list items', () => {
     assert.match(css, /li\.heading-item\s*\{[^}]*list-style-type:\s*none\b/s);
     assert.match(css, /li\.heading-item::marker\s*\{[^}]*content:\s*""\s*;/s);
     assert.match(css, /li\.heading-item:before\s*\{[^}]*visibility:\s*hidden\b/s);
+    assert.match(css, /ol\.lvl1\s*>\s*li\.heading-item:before[\s\S]*?\{[^}]*display:\s*none\b[^}]*width:\s*0\b/s);
+    assert.match(css, /ol\.lvl1\s*>\s*li\.heading-item\s*>\s*h1\s*\{[^}]*display:\s*block\b[^}]*margin-left:\s*0\b/s);
+    assert.equal(/ol\.lvl1\s*>\s*li\.heading-item\s*>\s*h1\s*\{[^}]*margin-left:\s*1em\b/s.test(css), false);
 });

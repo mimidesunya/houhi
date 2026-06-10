@@ -47,6 +47,11 @@ p {
     text-decoration: underline;
 }
 
+rt {
+    font-size: 50%;
+    line-height: 1;
+}
+
 /* =========================================
    タイトル・日付・宛先
    ========================================= */
@@ -431,6 +436,23 @@ ol > li.heading-item {
 li.heading-item:before {
     visibility: hidden;
     width: 0;
+}
+
+ol.lvl1 > li.heading-item:before,
+ol.lvl2 > li.heading-item:before,
+ol.lvl3 > li.heading-item:before,
+ol.lvl4 > li.heading-item:before,
+ol.lvl5 > li.heading-item:before,
+ol.lvl6 > li.heading-item:before,
+ol.lvl7 > li.heading-item:before {
+    content: "";
+    display: none;
+    width: 0;
+}
+
+ol.lvl1 > li.heading-item > h1 {
+    display: block;
+    margin-left: 0;
 }
 
 ol.lvl2 > li.heading-item > ol.lvl3 {

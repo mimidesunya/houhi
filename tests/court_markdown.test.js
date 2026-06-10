@@ -37,6 +37,27 @@ test('convertMarkdownToCourtHtml: keeps escaped underline delimiter literal', ()
     assert.ok(result.includes('<p>これは++下線にしない++です。</p>'));
 });
 
+test('convertMarkdownToCourtHtml: converts aozora ruby inline syntax', () => {
+    const result = convertMarkdownToCourtHtml('本件｜投稿《とうこう》は問題である。');
+    assert.ok(result.includes('<p>本件<ruby>投稿<rt>とうこう</rt></ruby>は問題である。</p>'));
+});
+
+test('convertMarkdownToCourtHtml: escapes text inside ruby inline syntax', () => {
+    const result = convertMarkdownToCourtHtml('｜<親文字>&《<ルビ>&》');
+    assert.ok(result.includes('<ruby>&lt;親文字&gt;&amp;<rt>&lt;ルビ&gt;&amp;</rt></ruby>'));
+});
+
+test('convertMarkdownToCourtHtml: converts ruby syntax in table cells', () => {
+    const md = '| 項目 | 内容 |\n|:---|:---|\n| 用語 | ｜売買契約《ばいばいけいやく》 |';
+    const result = convertMarkdownToCourtHtml(md);
+    assert.ok(result.includes('<td class="col-2"><ruby>売買契約<rt>ばいばいけいやく</rt></ruby></td>'));
+});
+
+test('convertMarkdownToCourtHtml: keeps escaped ruby marker literal', () => {
+    const result = convertMarkdownToCourtHtml('これは\\｜投稿《とうこう》です。');
+    assert.ok(result.includes('<p>これは｜投稿《とうこう》です。</p>'));
+});
+
 test('convertMarkdownToCourtHtml: handles empty input', () => {
     const result = convertMarkdownToCourtHtml('');
     assert.ok(typeof result === 'string');

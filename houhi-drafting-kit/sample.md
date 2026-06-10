@@ -40,7 +40,7 @@ Role: Generate valid HOUHI Markdown for Japanese court and administrative docume
 
 ## 1 原告主張の要旨
 
-原告は、本件商品の売買契約が口頭で成立したと主張する。
+原告は、本件商品の｜売買契約《ばいばいけいやく》が口頭で成立したと主張する。
 被告は、契約の重要部分について確定的な合意が成立したとの点を否認する。
 
 ## 2 被告の反論
@@ -122,6 +122,7 @@ Rules for alignment blocks:
 - Do not use Markdown ordered lists such as `1.`. Use HOUHI markers such as `1 ...` instead.
 - Use half-width Arabic numerals and half-width English alphabet letters throughout the Markdown, including body text, headings, dates, amounts, addresses, URLs, evidence numbers, article numbers, case numbers, and table cells. Do not use full-width forms such as `１`, `Ａ`, or `ａ` unless quoting source text exactly and the original character width matters.
 - To underline part of a paragraph, heading, or table cell, wrap only that part in `++`: `本件投稿のうち、++権利侵害部分++は次のとおりである。`.
+- To add ruby, use the explicit Aozora-style marker `｜親文字《ルビ》`: `本件｜投稿《とうこう》は次のとおりである。`. Always include `｜` so the base text range is clear.
 
 ## 6. Table of Contents
 

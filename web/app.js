@@ -40,16 +40,22 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;');
 }
 function stripInlineMarkdown(value) {
+    const escapedPlus = '\uE000';
     return String(value)
-        .replace(/\\\+\+/g, '++')
-        .replace(/\+\+(.+?)\+\+/g, '$1');
+        .replace(/\\\+\+/g, escapedPlus)
+        .replace(/(?<!\\)｜([^《\r\n]+?)《([^》\r\n]+?)》/g, '$1')
+        .replace(/\+\+(.+?)\+\+/g, '$1')
+        .replace(new RegExp(escapedPlus, 'g'), '++')
+        .replace(/\\([｜《》])/g, '$1');
 }
 function renderInlineMarkdown(value) {
     const escapedPlus = '\uE000';
     return escapeHtml(value)
         .replace(/\\\+\+/g, escapedPlus)
+        .replace(/(?<!\\)｜([^《\r\n]+?)《([^》\r\n]+?)》/g, (_match, baseText, rubyText) => `<ruby>${baseText}<rt>${rubyText}</rt></ruby>`)
         .replace(/\+\+(.+?)\+\+/g, (_match, text) => `<span class="underline">${text}</span>`)
-        .replace(new RegExp(escapedPlus, 'g'), '++');
+        .replace(new RegExp(escapedPlus, 'g'), '++')
+        .replace(/\\([｜《》])/g, '$1');
 }
 /**
  * Markdownテキストを裁判文書用のHTMLに変換します。

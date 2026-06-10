@@ -87,6 +87,7 @@ test('src/base/sample.md: follows preparation brief drafting syntax rules', () =
     assert.match(sample, /^# 準備書面$/m);
     assert.match(sample, /^## 第1 /m);
     assert.match(sample, /^## 1 /m);
+    assert.match(sample, /｜売買契約《ばいばいけいやく》/);
     assert.doesNotMatch(sample, /^1 原告/m);
     assert.doesNotMatch(sample, /^## 附属書類$/m);
     assert.doesNotMatch(sample, /証拠説明書/);
@@ -104,6 +105,8 @@ test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI'
     assert.match(rules, /The difference is function, not the marker itself/);
     assert.match(rules, /Allowed numbered argument paragraph when intentional/);
     assert.match(rules, /Use half-width Arabic numerals and half-width English alphabet letters throughout the Markdown/);
+    assert.match(rules, /`｜親文字《ルビ》`/);
+    assert.match(rules, /Always include `｜`/);
     assert.match(rules, /draft only that one document/);
     assert.match(rules, /Do not draft related documents such as 証拠説明書/);
     assert.match(rules, /Mentions of related documents in attachment lists or templates are filing information only/);
@@ -129,6 +132,7 @@ test('src/templates/訴訟.準備書面.md: keeps numbered subheadings as ## hea
 
     assert.match(template, /^## 1 争点の整理$/m);
     assert.match(template, /^## \(1\) 〇〇について$/m);
+    assert.match(template, /｜契約成立《けいやくせいりつ》/);
     assert.doesNotMatch(template, /^1 争点の整理$/m);
     assert.doesNotMatch(template, /^\(1\) 〇〇について$/m);
 });
