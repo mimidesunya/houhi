@@ -107,6 +107,9 @@ test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI'
     assert.match(rules, /Use half-width Arabic numerals and half-width English alphabet letters throughout the Markdown/);
     assert.match(rules, /`｜親文字《ルビ》`/);
     assert.match(rules, /Always include `｜`/);
+    assert.match(rules, /Treat template examples as format references/);
+    assert.match(rules, /ask targeted questions before drafting/);
+    assert.match(rules, /`【要確認】`/);
     assert.match(rules, /draft only that one document/);
     assert.match(rules, /Do not draft related documents such as 証拠説明書/);
     assert.match(rules, /Mentions of related documents in attachment lists or templates are filing information only/);
@@ -121,10 +124,39 @@ test('AI start guides: do not invite drafting related documents by default', () 
     const webBuildSource = fs.readFileSync(path.resolve('scripts/build_web.js'), 'utf-8');
 
     for (const source of [setupSource, webBuildSource]) {
+        assert.match(source, /<success_criteria>/);
+        assert.match(source, /<workflow>/);
+        assert.match(source, /根拠資料/);
+        assert.match(source, /テンプレート内の例示文/);
         assert.match(source, /その書面1通だけを作成してください/);
         assert.match(source, /関連書面は、ユーザーが明示的に依頼した場合に限り作成してください/);
         assert.match(source, /必要であれば別途作成できます/);
+        assert.match(source, /最終稿/);
     }
+});
+
+test('src/web/drafting.ts: structures the handoff prompt for chat AIs', () => {
+    const source = fs.readFileSync(path.resolve('src/web/drafting.ts'), 'utf-8');
+
+    assert.match(source, /<role>/);
+    assert.match(source, /<context>/);
+    assert.match(source, /<success_criteria>/);
+    assert.match(source, /<workflow>/);
+    assert.match(source, /<rules>/);
+    assert.match(source, /<template_markdown>/);
+    assert.match(source, /テンプレートの例示文を、ユーザーの事件の事実として扱わない/);
+    assert.match(source, /検討は内部で行い/);
+});
+
+test('web/drafting.html: offers Grok as a handoff AI', () => {
+    const html = fs.readFileSync(path.resolve('web/drafting.html'), 'utf-8');
+
+    assert.match(html, /引継ぎ先AI/);
+    assert.match(html, /https:\/\/chatgpt\.com\//);
+    assert.match(html, /https:\/\/claude\.ai\/new/);
+    assert.match(html, /https:\/\/gemini\.google\.com\/app/);
+    assert.match(html, /https:\/\/grok\.com\//);
+    assert.match(html, />Grok<\/a>/);
 });
 
 test('src/templates/訴訟.準備書面.md: keeps numbered subheadings as ## headings', () => {
