@@ -105,6 +105,8 @@ test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI'
     assert.match(rules, /The difference is function, not the marker itself/);
     assert.match(rules, /Allowed numbered argument paragraph when intentional/);
     assert.match(rules, /Use half-width Arabic numerals and half-width English alphabet letters throughout the Markdown/);
+    assert.match(rules, /court style with Japanese `万` units and no comma separators/);
+    assert.match(rules, /`金1万3000円`/);
     assert.match(rules, /`｜親文字《ルビ》`/);
     assert.match(rules, /Always include `｜`/);
     assert.match(rules, /Treat template examples as format references/);
@@ -131,6 +133,8 @@ test('AI start guides: do not invite drafting related documents by default', () 
         assert.match(source, /その書面1通だけを作成してください/);
         assert.match(source, /関連書面は、ユーザーが明示的に依頼した場合に限り作成してください/);
         assert.match(source, /必要であれば別途作成できます/);
+        assert.match(source, /金額表記/);
+        assert.match(source, /金額表記の揺れ/);
         assert.match(source, /最終稿/);
     }
 });
@@ -145,7 +149,19 @@ test('src/web/drafting.ts: structures the handoff prompt for chat AIs', () => {
     assert.match(source, /<rules>/);
     assert.match(source, /<template_markdown>/);
     assert.match(source, /テンプレートの例示文を、ユーザーの事件の事実として扱わない/);
+    assert.match(source, /金額表記/);
+    assert.match(source, /金額表記の揺れ/);
     assert.match(source, /検討は内部で行い/);
+});
+
+test('src/templates: use court-style money notation without comma separators', () => {
+    const templatesDir = path.resolve('src/templates');
+    const templateFiles = fs.readdirSync(templatesDir).filter(name => name.endsWith('.md'));
+
+    for (const name of templateFiles) {
+        const template = fs.readFileSync(path.join(templatesDir, name), 'utf-8');
+        assert.doesNotMatch(template, /\d{1,3}(?:,\d{3})+円/, name);
+    }
 });
 
 test('web/drafting.html: offers Grok as a handoff AI', () => {

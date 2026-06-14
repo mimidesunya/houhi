@@ -78,6 +78,7 @@ Rules for alignment blocks:
 - Not every paragraph needs a number. Use unnumbered paragraphs for ordinary explanation, factual background, and argument text when no numbered item is needed.
 - Do not use Markdown ordered lists such as `1.`. Use HOUHI markers such as `1 ...` instead.
 - Use half-width Arabic numerals and half-width English alphabet letters throughout the Markdown, including body text, headings, dates, amounts, addresses, URLs, evidence numbers, article numbers, case numbers, and table cells. Do not use full-width forms such as `１`, `Ａ`, or `ａ` unless quoting source text exactly and the original character width matters.
+- **Write monetary amounts in court style with Japanese `万` units and no comma separators.** Use `金160万円`, `金1万3000円`, and `2万6000円`; do not write `金1,600,000円`, `13,000円`, or mix comma notation with `万` notation. For amounts below 1万円, use plain yen without commas, such as `2000円`.
 - To underline part of a paragraph, heading, or table cell, wrap only that part in `++`: `本件投稿のうち、++権利侵害部分++は次のとおりである。`.
 - To add ruby, use the explicit Aozora-style marker `｜親文字《ルビ》`: `本件｜投稿《とうこう》は次のとおりである。`. Always include `｜` so the base text range is clear.
 
@@ -157,4 +158,5 @@ Also check:
 - No argument is attributed to the other side, a lower court, or a precedent unless the source actually says it.
 - No unnecessary issues are added merely because they are legally interesting.
 - No template sample fact remains unless the user supplied or confirmed it for this case.
+- No monetary amount remains in comma notation such as `1,600,000円` or `13,000円`; use court-style `万` notation instead.
 - No `【要確認】` marker remains in a final draft unless the user explicitly requested a provisional draft.

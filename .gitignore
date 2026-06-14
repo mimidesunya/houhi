@@ -28,7 +28,7 @@ output/*
 !output/.gitkeep
 copper_drivers/
 *.zip
-!houhi-drafting-kit.zip
+houhi-drafting-kit/
 dist/
 platforms/windows/launcher/bin/
 platforms/windows/launcher/obj/
