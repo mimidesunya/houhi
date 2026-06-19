@@ -28,6 +28,14 @@ OCR は [`mimi-ocr`](../mimi-ocr/README.md) に移管しました。OCR・ペー
 
 ## 使い方
 
+### 公開サイト
+
+ブラウザ版は次の公開サイトから利用できます。
+
+```text
+https://mimidesunya.github.io/houhi/
+```
+
 ### GUI の起動
 
 - `bin/法匪.exe` をダブルクリック（Windows環境）
@@ -35,7 +43,7 @@ OCR は [`mimi-ocr`](../mimi-ocr/README.md) に移管しました。OCR・ペー
 
 ### ローカルWeb版の起動
 
-ブラウザで使う場合は、依存関係をインストールしてからローカルサーバーを起動します。
+公開サイトと同じWeb版を手元で確認する場合は、依存関係をインストールしてからローカルサーバーを起動します。
 
 ```bash
 npm install
