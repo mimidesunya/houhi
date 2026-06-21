@@ -55,11 +55,15 @@ function renderInlineMarkdown(value) {
         .replace(/\\([｜《》])/g, '$1');
 }
 
+function stripHtmlComments(value) {
+    return String(value || '').replace(/<!--[\s\S]*?-->/g, '');
+}
+
 /**
  * Markdownテキストを裁判文書用のHTMLに変換します。
  */
 export function convertMarkdownToCourtHtml(markdown) {
-    const lines = markdown.split(/\r?\n/);
+    const lines = stripHtmlComments(markdown).split(/\r?\n/);
     let html = '';
     let lastLevel = 0;
     let inTable = false;

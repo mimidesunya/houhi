@@ -2,6 +2,7 @@ type DraftingTemplate = {
     id: string;
     name: string;
     content: string;
+    aiNotes?: string;
 };
 
 type DraftingData = {
@@ -32,6 +33,11 @@ function getSelectedTemplate() {
 }
 
 function buildHandoff(template: DraftingTemplate) {
+    const templateAiNotes = String(template.aiNotes || '').trim();
+    const templateAiNotesBlock = templateAiNotes
+        ? `<template_ai_notes>\n${templateAiNotes}\n</template_ai_notes>\n\n`
+        : '';
+
     return `# 法匪 HOUHI 書面起案 引継書
 
 <role>
@@ -51,8 +57,10 @@ function buildHandoff(template: DraftingTemplate) {
 <success_criteria>
 - 不足情報がある場合は、推測で完成させず、先に具体的な質問をする。
 - テンプレートの例示文を、ユーザーの事件の事実として扱わない。
+- テンプレート固有のAI向け注意がある場合は、テンプレート本文とは区別して従う。
 - ユーザーが示した事実、資料、証拠番号に基づいて書く。資料から読み取れない事実は断定しない。
 - ユーザーが指定した書面1通だけを作成し、関連書面は勝手に本文化しない。
+- 上告事件では、上告理由書と上告受理申立て理由書を混同・合体させない。両方必要な場合は別々のMarkdownとして作成する。
 - 法匪Markdownの見出し、番号、表、画像、ルビ、証拠表記、金額表記の規則を守る。
 - 最終稿の前に、空欄、不要な譲歩、根拠のない法的評価、金額表記の揺れ、Markdown記法違反を点検する。
 </success_criteria>
@@ -84,8 +92,8 @@ ${data.rules.trim()}
 
 <template>
 <template_name>${template.name}</template_name>
-<template_markdown>
-${template.content.trim()}
+${templateAiNotesBlock}<template_markdown>
+${String(template.content || '').trim()}
 </template_markdown>
 </template>
 `;

@@ -1,10 +1,14 @@
 const DEFAULT_PDF_DOCUMENT_TITLE = '法匪 PDF';
 
+function stripHtmlComments(value: string) {
+    return String(value || '').replace(/<!--[\s\S]*?-->/g, '');
+}
+
 export function extractMarkdownDocumentTitle(markdown: string) {
     let inFence = false;
     let fenceMarker = '';
 
-    for (const rawLine of String(markdown || '').split(/\r?\n/)) {
+    for (const rawLine of stripHtmlComments(markdown).split(/\r?\n/)) {
         const fenceMatch = rawLine.match(/^\s*(`{3,}|~{3,})/);
         if (fenceMatch) {
             const marker = fenceMatch[1][0];

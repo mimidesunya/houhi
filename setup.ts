@@ -50,6 +50,31 @@ function compareTemplateNames(a, b) {
     return a.localeCompare(b, 'ja');
 }
 
+function splitTemplateAiNotes(markdown) {
+    const notes = [];
+    const content = String(markdown || '').replace(/<!--([\s\S]*?)-->/g, (_match, note) => {
+        const cleaned = note
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .join('\n')
+            .trim();
+        if (cleaned) {
+            notes.push(cleaned);
+        }
+        return '';
+    }).replace(/\n{3,}/g, '\n\n').trim();
+
+    return {
+        content,
+        aiNotes: notes.join('\n\n').trim(),
+    };
+}
+
+function buildTemplateNotesSection(aiNotes) {
+    const notes = String(aiNotes || '').trim();
+    return notes ? `Template-specific AI notes:\n\n${notes}\n\n` : '';
+}
+
 /**
  * src/base/court_doc_rules.md の中の空の Markdown ブロックに
  * src/base/sample.md および src/templates/*.md の内容を挿入し、
@@ -114,8 +139,10 @@ function buildChatGptStartHere(filesToProcess) {
 - ユーザーの具体的な要望を優先し、書面種別と目的を取り違えない。
 - 共通ルール、該当テンプレート、ユーザーが添付した根拠資料を区別して読む。
 - テンプレート内の例示文を、ユーザーの事件の事実として扱わない。
+- テンプレート固有のAI向け注意が別記されている場合は、それをテンプレート本文とは区別して読む。
 - 不足情報があれば推測で埋めず、短く具体的に質問する。
 - ユーザーが指定した書面1通だけを作成し、関連書面は勝手に本文化しない。
+- 上告理由書と上告受理申立て理由書を混同・合体させない。両方必要な場合は別々の書面として作成する。
 - 最終稿では法匪Markdownの見出し、番号、表、画像、ルビ、証拠表記、金額表記の規則を守る。
 </success_criteria>
 
@@ -123,6 +150,7 @@ function buildChatGptStartHere(filesToProcess) {
 
 ユーザーがZIPと一緒に「訴状を起案してほしい」「証拠説明書を作ってほしい」などの具体的な要望を送っている場合は、その要望を優先してください。
 書面種別や目的が読み取れる場合は、改めて「何を作りたいか」だけを質問せず、必要なテンプレートを確認したうえで、不足している情報を具体的に質問してください。
+ユーザーが上告理由と上告受理申立て理由の両方を求めている場合でも、1通にまとめず、「上告理由書」と「上告受理申立て理由書」を別々に作成してください。
 
 このZIPだけを受け取り、ユーザーから何をしてほしいかが明確に示されていない場合は、まだ書面を作り始めないでください。
 その場合は、次のように自己紹介し、ユーザーが何の書面を作りたいかを尋ねてください。
@@ -220,8 +248,8 @@ function setup() {
 
     for (const file of filesToProcess) {
         try {
-            const content = fs.readFileSync(file.path, 'utf-8');
-            const replacement = `\`\`\`markdown\n${content.trim()}\n\`\`\``;
+            const parsed = splitTemplateAiNotes(fs.readFileSync(file.path, 'utf-8'));
+            const replacement = `${buildTemplateNotesSection(parsed.aiNotes)}\`\`\`markdown\n${parsed.content}\n\`\`\``;
             const finalContent = instructionContent.replace(placeholder, replacement);
 
             zip.addFile(file.name, Buffer.from(finalContent, 'utf-8'));

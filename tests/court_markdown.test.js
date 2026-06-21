@@ -63,6 +63,25 @@ test('convertMarkdownToCourtHtml: handles empty input', () => {
     assert.ok(typeof result === 'string');
 });
 
+test('convertMarkdownToCourtHtml: strips HTML comments as non-printing notes', () => {
+    const md = [
+        '# 上告理由書',
+        '',
+        '<!--',
+        'AI NOTE:',
+        '上告受理申立て理由書とは別に作成する。',
+        '-->',
+        '',
+        '本文です。'
+    ].join('\n');
+    const result = convertMarkdownToCourtHtml(md);
+    assert.ok(result.includes('上告理由書'));
+    assert.ok(result.includes('本文です。'));
+    assert.ok(!result.includes('AI NOTE'));
+    assert.ok(!result.includes('上告受理申立て理由書とは別に作成する'));
+    assert.ok(!result.includes('&lt;!--'));
+});
+
 test('convertMarkdownToCourtHtml: handles newlines only', () => {
     const result = convertMarkdownToCourtHtml('\n\n\n');
     assert.ok(typeof result === 'string');

@@ -7,6 +7,7 @@ type DraftingTemplate = {
     id: string;
     name: string;
     content: string;
+    aiNotes?: string;
 };
 
 type DraftingData = {
@@ -108,6 +109,10 @@ function setStatus(message: string) {
 function getDraftingTemplates() {
     const data = (window as any).HOUHI_DRAFTING_DATA as DraftingData | undefined;
     return Array.isArray(data?.templates) ? data.templates : [];
+}
+
+function stripTemplateAiNotes(markdown: string) {
+    return String(markdown || '').replace(/<!--[\s\S]*?-->/g, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -737,7 +742,7 @@ function getCurrentPdfDocumentTitle() {
 
 async function loadTemplate(template: DraftingTemplate) {
     currentMarkdownPath = template.id;
-    editor.value = template.content.trim();
+    editor.value = stripTemplateAiNotes(template.content);
     editor.focus();
     editor.setSelectionRange(0, 0);
     renderImageAssetList();

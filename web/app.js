@@ -57,11 +57,14 @@ function renderInlineMarkdown(value) {
         .replace(new RegExp(escapedPlus, 'g'), '++')
         .replace(/\\([｜《》])/g, '$1');
 }
+function stripHtmlComments(value) {
+    return String(value || '').replace(/<!--[\s\S]*?-->/g, '');
+}
 /**
  * Markdownテキストを裁判文書用のHTMLに変換します。
  */
 function convertMarkdownToCourtHtml(markdown) {
-    const lines = markdown.split(/\r?\n/);
+    const lines = stripHtmlComments(markdown).split(/\r?\n/);
     let html = '';
     let lastLevel = 0;
     let inTable = false;
@@ -850,10 +853,13 @@ exports.extractMarkdownDocumentTitle = extractMarkdownDocumentTitle;
 exports.sanitizeDownloadTitle = sanitizeDownloadTitle;
 exports.buildPdfDocumentTitle = buildPdfDocumentTitle;
 const DEFAULT_PDF_DOCUMENT_TITLE = '法匪 PDF';
+function stripHtmlComments(value) {
+    return String(value || '').replace(/<!--[\s\S]*?-->/g, '');
+}
 function extractMarkdownDocumentTitle(markdown) {
     let inFence = false;
     let fenceMarker = '';
-    for (const rawLine of String(markdown || '').split(/\r?\n/)) {
+    for (const rawLine of stripHtmlComments(markdown).split(/\r?\n/)) {
         const fenceMatch = rawLine.match(/^\s*(`{3,}|~{3,})/);
         if (fenceMatch) {
             const marker = fenceMatch[1][0];
@@ -994,6 +1000,9 @@ function setStatus(message) {
 function getDraftingTemplates() {
     const data = window.HOUHI_DRAFTING_DATA;
     return Array.isArray(data?.templates) ? data.templates : [];
+}
+function stripTemplateAiNotes(markdown) {
+    return String(markdown || '').replace(/<!--[\s\S]*?-->/g, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -1537,7 +1546,7 @@ function getCurrentPdfDocumentTitle() {
 }
 async function loadTemplate(template) {
     currentMarkdownPath = template.id;
-    editor.value = template.content.trim();
+    editor.value = stripTemplateAiNotes(template.content);
     editor.focus();
     editor.setSelectionRange(0, 0);
     renderImageAssetList();

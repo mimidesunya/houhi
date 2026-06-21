@@ -97,6 +97,31 @@ function jsString(value) {
   return JSON.stringify(value);
 }
 
+function splitTemplateAiNotes(markdown) {
+  const notes = [];
+  const content = String(markdown || '').replace(/<!--([\s\S]*?)-->/g, (_match, note) => {
+    const cleaned = note
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .join('\n')
+      .trim();
+    if (cleaned) {
+      notes.push(cleaned);
+    }
+    return '';
+  }).replace(/\n{3,}/g, '\n\n').trim();
+
+  return {
+    content,
+    aiNotes: notes.join('\n\n').trim()
+  };
+}
+
+function buildTemplateNotesSection(aiNotes) {
+  const notes = String(aiNotes || '').trim();
+  return notes ? `Template-specific AI notes:\n\n${notes}\n\n` : '';
+}
+
 fs.mkdirSync(webDir, { recursive: true });
 fs.mkdirSync(vendorDir, { recursive: true });
 
@@ -152,11 +177,15 @@ function readDraftingData() {
       if (rankA !== rankB) return rankA - rankB;
       return a.localeCompare(b, 'ja');
     })
-    .map(name => ({
-      id: name,
-      name: path.basename(name, '.md'),
-      content: fs.readFileSync(path.join(templatesDir, name), 'utf-8')
-    }));
+    .map(name => {
+      const parsed = splitTemplateAiNotes(fs.readFileSync(path.join(templatesDir, name), 'utf-8'));
+      return {
+        id: name,
+        name: path.basename(name, '.md'),
+        content: parsed.content,
+        aiNotes: parsed.aiNotes
+      };
+    });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -214,14 +243,17 @@ function buildArchiveStartHere(files) {
 - ユーザーの具体的な要望を優先し、書面種別と目的を取り違えない。
 - 共通ルール、該当テンプレート、ユーザーが添付した根拠資料を区別して読む。
 - テンプレート内の例示文を、ユーザーの事件の事実として扱わない。
+- テンプレート固有のAI向け注意が別記されている場合は、それをテンプレート本文とは区別して読む。
 - 不足情報があれば推測で埋めず、短く具体的に質問する。
 - ユーザーが指定した書面1通だけを作成し、関連書面は勝手に本文化しない。
+- 上告理由書と上告受理申立て理由書を混同・合体させない。両方必要な場合は別々の書面として作成する。
 - 最終稿では法匪Markdownの見出し、番号、表、画像、ルビ、証拠表記、金額表記の規則を守る。
 </success_criteria>
 
 ユーザーが具体的な要望を送っている場合は、その要望を優先してください。
 必要な資料や情報が不足している場合は、推測で完成させず、具体的に質問してください。
 ユーザーが特定の書面名を指定している場合は、その書面1通だけを作成してください。
+ユーザーが上告理由と上告受理申立て理由の両方を求めている場合でも、1通にまとめず、「上告理由書」と「上告受理申立て理由書」を別々に作成してください。
 証拠説明書、送付書、添付書類一覧、決定案などの関連書面は、ユーザーが明示的に依頼した場合に限り作成してください。必要と思われる場合でも、勝手に本文を作らず「必要であれば別途作成できます」と案内するにとどめてください。
 
 <workflow>
@@ -253,8 +285,8 @@ function readArchiveData() {
   ];
 
   for (const file of files) {
-    const content = fs.readFileSync(file.path, 'utf-8');
-    const replacement = `\`\`\`markdown\n${content.trim()}\n\`\`\``;
+    const parsed = splitTemplateAiNotes(fs.readFileSync(file.path, 'utf-8'));
+    const replacement = `${buildTemplateNotesSection(parsed.aiNotes)}\`\`\`markdown\n${parsed.content}\n\`\`\``;
     instructions.push({
       displayPath: `instructions/${file.name}`,
       content: instructionContent.replace(placeholder, replacement),

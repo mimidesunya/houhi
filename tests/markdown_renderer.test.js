@@ -6,6 +6,13 @@ const path = require('node:path');
 
 const { renderPreTags } = require('../dist/src/lib/markdown_renderer.js');
 
+function readWebAssignment(filePath, globalName) {
+    const source = fs.readFileSync(path.resolve(filePath), 'utf-8').trim();
+    const prefix = `window.${globalName} = `;
+    assert.ok(source.startsWith(prefix), `${filePath} should assign ${globalName}`);
+    return JSON.parse(source.slice(prefix.length).replace(/;\s*$/, ''));
+}
+
 // ─── renderPreTags: basic rendering ─────────────────────────
 
 test('renderPreTags: converts <pre> with markdown to div', () => {
@@ -115,6 +122,8 @@ test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI'
     assert.match(rules, /draft only that one document/);
     assert.match(rules, /Do not draft related documents such as 証拠説明書/);
     assert.match(rules, /Mentions of related documents in attachment lists or templates are filing information only/);
+    assert.match(rules, /template-specific AI notes/);
+    assert.match(rules, /do not merge `上告理由書` and `上告受理申立て理由書`/);
     assert.match(rules, /simple parenthesized references/);
     assert.match(rules, /甲1_確認メール\.pdf/);
     assert.match(rules, /`1 争点の整理` when used as a subheading/);
@@ -133,6 +142,10 @@ test('AI start guides: do not invite drafting related documents by default', () 
         assert.match(source, /その書面1通だけを作成してください/);
         assert.match(source, /関連書面は、ユーザーが明示的に依頼した場合に限り作成してください/);
         assert.match(source, /必要であれば別途作成できます/);
+        assert.match(source, /テンプレート固有のAI向け注意/);
+        assert.match(source, /splitTemplateAiNotes/);
+        assert.match(source, /Template-specific AI notes/);
+        assert.match(source, /上告理由書と上告受理申立て理由書を混同・合体させない/);
         assert.match(source, /金額表記/);
         assert.match(source, /金額表記の揺れ/);
         assert.match(source, /最終稿/);
@@ -148,10 +161,60 @@ test('src/web/drafting.ts: structures the handoff prompt for chat AIs', () => {
     assert.match(source, /<workflow>/);
     assert.match(source, /<rules>/);
     assert.match(source, /<template_markdown>/);
+    assert.match(source, /<template_ai_notes>/);
+    assert.match(source, /aiNotes/);
     assert.match(source, /テンプレートの例示文を、ユーザーの事件の事実として扱わない/);
+    assert.match(source, /テンプレート固有のAI向け注意がある場合/);
+    assert.match(source, /上告理由書と上告受理申立て理由書を混同・合体させない/);
     assert.match(source, /金額表記/);
     assert.match(source, /金額表記の揺れ/);
     assert.match(source, /検討は内部で行い/);
+});
+
+test('supreme court templates: include non-printing AI notes for separate reason filings', () => {
+    const templatesDir = path.resolve('src/templates');
+    const files = [
+        '訴訟.上告状兼上告受理申立書.md',
+        '訴訟.上告理由書.md',
+        '訴訟.上告受理申立て理由書.md',
+    ];
+
+    for (const file of files) {
+        const template = fs.readFileSync(path.join(templatesDir, file), 'utf-8');
+        assert.match(template, /<!--[\s\S]*AI NOTE:[\s\S]*-->/, file);
+        assert.match(template, /上告理由書[\s\S]*上告受理申立て理由書|上告受理申立て理由書[\s\S]*上告理由書/, file);
+    }
+
+    const notice = fs.readFileSync(path.join(templatesDir, '訴訟.上告状兼上告受理申立書.md'), 'utf-8');
+    assert.match(notice, /上告理由書及び上告受理申立て理由書を提出する/);
+});
+
+test('generated web drafting data: separates AI notes from user-facing template Markdown', () => {
+    const data = readWebAssignment('web/drafting-data.js', 'HOUHI_DRAFTING_DATA');
+    const template = data.templates.find(item => item.id === '訴訟.上告理由書.md');
+
+    assert.ok(template);
+    assert.ok(template.aiNotes.includes('AI NOTE'));
+    assert.ok(template.aiNotes.includes('上告受理申立て理由書'));
+    assert.doesNotMatch(template.content, /<!--|-->|AI NOTE/);
+    assert.match(template.content, /^# 上告理由書$/m);
+});
+
+test('generated archive instructions: move template AI notes outside Markdown code blocks', () => {
+    const data = readWebAssignment('web/archive-data.js', 'HOUHI_ARCHIVE_DATA');
+    const instruction = data.instructions.find(item => item.displayPath === 'instructions/訴訟.上告理由書.md');
+
+    assert.ok(instruction);
+    assert.match(instruction.content, /Template-specific AI notes:/);
+    assert.match(instruction.content, /AI NOTE:[\s\S]*上告受理申立て理由書/);
+    assert.doesNotMatch(instruction.content, /<!--|-->/);
+});
+
+test('src/web/app.ts: strips template AI notes before loading templates into the PDF editor', () => {
+    const source = fs.readFileSync(path.resolve('src/web/app.ts'), 'utf-8');
+
+    assert.match(source, /function stripTemplateAiNotes/);
+    assert.match(source, /editor\.value = stripTemplateAiNotes\(template\.content\)/);
 });
 
 test('src/templates: use court-style money notation without comma separators', () => {

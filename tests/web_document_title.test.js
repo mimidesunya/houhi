@@ -16,6 +16,11 @@ test('extractMarkdownDocumentTitle: ignores headings inside fenced code blocks',
     assert.equal(extractMarkdownDocumentTitle(markdown), '訴状');
 });
 
+test('extractMarkdownDocumentTitle: ignores headings inside HTML comments', () => {
+    const markdown = '<!--\n# AI向けメモ\n-->\n# 上告理由書';
+    assert.equal(extractMarkdownDocumentTitle(markdown), '上告理由書');
+});
+
 test('sanitizeDownloadTitle: removes filename-unsafe characters', () => {
     assert.equal(sanitizeDownloadTitle('訴状/答弁書:第1*版?'), '訴状 答弁書 第1 版');
 });
