@@ -35,6 +35,8 @@ const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
 const DEFAULT_DPI = 200;
 const DEFAULT_THRESHOLD = 170;
 const DITHER_THRESHOLD = 128;
+const A4_WIDTH = 595.28;
+const A4_HEIGHT = 841.89;
 
 const JAPANESE_FONT_CANDIDATES = [
     { path: 'C:/Windows/Fonts/msgothic.ttc', family: 'MS Gothic' },
@@ -208,6 +210,21 @@ function toFaxBinaryAuto(imageData, width, height) {
     return { threshold: effectiveThreshold, hasPhoto, midToneRatio };
 }
 
+function getA4Placement(width, height) {
+    const [pageW, pageH] = width > height ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+    const scale = Math.min(pageW / width, pageH / height, 1);
+    const drawW = width * scale;
+    const drawH = height * scale;
+    return {
+        pageW,
+        pageH,
+        x: (pageW - drawW) / 2,
+        y: (pageH - drawH) / 2,
+        width: drawW,
+        height: drawH,
+    };
+}
+
 function parseArgs(args) {
     const options = {
         dpi: DEFAULT_DPI,
@@ -332,12 +349,13 @@ async function convertPdfForFax(inputPath, options) {
         const pngBuffer = canvas.toBuffer('image/png');
         const embeddedImage = await outputPdf.embedPng(pngBuffer);
 
-        const outPage = outputPdf.addPage([originalViewport.width, originalViewport.height]);
+        const placement = getA4Placement(originalViewport.width, originalViewport.height);
+        const outPage = outputPdf.addPage([placement.pageW, placement.pageH]);
         outPage.drawImage(embeddedImage, {
-            x: 0,
-            y: 0,
-            width: originalViewport.width,
-            height: originalViewport.height
+            x: placement.x,
+            y: placement.y,
+            width: placement.width,
+            height: placement.height
         });
 
         console.log(`  変換: ${pageNumber}/${sourcePdf.numPages}`);

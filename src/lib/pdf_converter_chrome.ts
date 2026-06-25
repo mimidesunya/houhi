@@ -8,6 +8,10 @@ const { pathToFileURL } = require('url');
 const { renderPreTags } = require('./markdown_renderer');
 const { getPagedTocBrowserScript } = require('./paged_toc');
 
+const A4_WIDTH_INCHES = 210 / 25.4;
+const A4_HEIGHT_INCHES = 297 / 25.4;
+const A4_PAGE_STYLE = '<style data-houhi-a4-page-size>@page { size: A4; }</style>';
+
 function isExternalUri(value) {
     return /^(?:[a-z][a-z0-9+.-]*:|#)/i.test(value);
 }
@@ -74,6 +78,13 @@ ${htmlContent}
 </html>`;
 }
 
+function injectA4PageSize(htmlContent) {
+    if (htmlContent.includes('data-houhi-a4-page-size')) {
+        return htmlContent;
+    }
+    return injectHeadMarkup(htmlContent, A4_PAGE_STYLE);
+}
+
 function prepareTocPlaceholdersForChrome(htmlContent) {
     return htmlContent.replace(/<cssj:make-toc\b[^>]*>\s*<\/cssj:make-toc>/gi, () => {
         return '<ul class="cssj-toc houhi-chrome-toc" data-houhi-chrome-toc="pending"></ul>';
@@ -87,7 +98,8 @@ function injectPagedJsForChrome(htmlContent) {
 
     const pagedPolyfillPath = resolvePagedPolyfillPath();
     const pagedPolyfillUrl = pathToFileURL(pagedPolyfillPath).href;
-    const markup = `<script data-houhi-pagedjs-config>
+    const markup = `${A4_PAGE_STYLE}
+<script data-houhi-pagedjs-config>
 window.PagedConfig = window.PagedConfig || {};
 window.PagedConfig.auto = false;
 </script>
@@ -129,7 +141,7 @@ window.PagedConfig.auto = false;
             fillChromeTocPageNumbers();
             var pageNumberStyle = document.createElement('style');
             pageNumberStyle.setAttribute('data-houhi-pagedjs-page-numbers', 'manual');
-            pageNumberStyle.textContent = 'html[data-houhi-pdf-engine="chrome"] body::before { content: none !important; display: none !important; } @page { @bottom-center { content: none; } } .pagedjs_pages .pagedjs_margin-bottom .pagedjs_margin-bottom-center .pagedjs_margin-content::after { content: none !important; }';
+            pageNumberStyle.textContent = 'html[data-houhi-pdf-engine="chrome"] body::before { content: none !important; display: none !important; } @page { size: A4; @bottom-center { content: none; } } .pagedjs_pages .pagedjs_margin-bottom .pagedjs_margin-bottom-center .pagedjs_margin-content::after { content: none !important; }';
             document.head.appendChild(pageNumberStyle);
             Array.prototype.forEach.call(document.querySelectorAll('.pagedjs_page'), function (page, index) {
                 var footer = page.querySelector('.pagedjs_margin-bottom-center .pagedjs_margin-content');
@@ -178,7 +190,8 @@ function prepareHtmlForChrome(htmlPath, outputPath, resourceDir, defaultTemplate
     });
 
     const withTocPlaceholders = prepareTocPlaceholdersForChrome(rewritten);
-    const withPagedJs = injectPagedJsForChrome(withTocPlaceholders);
+    const withPagedJsRunner = injectPagedJsForChrome(withTocPlaceholders);
+    const withPagedJs = injectA4PageSize(withPagedJsRunner);
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-chrome-html-'));
     const tempHtmlPath = path.join(tempDir, path.basename(htmlPath, path.extname(htmlPath)) + '.html');
     fs.writeFileSync(tempHtmlPath, withPagedJs, 'utf-8');
@@ -613,7 +626,9 @@ async function runChromePrintWithPagedJs(chromePath, htmlUrl, outputPath, userDa
         const pdf = await client.send('Page.printToPDF', {
             displayHeaderFooter: false,
             printBackground: true,
-            preferCSSPageSize: true
+            preferCSSPageSize: true,
+            paperWidth: A4_WIDTH_INCHES,
+            paperHeight: A4_HEIGHT_INCHES
         }, sessionId, timeoutMs);
 
         fs.writeFileSync(outputPath, Buffer.from(pdf.data, 'base64'));
@@ -663,6 +678,7 @@ async function convertHtmlToPdfWithChrome(htmlPath, outputPath, resourceDir, def
 module.exports = {
     convertHtmlToPdfWithChrome,
     injectPagedJsForChrome,
+    injectA4PageSize,
     prepareHtmlForChrome,
     prepareTocPlaceholdersForChrome,
     resolvePagedPolyfillPath

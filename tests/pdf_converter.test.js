@@ -102,6 +102,8 @@ test('convertHtmlToPdf: uses at least three passes when generating toc', async (
     assert.ok(calls.properties.some(([name, value]) => name === 'processing.page-references' && value === 'true'));
     assert.ok(calls.properties.some(([name, value]) => name === 'processing.pass-count' && value === '3'));
     assert.equal(calls.properties.some(([name, value]) => name === 'processing.pass-count' && value === '2'), false);
+    assert.match(String(calls.content), /data-houhi-a4-page-size/);
+    assert.match(String(calls.content), /@page\s*\{\s*size:\s*A4\s*;/);
     assert.equal(calls.closed, true);
 });
 
@@ -152,6 +154,8 @@ test('prepareHtmlForChrome: injects Paged.js and expands pre data-src before pri
     const preparedHtml = fs.readFileSync(prepared.htmlPath, 'utf-8');
     assert.match(preparedHtml, /data-houhi-pagedjs-polyfill/);
     assert.match(preparedHtml, /data-houhi-pagedjs-runner/);
+    assert.match(preparedHtml, /data-houhi-a4-page-size/);
+    assert.match(preparedHtml, /@page\s*\{\s*size:\s*A4\s*;/);
     assert.match(preparedHtml, /paged\.polyfill/);
     assert.match(preparedHtml, /file:\/\/\/.*style\.css/i);
     assert.equal(preparedHtml.includes('<pre data-src="source.md"></pre>'), false);
@@ -197,6 +201,13 @@ test('base stylesheet increments list counters on real li elements for Paged.js'
         assert.match(css, liRule);
         assert.equal(beforeRule.test(css), false);
     }
+});
+
+test('base stylesheet fixes page size to A4', () => {
+    const stylePath = path.resolve('src/base/style.css');
+    const css = fs.readFileSync(stylePath, 'utf-8');
+
+    assert.match(css, /@page\s*\{[^}]*size:\s*A4\s*;/s);
 });
 
 test('base stylesheet keeps info table labels on one line', () => {

@@ -5,6 +5,8 @@
 const DEFAULT_DPI = 200;
 const DEFAULT_THRESHOLD = 170;
 const DITHER_THRESHOLD = 128;
+const A4_WIDTH = 595.28;
+const A4_HEIGHT = 841.89;
 const fileInput = document.getElementById('faxFileInput');
 const dropZone = document.getElementById('faxDropZone');
 const chooseFilesButton = document.getElementById('chooseFaxFilesButton');
@@ -42,6 +44,20 @@ function setStatus(message) {
 }
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+}
+function getA4Placement(width, height) {
+    const [pageW, pageH] = width > height ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+    const scale = Math.min(pageW / width, pageH / height, 1);
+    const drawW = width * scale;
+    const drawH = height * scale;
+    return {
+        pageW,
+        pageH,
+        x: (pageW - drawW) / 2,
+        y: (pageH - drawH) / 2,
+        width: drawW,
+        height: drawH,
+    };
 }
 function getTouchDistance(touches) {
     if (touches.length < 2)
@@ -496,12 +512,13 @@ async function buildFaxPdf() {
                 }).promise;
                 const result = applyBinary(context, canvas.width, canvas.height, options);
                 const image = await outputPdf.embedPng(await canvasToPngBytes(canvas));
-                const outputPage = outputPdf.addPage([originalViewport.width, originalViewport.height]);
+                const placement = getA4Placement(originalViewport.width, originalViewport.height);
+                const outputPage = outputPdf.addPage([placement.pageW, placement.pageH]);
                 outputPage.drawImage(image, {
-                    x: 0,
-                    y: 0,
-                    width: originalViewport.width,
-                    height: originalViewport.height,
+                    x: placement.x,
+                    y: placement.y,
+                    width: placement.width,
+                    height: placement.height,
                 });
                 pageTotal++;
                 setProgress(pageTotal, totalPages);

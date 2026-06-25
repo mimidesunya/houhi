@@ -42,6 +42,7 @@ const STAMP_OUTLINE = 1.5; // 白縁取り幅 (pt)
 const STAMP_SUFFIX = '号証';
 const A4_WIDTH = 595.28;   // A4 幅 (pt)
 const A4_HEIGHT = 841.89;  // A4 高さ (pt)
+const PAGE_SIZE_TOLERANCE = 0.5;
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png'];
 const IMAGE_MARGIN = 36;   // 画像PDF変換時の余白 (pt)
 
@@ -95,6 +96,35 @@ function getA4PrintScaleForPage(width, height) {
     return Math.min(a4W / width, a4H / height);
 }
 
+function getA4PageSizeForPage(width, height) {
+    return width > height ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+}
+
+function isA4PageSize(width, height) {
+    const [a4W, a4H] = getA4PageSizeForPage(width, height);
+    return Math.abs(width - a4W) <= PAGE_SIZE_TOLERANCE
+        && Math.abs(height - a4H) <= PAGE_SIZE_TOLERANCE;
+}
+
+function getA4Placement(width, height) {
+    const [pageW, pageH] = getA4PageSizeForPage(width, height);
+    const scale = Math.min(pageW / width, pageH / height, 1);
+    const drawW = width * scale;
+    const drawH = height * scale;
+    return {
+        pageW,
+        pageH,
+        x: (pageW - drawW) / 2,
+        y: (pageH - drawH) / 2,
+        width: drawW,
+        height: drawH,
+    };
+}
+
+function pageHasContents(page) {
+    return Boolean(page?.node && typeof page.node.Contents === 'function' && page.node.Contents());
+}
+
 /**
  * A4印刷時の見かけが一定になるよう、スタンプの描画寸法を補正する
  */
@@ -111,19 +141,15 @@ function getStampMetricsForA4Print(pageWidth, pageHeight, fontSize = DEFAULT_FON
 }
 
 /**
- * A4未満のページをA4サイズに中央配置する
- * A4以上のページはそのまま保持
+ * 非A4ページをA4サイズに中央配置する
  */
 async function ensureA4Pages(pdfBytes) {
     const srcDoc = await PDFDocument.load(pdfBytes);
     const srcPages = srcDoc.getPages();
 
-    // リサイズが必要なページがあるか確認
     const needsResize = srcPages.some(page => {
         const { width, height } = page.getSize();
-        const isLandscape = width > height;
-        const [a4W, a4H] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
-        return width < a4W && height < a4H;
+        return !isA4PageSize(width, height);
     });
     if (!needsResize) return pdfBytes;
 
@@ -132,18 +158,14 @@ async function ensureA4Pages(pdfBytes) {
     for (let i = 0; i < srcPages.length; i++) {
         const srcPage = srcPages[i];
         const { width, height } = srcPage.getSize();
-        const isLandscape = width > height;
-        const [a4W, a4H] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
-
-        if (width < a4W && height < a4H) {
-            // A4ページを作成し、元のページを中央に配置
-            const newPage = newDoc.addPage([a4W, a4H]);
-            const embedded = await newDoc.embedPage(srcPage);
-            const x = (a4W - width) / 2;
-            const y = (a4H - height) / 2;
-            newPage.drawPage(embedded, { x, y });
+        if (!isA4PageSize(width, height)) {
+            const placement = getA4Placement(width, height);
+            const newPage = newDoc.addPage([placement.pageW, placement.pageH]);
+            if (pageHasContents(srcPage)) {
+                const embedded = await newDoc.embedPage(srcPage);
+                newPage.drawPage(embedded, placement);
+            }
         } else {
-            // そのままコピー
             const [copiedPage] = await newDoc.copyPages(srcDoc, [i]);
             newDoc.addPage(copiedPage);
         }
@@ -179,8 +201,7 @@ async function convertImageToPdf(imagePath) {
     const { width: imgW, height: imgH } = image;
 
     // 画像の向きに応じてA4の縦横を決定
-    const isLandscape = imgW > imgH;
-    const [pageW, pageH] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+    const [pageW, pageH] = getA4PageSizeForPage(imgW, imgH);
 
     const page = pdfDoc.addPage([pageW, pageH]);
 
@@ -235,7 +256,8 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
     const stampText = `${evidenceNumber}${STAMP_SUFFIX}`;
 
     const rawPdfBytes = fs.readFileSync(inputPath);
-    const pdfDoc = await PDFDocument.load(rawPdfBytes);
+    const normalizedPdfBytes = await ensureA4Pages(rawPdfBytes);
+    const pdfDoc = await PDFDocument.load(normalizedPdfBytes);
 
     // フォント登録
     pdfDoc.registerFontkit(fontkit);

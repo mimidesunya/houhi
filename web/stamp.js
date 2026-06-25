@@ -139,6 +139,7 @@ const STAMP_OUTLINE = 1.5;
 const STAMP_SUFFIX = '号証';
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
+const PAGE_SIZE_TOLERANCE = 0.5;
 const IMAGE_MARGIN = 36;
 const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png'];
 const fileInput = document.getElementById('stampFileInput');
@@ -221,6 +222,31 @@ function getA4PrintScaleForPage(width, height) {
     const [a4W, a4H] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
     return Math.min(a4W / width, a4H / height);
 }
+function getA4PageSizeForPage(width, height) {
+    return width > height ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+}
+function isA4PageSize(width, height) {
+    const [a4W, a4H] = getA4PageSizeForPage(width, height);
+    return Math.abs(width - a4W) <= PAGE_SIZE_TOLERANCE
+        && Math.abs(height - a4H) <= PAGE_SIZE_TOLERANCE;
+}
+function getA4Placement(width, height) {
+    const [pageW, pageH] = getA4PageSizeForPage(width, height);
+    const scale = Math.min(pageW / width, pageH / height, 1);
+    const drawW = width * scale;
+    const drawH = height * scale;
+    return {
+        pageW,
+        pageH,
+        x: (pageW - drawW) / 2,
+        y: (pageH - drawH) / 2,
+        width: drawW,
+        height: drawH,
+    };
+}
+function pageHasContents(page) {
+    return Boolean(page?.node && typeof page.node.Contents === 'function' && page.node.Contents());
+}
 function getStampMetricsForA4Print(pageWidth, pageHeight) {
     const printScale = getA4PrintScaleForPage(pageWidth, pageHeight);
     const metricScale = printScale > 0 ? 1 / printScale : 1;
@@ -291,9 +317,7 @@ async function ensureA4Pages(pdfBytes) {
     const srcPages = srcDoc.getPages();
     const needsResize = srcPages.some((page) => {
         const { width, height } = page.getSize();
-        const isLandscape = width > height;
-        const [a4W, a4H] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
-        return width < a4W && height < a4H;
+        return !isA4PageSize(width, height);
     });
     if (!needsResize) {
         return pdfBytes;
@@ -302,15 +326,13 @@ async function ensureA4Pages(pdfBytes) {
     for (let index = 0; index < srcPages.length; index++) {
         const srcPage = srcPages[index];
         const { width, height } = srcPage.getSize();
-        const isLandscape = width > height;
-        const [a4W, a4H] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
-        if (width < a4W && height < a4H) {
-            const newPage = newDoc.addPage([a4W, a4H]);
-            const embedded = await newDoc.embedPage(srcPage);
-            newPage.drawPage(embedded, {
-                x: (a4W - width) / 2,
-                y: (a4H - height) / 2,
-            });
+        if (!isA4PageSize(width, height)) {
+            const placement = getA4Placement(width, height);
+            const newPage = newDoc.addPage([placement.pageW, placement.pageH]);
+            if (pageHasContents(srcPage)) {
+                const embedded = await newDoc.embedPage(srcPage);
+                newPage.drawPage(embedded, placement);
+            }
         }
         else {
             const [copiedPage] = await newDoc.copyPages(srcDoc, [index]);
@@ -325,8 +347,7 @@ async function convertImageToPdf(file) {
     const image = getExtname(file.name) === '.png'
         ? await pdfDoc.embedPng(imageBytes)
         : await pdfDoc.embedJpg(imageBytes);
-    const isLandscape = image.width > image.height;
-    const [pageW, pageH] = isLandscape ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+    const [pageW, pageH] = getA4PageSizeForPage(image.width, image.height);
     const page = pdfDoc.addPage([pageW, pageH]);
     const maxW = pageW - IMAGE_MARGIN * 2;
     const maxH = pageH - IMAGE_MARGIN * 2;
@@ -342,7 +363,8 @@ async function convertImageToPdf(file) {
     return await pdfDoc.save();
 }
 async function stampPdfBytes(inputBytes, evidenceNumber, options) {
-    const pdfDoc = await PDFLib.PDFDocument.load(inputBytes);
+    const normalizedBytes = await ensureA4Pages(inputBytes);
+    const pdfDoc = await PDFLib.PDFDocument.load(normalizedBytes);
     const pages = pdfDoc.getPages();
     const pagesToStamp = options.allPages ? pages : pages.slice(0, 1);
     for (const page of pagesToStamp) {

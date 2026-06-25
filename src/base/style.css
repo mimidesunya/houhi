@@ -10,6 +10,7 @@
    ページ設定 (Page Settings)
    ========================================= */
 @page {
+    size: A4;
     margin: 35mm 20mm 27mm 30mm;
     counter-increment: page;
 }

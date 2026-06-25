@@ -150,6 +150,8 @@ function findPagedMarkdownForPdfs(pdfPaths) {
 // ─── FAX二値化 ───────────────────────────────────────────────
 
 const FAX_DPI = 200;
+const A4_WIDTH = 595.28;
+const A4_HEIGHT = 841.89;
 const { toFaxBinaryAuto, toFaxBinary, otsuThreshold, computeLuminanceData } = require('./fax_prepare_pdf');
 
 const JAPANESE_FONT_CANDIDATES = [
@@ -162,6 +164,21 @@ function registerJapaneseFonts() {
     for (const c of JAPANESE_FONT_CANDIDATES) {
         try { if (fs.existsSync(c.path)) registerFont(c.path, { family: c.family }); } catch (_) {}
     }
+}
+
+function getA4Placement(width, height) {
+    const [pageW, pageH] = width > height ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+    const scale = Math.min(pageW / width, pageH / height, 1);
+    const drawW = width * scale;
+    const drawH = height * scale;
+    return {
+        pageW,
+        pageH,
+        x: (pageW - drawW) / 2,
+        y: (pageH - drawH) / 2,
+        width: drawW,
+        height: drawH,
+    };
 }
 
 class SafeCanvasFactory {
@@ -198,7 +215,7 @@ async function binarizePdfForFax(inputPath, previewDir, noDither = false) {
         const page = await src.getPage(n);
         const vpOrig = page.getViewport({ scale: 1 });
         const vpRender = page.getViewport({ scale });
-        pageDims.push({ width: vpOrig.width, height: vpOrig.height });
+        pageDims.push(getA4Placement(vpOrig.width, vpOrig.height));
         const canvas = createCanvas(Math.ceil(vpRender.width), Math.ceil(vpRender.height));
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#ffffff';
@@ -257,8 +274,9 @@ async function buildFaxPdf(previewPaths, pageDims, outputPath) {
     for (let i = 0; i < previewPaths.length; i++) {
         const pngBuf = fs.readFileSync(previewPaths[i]);
         const img = await out.embedPng(pngBuf);
-        const p = out.addPage([pageDims[i].width, pageDims[i].height]);
-        p.drawImage(img, { x: 0, y: 0, width: pageDims[i].width, height: pageDims[i].height });
+        const dims = pageDims[i];
+        const p = out.addPage([dims.pageW, dims.pageH]);
+        p.drawImage(img, { x: dims.x, y: dims.y, width: dims.width, height: dims.height });
     }
     fs.writeFileSync(outputPath, await out.save({ useObjectStreams: false }));
 }

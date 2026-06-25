@@ -2,6 +2,33 @@ const fs = require('fs');
 const path = require('path');
 const { fileURLToPath } = require('url');
 
+const A4_PAGE_STYLE = '<style data-houhi-a4-page-size>@page { size: A4; }</style>';
+
+function injectHeadMarkup(htmlContent, markup) {
+    if (/<\/head>/i.test(htmlContent)) {
+        return htmlContent.replace(/<\/head>/i, `${markup}\n</head>`);
+    }
+
+    if (/<html\b[^>]*>/i.test(htmlContent)) {
+        return htmlContent.replace(/<html\b[^>]*>/i, match => `${match}\n<head>\n${markup}\n</head>`);
+    }
+
+    return `<!DOCTYPE html>
+<html lang="ja">
+<head>
+${markup}
+</head>
+${htmlContent}
+</html>`;
+}
+
+function injectA4PageSize(htmlContent) {
+    if (htmlContent.includes('data-houhi-a4-page-size')) {
+        return htmlContent;
+    }
+    return injectHeadMarkup(htmlContent, A4_PAGE_STYLE);
+}
+
 /**
  * HTMLファイルをPDFに変換します（Node.js版ドライバを使用）。
  *
@@ -28,7 +55,7 @@ async function convertHtmlToPdfWithCopper(htmlPath, outputPath, resourceDir, def
     try {
         console.log("セッションを開始しました。");
 
-        const htmlContent = fs.readFileSync(htmlPath);
+        const htmlContent = injectA4PageSize(fs.readFileSync(htmlPath, 'utf-8'));
         const needsPageReferences = htmlContent.includes('cssj:make-toc');
 
         // 出力先ディレクトリの作成
@@ -153,5 +180,6 @@ async function convertHtmlToPdfWithCopper(htmlPath, outputPath, resourceDir, def
 }
 
 module.exports = {
-    convertHtmlToPdfWithCopper
+    convertHtmlToPdfWithCopper,
+    injectA4PageSize
 };

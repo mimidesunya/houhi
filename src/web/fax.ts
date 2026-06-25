@@ -16,6 +16,8 @@ type FaxOptions = {
 const DEFAULT_DPI = 200;
 const DEFAULT_THRESHOLD = 170;
 const DITHER_THRESHOLD = 128;
+const A4_WIDTH = 595.28;
+const A4_HEIGHT = 841.89;
 
 const fileInput = document.getElementById('faxFileInput') as HTMLInputElement;
 const dropZone = document.getElementById('faxDropZone') as HTMLElement;
@@ -66,6 +68,21 @@ function setStatus(message: string) {
 
 function clamp(value: number, min: number, max: number) {
     return Math.max(min, Math.min(max, value));
+}
+
+function getA4Placement(width: number, height: number) {
+    const [pageW, pageH] = width > height ? [A4_HEIGHT, A4_WIDTH] : [A4_WIDTH, A4_HEIGHT];
+    const scale = Math.min(pageW / width, pageH / height, 1);
+    const drawW = width * scale;
+    const drawH = height * scale;
+    return {
+        pageW,
+        pageH,
+        x: (pageW - drawW) / 2,
+        y: (pageH - drawH) / 2,
+        width: drawW,
+        height: drawH,
+    };
 }
 
 function getTouchDistance(touches: TouchList) {
@@ -576,12 +593,13 @@ async function buildFaxPdf() {
 
                 const result = applyBinary(context, canvas.width, canvas.height, options);
                 const image = await outputPdf.embedPng(await canvasToPngBytes(canvas));
-                const outputPage = outputPdf.addPage([originalViewport.width, originalViewport.height]);
+                const placement = getA4Placement(originalViewport.width, originalViewport.height);
+                const outputPage = outputPdf.addPage([placement.pageW, placement.pageH]);
                 outputPage.drawImage(image, {
-                    x: 0,
-                    y: 0,
-                    width: originalViewport.width,
-                    height: originalViewport.height,
+                    x: placement.x,
+                    y: placement.y,
+                    width: placement.width,
+                    height: placement.height,
                 });
 
                 pageTotal++;

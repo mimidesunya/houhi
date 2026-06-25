@@ -160,7 +160,7 @@ test('getStampMetricsForA4Print: enlarges stamp metrics for A3 portrait page', (
     assert.ok(Math.abs(metrics.marginTop * metrics.printScale - 12) < 0.001);
 });
 
-test('stampPdf: preserves original PDF page size', async (t) => {
+test('stampPdf: normalizes non-A4 PDF pages to A4', async (t) => {
     const fontPath = findJapaneseFont();
     if (!fontPath) {
         t.skip('Japanese font is not available');
@@ -179,6 +179,6 @@ test('stampPdf: preserves original PDF page size', async (t) => {
     const stampedDoc = await PDFDocument.load(stampedBytes);
     const { width, height } = stampedDoc.getPage(0).getSize();
 
-    assert.equal(width, 300);
-    assert.equal(height, 400);
+    assert.ok(Math.abs(width - 595.28) < 0.01);
+    assert.ok(Math.abs(height - 841.89) < 0.01);
 });

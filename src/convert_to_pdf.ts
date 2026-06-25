@@ -61,6 +61,7 @@ body::before {
 }
 
 @page {
+    size: A4;
     counter-increment: page 1;
 }
 </style>`;

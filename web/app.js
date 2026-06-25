@@ -1308,6 +1308,7 @@ function buildPreviewDocument(markdown) {
       font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
     }
     .content-container { background: #fff; font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif; }
+    @page { size: A4; }
     @media screen {
       html, body { overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; }
       .pagedjs_pages { margin: 24px auto; }
@@ -1377,6 +1378,7 @@ function buildPlainHtmlDocument(markdown) {
     body, body * {
       font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
     }
+    @page { size: A4; }
     .content-container {
       box-sizing: border-box;
       max-width: 840px;
