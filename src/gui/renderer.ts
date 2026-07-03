@@ -14,6 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const audioModelOption = document.getElementById('audioModelOption') as HTMLElement;
     const optAudioTarget = document.getElementById('optAudioTarget') as HTMLSelectElement;
     const optAudioModel = document.getElementById('optAudioModel') as HTMLSelectElement;
+    const addressLabelLayoutOption = document.getElementById('addressLabelLayoutOption') as HTMLElement;
+    const optAddressLabelLayout = document.getElementById('optAddressLabelLayout') as HTMLSelectElement;
     const faxOrderModal = document.getElementById('faxOrderModal') as HTMLElement;
     const faxOrderList = document.getElementById('faxOrderList') as HTMLOListElement;
     const faxOrderCancel = document.getElementById('faxOrderCancel') as HTMLButtonElement;
@@ -28,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
         noDither?: boolean;
         audioTarget?: string;
         audioModel?: string;
+        addressLabelLayout?: string;
     };
 
     const GUI_STATE_KEY = 'houhi.gui.state.v1';
@@ -39,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
         stamp: 'PDFに号証番号を赤字でスタンプ',
         fax_send: 'mfax経由でFAX送信',
         transcribe_audio: '音声をMarkdownへ変換',
+        address_label: 'vCardから宛名ラベルPDFを作成',
         drafting: 'ChatGPT用の起案キットを開く',
         settings: 'config.jsonを編集'
     };
@@ -54,12 +58,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const isScriptKey = (value: any): value is ScriptKey => {
-        return value === 'pdf' || value === 'ai_archive' || value === 'stamp' || value === 'fax_send' || value === 'transcribe_audio';
+        return value === 'pdf' || value === 'ai_archive' || value === 'stamp' || value === 'fax_send' || value === 'transcribe_audio' || value === 'address_label';
     };
 
     const isPdfEngine = (value: any) => value === 'chrome' || value === 'copper';
     const isAudioTarget = (value: any) => value === 'houhi' || value === 'general';
     const isAudioModel = (value: any) => value === 'openai:gpt-4o-transcribe-diarize' || value === 'gemini:gemini-3.5-flash';
+    const isAddressLabelLayout = (value: any) => value === 'ordinary' || value === 'letterpack';
 
     const loadGuiState = (): GuiState => {
         try {
@@ -80,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             noDither: optNoDither.checked,
             audioTarget: optAudioTarget.value || 'houhi',
             audioModel: optAudioModel.value || 'openai:gpt-4o-transcribe-diarize',
+            addressLabelLayout: optAddressLabelLayout.value || 'ordinary',
         };
         localStorage.setItem(GUI_STATE_KEY, JSON.stringify(state));
     };
@@ -87,17 +93,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const savedState = loadGuiState();
 
     const updateOptionsVisibility = (scriptKey: ScriptKey) => {
-        optionsBar.style.display = (scriptKey === 'pdf' || scriptKey === 'stamp' || scriptKey === 'fax_send' || scriptKey === 'transcribe_audio') ? '' : 'none';
-        pdfEngineOption.style.display = scriptKey === 'pdf' ? '' : 'none';
+        optionsBar.style.display = (scriptKey === 'pdf' || scriptKey === 'stamp' || scriptKey === 'fax_send' || scriptKey === 'transcribe_audio' || scriptKey === 'address_label') ? '' : 'none';
+        pdfEngineOption.style.display = (scriptKey === 'pdf' || scriptKey === 'address_label') ? '' : 'none';
         optNoBlankPages.parentElement!.style.display = scriptKey === 'stamp' ? '' : 'none';
         optNoDither.parentElement!.style.display = scriptKey === 'fax_send' ? '' : 'none';
         audioTargetOption.style.display = scriptKey === 'transcribe_audio' ? '' : 'none';
         audioModelOption.style.display = scriptKey === 'transcribe_audio' ? '' : 'none';
+        addressLabelLayoutOption.style.display = scriptKey === 'address_label' ? '' : 'none';
     };
 
     const getScriptOptions = (): string[] => {
         const opts: string[] = [];
-        if (currentScript === 'pdf') {
+        if (currentScript === 'pdf' || currentScript === 'address_label') {
             opts.push(`--pdf-engine=${optPdfEngine.value || DEFAULT_PDF_ENGINE}`);
         }
         if (currentScript === 'stamp' && optNoBlankPages.checked) {
@@ -111,6 +118,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const [provider, model] = String(optAudioModel.value || 'openai:gpt-4o-transcribe-diarize').split(':');
             opts.push(`--provider=${provider || 'openai'}`);
             opts.push(`--model=${model || 'gpt-4o-transcribe-diarize'}`);
+        }
+        if (currentScript === 'address_label') {
+            opts.push(`--label-layout=${optAddressLabelLayout.value || 'ordinary'}`);
         }
         return opts;
     };
@@ -425,6 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
     optNoDither.checked = Boolean(savedState.noDither);
     optAudioTarget.value = isAudioTarget(savedState.audioTarget) ? savedState.audioTarget : 'houhi';
     optAudioModel.value = isAudioModel(savedState.audioModel) ? savedState.audioModel : 'openai:gpt-4o-transcribe-diarize';
+    optAddressLabelLayout.value = isAddressLabelLayout(savedState.addressLabelLayout) ? savedState.addressLabelLayout : 'ordinary';
 
     const restoredScript = isScriptKey(savedState.currentScript) ? savedState.currentScript : currentScript;
     const restoredCard = Array.from(toolCards).find(card => getScriptKey(card) === restoredScript);
@@ -441,6 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
     optNoDither.addEventListener('change', saveGuiState);
     optAudioTarget.addEventListener('change', saveGuiState);
     optAudioModel.addEventListener('change', saveGuiState);
+    optAddressLabelLayout.addEventListener('change', saveGuiState);
     window.addEventListener('beforeunload', saveGuiState);
 
     dropZone.addEventListener('dragover', (e) => {

@@ -433,6 +433,10 @@
                 <div class="tool-icon">🎙</div>
                 <div class="tool-name">音声認識</div>
             </div>
+            <div class="tool-card" data-script="address_label">
+                <div class="tool-icon">🏷</div>
+                <div class="tool-name">宛名ラベル</div>
+            </div>
             <div class="tool-card" data-action="drafting">
                 <div class="tool-icon">✍</div>
                 <div class="tool-name">起案</div>
@@ -479,6 +483,13 @@
                 <select id="optAudioModel">
                     <option value="openai:gpt-4o-transcribe-diarize" selected>OpenAI diarize</option>
                     <option value="gemini:gemini-3.5-flash">Gemini 3.5 Flash</option>
+                </select>
+            </label>
+            <label class="option-toggle" id="addressLabelLayoutOption">
+                <span>ラベル</span>
+                <select id="optAddressLabelLayout">
+                    <option value="ordinary" selected>普通郵便</option>
+                    <option value="letterpack">レターパック</option>
                 </select>
             </label>
         </div>

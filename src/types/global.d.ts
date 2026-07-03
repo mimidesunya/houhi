@@ -8,7 +8,8 @@ declare global {
         | 'ai_archive'
         | 'stamp'
         | 'fax_send'
-        | 'transcribe_audio';
+        | 'transcribe_audio'
+        | 'address_label';
 
     interface ScriptExecutionResult {
         success: boolean;
