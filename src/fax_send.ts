@@ -93,6 +93,47 @@ function formatFaxDestination(entry) {
     return parts.length > 0 ? parts.join(' ') : '(手入力)';
 }
 
+function getErrorMessage(error) {
+    if (!error) return '';
+    if (typeof error === 'string') return error;
+    if (error.message) return error.message;
+    return String(error);
+}
+
+function isExpiredCertificateError(error) {
+    const code = error?.code || error?.cause?.code;
+    const message = getErrorMessage(error);
+    return code === 'CERT_HAS_EXPIRED'
+        || /certificate (?:has )?expired/i.test(message)
+        || /certificate was expired/i.test(message)
+        || /証明書.*期限/i.test(message);
+}
+
+function describeMailServerError(error, { protocol, action, settingPath, host, port, secure }) {
+    const originalMessage = getErrorMessage(error);
+    if (!isExpiredCertificateError(error)) {
+        return originalMessage;
+    }
+
+    const endpoint = host ? `${host}${port ? `:${port}` : ''}` : '(未設定)';
+    const secureText = typeof secure === 'boolean' ? `, secure=${secure}` : '';
+    return [
+        `[${protocol}/TLS] ${action}に失敗しました。`,
+        `config.json の ${settingPath}.host (${endpoint}${secureText}) のSSL/TLSサーバー証明書が期限切れです。`,
+        'これはFAX番号・mfax送信パスワード・メールアカウントの認証ではなく、メールサーバーとの暗号化接続で行う証明書確認です。',
+        `メールサーバー側の証明書更新、または config.json の ${settingPath}.host / port / secure を確認してください。`,
+        `元のエラー: ${originalMessage}`,
+    ].join('\n');
+}
+
+function toMailServerError(error, context) {
+    const message = describeMailServerError(error, context);
+    if (message === getErrorMessage(error) && error instanceof Error) {
+        return error;
+    }
+    return new Error(message);
+}
+
 // ─── PDF結合 ──────────────────────────────────────────────────
 
 async function mergePdfs(pdfPaths, outputPath) {
@@ -529,7 +570,21 @@ async function saveToSent(rawMessage, mailConfig) {
         logger: false
     });
 
-    await client.connect();
+    let connected = false;
+    try {
+        await client.connect();
+        connected = true;
+    } catch (error) {
+        throw toMailServerError(error, {
+            protocol: 'IMAP',
+            action: '送信済みメールの保存',
+            settingPath: 'mail.imap',
+            host: mailConfig.imap.host,
+            port: mailConfig.imap.port,
+            secure: mailConfig.imap.secure,
+        });
+    }
+
     try {
         // Sent フォルダを探す（Sent / Sent Messages / 送信済み など）
         const mailboxes = await client.list();
@@ -549,7 +604,9 @@ async function saveToSent(rawMessage, mailConfig) {
         await client.append(sentPath, rawMessage, ['\\Seen']);
         console.log('[IMAP] 送信済みメールを保存しました。');
     } finally {
-        await client.logout();
+        if (connected) {
+            await client.logout();
+        }
     }
 }
 
@@ -731,7 +788,19 @@ async function main() {
                 ]
             };
 
-            const info = await transporter.sendMail(mailOptions);
+            let info;
+            try {
+                info = await transporter.sendMail(mailOptions);
+            } catch (error) {
+                throw toMailServerError(error, {
+                    protocol: 'SMTP',
+                    action: 'FAX送信用メールの送信',
+                    settingPath: 'mail.smtp',
+                    host: mailConfig.smtp.host,
+                    port: mailConfig.smtp.port,
+                    secure: mailConfig.smtp.secure,
+                });
+            }
             console.log(`[FAX ${i + 1}/${faxNumbers.length}] 送信完了: ${info.messageId}`);
 
             // 全件IMAPに保存
@@ -785,4 +854,5 @@ module.exports = {
     classifyFaxInputFiles,
     createFaxAttachmentFilename,
     findPagedMarkdownForPdfs,
+    describeMailServerError,
 };

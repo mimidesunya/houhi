@@ -12,6 +12,7 @@ const {
     classifyFaxInputFiles,
     createFaxAttachmentFilename,
     findPagedMarkdownForPdfs,
+    describeMailServerError,
 } = require('../dist/src/fax_send.js');
 
 // ─── wrapMarkdownInHtml ─────────────────────────────────────
@@ -77,6 +78,39 @@ test('findPagedMarkdownForPdfs: returns first matching _paged.md', (t) => {
     fs.writeFileSync(paged, '# 受領書');
 
     assert.equal(findPagedMarkdownForPdfs([first, second]), paged);
+});
+
+test('describeMailServerError: explains expired SMTP certificate context', () => {
+    const message = describeMailServerError(
+        Object.assign(new Error('Certificate was expired'), { code: 'CERT_HAS_EXPIRED' }),
+        {
+            protocol: 'SMTP',
+            action: 'FAX送信用メールの送信',
+            settingPath: 'mail.smtp',
+            host: 'smtp.example.test',
+            port: 465,
+            secure: true,
+        }
+    );
+
+    assert.ok(message.includes('[SMTP/TLS] FAX送信用メールの送信に失敗しました。'));
+    assert.ok(message.includes('mail.smtp.host (smtp.example.test:465, secure=true)'));
+    assert.ok(message.includes('mfax送信パスワード'));
+    assert.ok(message.includes('メールサーバーとの暗号化接続'));
+    assert.ok(message.includes('元のエラー: Certificate was expired'));
+});
+
+test('describeMailServerError: preserves non-certificate errors', () => {
+    const message = describeMailServerError(new Error('Invalid login'), {
+        protocol: 'SMTP',
+        action: 'FAX送信用メールの送信',
+        settingPath: 'mail.smtp',
+        host: 'smtp.example.test',
+        port: 465,
+        secure: true,
+    });
+
+    assert.equal(message, 'Invalid login');
 });
 
 test('mergePdfs: appends multiple PDFs in supplied order', async (t) => {
