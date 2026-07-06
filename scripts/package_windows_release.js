@@ -14,6 +14,7 @@ const electronDistDir = path.join(repoRoot, 'node_modules', 'electron', 'dist');
 const bundledNodeDir = path.join(runtimeDir, 'node');
 const launcherProject = path.join(repoRoot, 'platforms', 'windows', 'launcher', 'Launcher.csproj');
 const nodeExecutableName = process.platform === 'win32' ? 'node.exe' : 'node';
+const rootPackage = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf-8'));
 const packageLock = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package-lock.json'), 'utf-8'));
 
 function formatTimestamp(date) {
@@ -29,8 +30,21 @@ function formatTimestamp(date) {
     ].join('');
 }
 
+function sanitizeReleaseLabel(value) {
+    return String(value || '')
+        .trim()
+        .replace(/^refs\/tags\//, '')
+        .replace(/^refs\/heads\//, '')
+        .replace(/[^A-Za-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
 const releaseTimestamp = process.env.HOUHI_RELEASE_TIMESTAMP || formatTimestamp(new Date());
-const zipPath = path.join(releaseRoot, `${packageName}-${releaseTimestamp}.zip`);
+const releaseLabel = sanitizeReleaseLabel(process.env.HOUHI_RELEASE_LABEL || process.env.GITHUB_REF_NAME);
+const releaseSuffix = releaseLabel || releaseTimestamp;
+const zipPath = path.join(releaseRoot, `${packageName}-${releaseSuffix}.zip`);
+const launcherIntermediateDir = path.join(releaseRoot, `launcher-obj-${releaseSuffix}`);
+const launcherBuildDir = path.join(releaseRoot, `launcher-bin-${releaseSuffix}`);
 const electronLocalesToKeep = new Set(['en-US.pak', 'ja.pak']);
 const rootPackageFilesToKeep = new Set([
     'package.json',
@@ -288,7 +302,6 @@ function shouldCopyNodeModule(sourcePath, _destinationPath, entry) {
 }
 
 function writeAppPackageJson() {
-    const rootPackage = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf-8'));
     const appPackage = {
         name: 'houhi',
         productName: 'HOUHI',
@@ -349,6 +362,8 @@ function buildLauncher() {
         launcherProject,
         '-c',
         'Release',
+        `-p:BaseOutputPath=${launcherBuildDir}${path.sep}`,
+        `-p:BaseIntermediateOutputPath=${launcherIntermediateDir}${path.sep}`,
         `-p:PublishDir=${packageDir}${path.sep}`,
     ]);
 }
@@ -356,6 +371,7 @@ function buildLauncher() {
 function writeReadmeStart() {
     const text = [
         'HOUHI Windows リリースパッケージ',
+        `バージョン: ${rootPackage.version || '0.0.0'}`,
         '',
         '起動:',
         '  houhi.exe をダブルクリックしてください。',
@@ -397,6 +413,8 @@ function main() {
     copyFileIfExists('config.template.json');
     copyFileIfExists('houhi-drafting-kit.zip');
     copyFileIfExists('README.md');
+    copyFileIfExists(path.join('docs', '訴訟フォルダ構成.md'));
+    copyFileIfExists(path.join('docs', '仮想チーム構成.md'));
     copyFileIfExists(path.join('platforms', 'windows', 'launcher', 'app.ico'));
     writeAppPackageJson();
 

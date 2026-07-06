@@ -203,11 +203,21 @@ test('generated web drafting data: separates AI notes from user-facing template 
 test('generated archive instructions: move template AI notes outside Markdown code blocks', () => {
     const data = readWebAssignment('web/archive-data.js', 'HOUHI_ARCHIVE_DATA');
     const instruction = data.instructions.find(item => item.displayPath === 'instructions/訴訟.上告理由書.md');
+    const teamInstruction = data.instructions.find(item => item.displayPath === 'instructions/仮想チーム構成.md');
 
     assert.ok(instruction);
     assert.match(instruction.content, /Template-specific AI notes:/);
     assert.match(instruction.content, /AI NOTE:[\s\S]*上告受理申立て理由書/);
     assert.doesNotMatch(instruction.content, /<!--|-->/);
+    assert.ok(teamInstruction);
+    assert.equal(teamInstruction.isTeamGuide, true);
+    assert.match(teamInstruction.content, /ボス弁護士/);
+    assert.match(teamInstruction.content, /整理係` を置かない/);
+    assert.match(teamInstruction.content, /PDF 作成以外/);
+    assert.match(teamInstruction.content, /HOUHI で PDF 作成/);
+    assert.doesNotMatch(teamInstruction.content, /02-整理係/);
+    assert.doesNotMatch(teamInstruction.content, /\| 整理係 \|/);
+    assert.doesNotMatch(teamInstruction.content, /実フォルダで作業する場合/);
 });
 
 test('src/web/app.ts: strips template AI notes before loading templates into the PDF editor', () => {

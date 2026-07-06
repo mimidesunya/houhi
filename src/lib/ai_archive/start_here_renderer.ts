@@ -1,7 +1,9 @@
 import type { CaseArchiveScan, InstructionEntry } from './types';
+import { buildVirtualTeamStartHereSection, VIRTUAL_TEAM_INSTRUCTION_ARCHIVE_PATH } from './team_instruction';
 
 export function buildStartHere(caseName: string, scan: CaseArchiveScan, instructionEntries: InstructionEntry[]) {
     const hasInstructions = instructionEntries.length > 0;
+    const hasVirtualTeamInstruction = instructionEntries.some(entry => entry.displayPath === VIRTUAL_TEAM_INSTRUCTION_ARCHIVE_PATH);
     const warningLine = scan.warnings.length > 0
         ? '- `WARNINGS.md` がある場合は、空ファイル・長大ファイル・除外ファイルなどの注意点を先に確認してください。'
         : '- このアーカイブには、読み込み前に確認すべき警告は検出されていません。';
@@ -16,7 +18,7 @@ export function buildStartHere(caseName: string, scan: CaseArchiveScan, instruct
 2. \`CASE_INDEX.md\` - 事件資料の一覧、推奨読解順、証拠番号や日付候補を確認してください。
 3. \`manifest.json\` - 機械可読の索引です。必要に応じてファイル一覧や警告を確認してください。
 4. \`${scan.caseRoot}/\` - 事件の事実関係を示す本文資料です。
-${hasInstructions ? `5. \`instructions/\` - 書面を起案するときの形式・文体・Markdownルールです。事件の事実そのものではありません。` : ''}
+${hasInstructions ? `5. \`instructions/\` - AI向けの補助指示です。仮想チーム構成や、書面起案時の形式・文体・Markdownルールを確認してください。事件の事実そのものではありません。` : ''}
 
 ## ユーザーから具体的な指示がない場合
 
@@ -37,6 +39,8 @@ ${hasInstructions ? `5. \`instructions/\` - 書面を起案するときの形式
 - 相手方主張への反論案を作る
 - 裁判所や相手方に提出する短い連絡文・上申書案を作る
 
+${hasVirtualTeamInstruction ? buildVirtualTeamStartHereSection() : ''}
+
 ## ユーザーから具体的な指示がある場合
 
 ユーザーが「訴状を起案して」「時系列を作って」「準備書面を起案して」「この証拠を評価して」など具体的に依頼している場合は、その依頼を優先してください。
@@ -45,7 +49,7 @@ ${hasInstructions ? `5. \`instructions/\` - 書面を起案するときの形式
 ## 重要な区別
 
 - \`${scan.caseRoot}/\` は、ユーザーが渡した事件資料です。事実認定、経過整理、証拠確認、質問回答ではこのフォルダを主な根拠にしてください。
-${hasInstructions ? '- `instructions/` は、起案時の書式・構成・定型表現の参照資料です。ここに書かれた内容を事件の事実として扱わないでください。' : ''}
+${hasInstructions ? '- `instructions/` は、AIへの補助指示です。チーム作業時は仮想チーム構成を、書面起案時は該当する書式・構成・定型表現を参照してください。ここに書かれた内容を事件の事実として扱わないでください。' : ''}
 - 回答では、可能な限り根拠ファイルのパスを示してください。例: \`${scan.caseRoot}/訴状.md\`
 - 不明な点、資料から読み取れない点、推測が混じる点は、断定せずに質問または留保してください。
 - 事実、推測、法的評価、起案上の提案は分けて説明してください。
@@ -55,7 +59,7 @@ ${warningLine}
 
 - 元フォルダ名: \`${caseName}\`
 - 事件資料ファイル数: ${scan.caseFiles.length}
-- 起案指示書ファイル数: ${instructionEntries.length}
+- 同梱指示書ファイル数: ${instructionEntries.length}
 - ZIPに含めなかった非対象ファイル数: ${scan.skippedFiles.length}
 - 警告・注意点: ${scan.warnings.length}
 

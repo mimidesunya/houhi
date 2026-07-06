@@ -1,12 +1,12 @@
 {
   "name": "houhi",
-  "version": "1.0.0",
+  "version": "0.1.0-alpha.1",
   "description": "Court document generation system",
   "main": "dist/src/gui/main.js",
   "scripts": {
     "build": "node scripts/clean_dist.js && tsc -p . && copyfiles -u 1 \"src/**/*.html\" \"src/**/*.css\" \"src/**/*.md\" dist/src",
     "build:launcher": "dotnet publish platforms/windows/launcher/Launcher.csproj -c Release -p:PublishDir=../../../bin/",
-    "release:win": "npm run ensure:native && npm run build && node scripts/package_windows_release.js",
+    "release:win": "npm run ensure:native && npm run setup && node scripts/package_windows_release.js",
     "build:web": "node scripts/build_web.js",
     "serve:web": "node scripts/serve_web.js",
     "ensure:native": "node scripts/ensure_native_modules.js",

@@ -44,12 +44,14 @@ function cleanup(dir) {
     fs.rmSync(dir, { recursive: true, force: true });
 }
 
-function makeInstruction(displayPath, isCommonRules = false) {
+function makeInstruction(displayPath, isCommonRules = false, isWorkflowGuide = false, isTeamGuide = false) {
     return {
         archivePath: displayPath,
         displayPath,
         content: Buffer.from('instruction'),
         isCommonRules,
+        isWorkflowGuide,
+        isTeamGuide,
     };
 }
 
@@ -119,12 +121,21 @@ test('renderer modules: generate each AI-facing markdown artifact directly', () 
     };
     const instructions = [
         makeInstruction('instructions/sample.md', true),
+        makeInstruction('instructions/仮想チーム構成.md', false, false, true),
         makeInstruction('instructions/準備書面.md'),
     ];
 
     assert.ok(buildInstructionStructure(instructions).includes('📄 sample.md'));
-    assert.ok(buildStartHere('matter', scan, instructions).includes('事件の事実そのものではありません'));
-    assert.ok(buildStartHere('matter', scan, instructions).includes('何を作成・整理しますか'));
+    const startHere = buildStartHere('matter', scan, instructions);
+    assert.ok(startHere.includes('事件の事実そのものではありません'));
+    assert.ok(startHere.includes('何を作成・整理しますか'));
+    assert.ok(startHere.includes('仮想チーム'));
+    assert.ok(startHere.includes('instructions/仮想チーム構成.md'));
+    assert.ok(startHere.includes('整理済み資料'));
+    assert.ok(startHere.includes('Markdown まで'));
+    assert.ok(startHere.includes('PDF 作成'));
+    assert.ok(!startHere.includes('| ボス弁護士 |'));
+    assert.ok(!startHere.includes('AGENTS.override.md'));
     assert.ok(buildCaseIndex('matter', scan).includes('ZIPに含めなかったファイル'));
     assert.ok(buildWarningsMarkdown(scan.warnings).includes('非対象ファイルがあります。'));
     assert.ok(buildArchiveReadme('matter', '📄 訴状.md\n', instructions, scan).includes('START_HERE.md'));
@@ -163,6 +174,15 @@ test('archive writer module: writes ZIP with AI entrypoints directly', () => {
         const entryNames = zip.getEntries().map(entry => entry.entryName);
 
         assert.ok(entryNames.includes('case/facts.md'));
+        assert.ok(entryNames.includes('instructions/仮想チーム構成.md'));
+        const teamInstruction = zip.readAsText('instructions/仮想チーム構成.md');
+        assert.ok(teamInstruction.includes('ボス弁護士'));
+        assert.ok(teamInstruction.includes('整理係` を置かない'));
+        assert.ok(teamInstruction.includes('PDF 作成以外'));
+        assert.ok(teamInstruction.includes('HOUHI で PDF 作成'));
+        assert.ok(!teamInstruction.includes('02-整理係'));
+        assert.ok(!teamInstruction.includes('| 整理係 |'));
+        assert.ok(!teamInstruction.includes('実フォルダで作業する場合'));
         assert.ok(entryNames.includes('START_HERE.md'));
         assert.ok(entryNames.includes('CASE_INDEX.md'));
         assert.ok(entryNames.includes('manifest.json'));

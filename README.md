@@ -22,7 +22,7 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 | **mfax FAX送信** | 送付書Markdownと1件以上の添付PDF、またはPDFのみをFAX用に二値化し、プレビュー確認後にメールFAXとして送信します。 | `.pdf`, `.md` |
 | **FAX PDF化** | PDFを画像化・二値化して、FAX向けのPDFを作成します（CLI向け補助ツール）。 | `.pdf` |
 
-OCR は [`mimi-ocr`](../mimi-ocr/README.md) に移管しました。OCR・ページ結合は `mimi-ocr` 側を使用してください。
+OCR、文書ごとの分割・結合は [`mimi-ocr`](https://github.com/mimidesunya/mimi-ocr) 側を使用してください。PDF 作成、号証スタンプ、証拠 PDF の結合、FAX 向け PDF 化は HOUHI 側で扱います。
 
 各ツールの詳細は [docs/ツール詳細.md](docs/%E3%83%84%E3%83%BC%E3%83%AB%E8%A9%B3%E7%B4%B0.md) を参照してください。
 
@@ -58,6 +58,15 @@ release/houhi-win-x64-YYYYMMDD-HHMMSS.zip
 
 配布時は `release/houhi-win-x64/` フォルダごと渡します。利用者は `houhi.exe` を起動します。  
 このリリースパッケージは Electron と Node.js 実行環境を同梱するため、利用者側で Node.js / npm / .NET ランタイムをインストールする必要はありません。
+
+GitHub Release へ添付する ZIP を作る場合は、リリースタグ名を指定して実行します。
+
+```powershell
+$env:HOUHI_RELEASE_LABEL = "v0.1.0-alpha.1"
+npm run release:win
+```
+
+この場合、ZIP 名は `release/houhi-win-x64-v0.1.0-alpha.1.zip` になります。タグ `v0.1.0-alpha.1` を push すると、GitHub Actions が Windows リリース ZIP を生成し、プレリリースとして GitHub Release に添付します。
 
 ```text
 houhi-win-x64/
@@ -113,11 +122,17 @@ GUI には `PDF作成`、`AIアーカイブ`、`号証スタンプ`、`FAX送信
 
 `起案` ボタンは、`houhi-drafting-kit.zip` のあるフォルダを開き、ChatGPTへのアップロード手順と、そのまま送れる指示文を画面下部に表示します。
 
-OCR が必要な場合は、先に `mimi-ocr` で Markdown 化してから `houhi` に渡します。
+OCR や文書ごとの分割・結合が必要な場合は、先に [`mimi-ocr`](https://github.com/mimidesunya/mimi-ocr) で Markdown 化・分割してから `houhi` に渡します。`mimi-ocr` が未セットアップの場合は、先に `mimi-ocr` をセットアップしてください。
 
 Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%BB%95%E6%A7%98%E6%9B%B8.md) を参照してください。
 
 ## チャットAIとの連携
+
+### 本人訴訟フォルダの前提
+
+HOUHI は、本人訴訟の利用者が、期日・提出主体・証拠種別ごとに事件資料をフォルダ整理している前提で補助します。典型的には `2026-03-02-地方裁判所-損害賠償請求事件/` のような事件フォルダの下に、エージェント作業用の `00-訴訟管理/` と、裁判所提出物・人間が読む書面を置く `2026-03-02-訴状/`、`2026-05-26-第1回口頭弁論/被告/乙号証/`、`2026-07-07-第2回口頭弁論/原告/` などの日付フォルダが並びます。
+
+この構成では、フォルダ名・ファイル名から日付、期日、提出主体、証拠番号の候補を読み取れます。ただし、これらはあくまで候補であり、HOUHI やエージェントは OCR Markdown、提出書面、証拠説明書などの本文で確認し、不確かな点は `【要確認】` として扱います。OCR、文書分割・結合は `mimi-ocr`、PDF 作成や号証スタンプは HOUHI を使います。フォルダ構成の前提は [docs/訴訟フォルダ構成.md](docs/%E8%A8%B4%E8%A8%9F%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E6%A7%8B%E6%88%90.md)、AI エージェント仮想チームの構成指示は [docs/仮想チーム構成.md](docs/%E4%BB%AE%E6%83%B3%E3%83%81%E3%83%BC%E3%83%A0%E6%A7%8B%E6%88%90.md) を参照してください。
 
 ### 書面の起案
 
@@ -154,11 +169,13 @@ Markdown の記法については [docs/Markdown仕様書.md](docs/Markdown%E4%B
 チャットAIにAIアーカイブZIPを添付し、START_HERE.md から読ませて起案を依頼
     ↓
 書面の Markdown 原案
-    ↓ PDF変換
+    ↓ HOUHIでPDF変換
 裁判所提出用PDF
-    ↓ 号証スタンプ（証拠PDFの場合）
+    ↓ HOUHIで号証スタンプ（証拠PDFの場合）
     ↓ mfax FAX送信（FAX対応の場合）
 ```
+
+Chat AI が作成するのは Markdown 原案、整理表、レビュー結果、次アクションの提示までです。提出用 PDF の作成、号証スタンプ、PDF 結合、FAX 向け PDF 化は、Chat AI の外で HOUHI を使って行います。
 
 ## セットアップ
 
@@ -244,7 +261,7 @@ GUI のツール一覧にある設定ボタンから `config.json` を編集で�
 }
 ```
 
-OCR 用の AI / `ndlocr-lite` 設定は `houhi` ではなく `mimi-ocr` 側の `config.json` で管理します。
+OCR 用の AI / `ndlocr-lite` 設定は `houhi` ではなく [`mimi-ocr`](https://github.com/mimidesunya/mimi-ocr) 側の `config.json` で管理します。
 音声反訳を使う場合は、`transcription.openaiApiKey` または環境変数 `OPENAI_API_KEY`、Geminiの場合は `transcription.geminiApiKey` または `GEMINI_API_KEY` を設定してください。
 FAX送信を使う場合は、`mail` と `mfax` の設定が必要です。`mfax.fromAddress` が空の場合は `mail.user` を送信元として使います。
 
@@ -300,7 +317,9 @@ npm run build:launcher
 ├── copper_drivers/             # Copper PDF用ドライバ
 ├── docs/                       # 補足ドキュメント
 │   ├── ツール詳細.md            # 各ツールの詳細説明（自動生成）
-│   └── Markdown仕様書.md       # Markdown拡張書式の仕様
+│   ├── Markdown仕様書.md       # Markdown拡張書式の仕様
+│   ├── 訴訟フォルダ構成.md      # 本人訴訟フォルダの前提
+│   └── 仮想チーム構成.md        # AIエージェント仮想チームの担当構成
 ├── houhi-drafting-kit.zip      # 書面起案用の指示書一式（setupで生成）
 ├── houhi-drafting-kit/         # 起案キットの展開確認用ファイル
 ├── config.template.json        # 初期設定テンプレート

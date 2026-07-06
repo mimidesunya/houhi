@@ -3,6 +3,11 @@ import * as path from 'path';
 const AdmZip = require('adm-zip');
 
 import { hasTargetFiles } from './scanner';
+import {
+    VIRTUAL_TEAM_INSTRUCTION_ARCHIVE_PATH,
+    VIRTUAL_TEAM_INSTRUCTION_DOC_PATH_PARTS,
+    buildVirtualTeamArchiveInstructionContent,
+} from './team_instruction';
 import type { InstructionEntry } from './types';
 import { compareInstructionNames, compareInstructionPaths, isTargetTextFile, normalizeArchivePath } from './utils';
 
@@ -30,8 +35,9 @@ export function findProjectRoot(startDir: string) {
         const packageJsonPath = path.join(currentDir, 'package.json');
         const instructionsDir = path.join(currentDir, 'instructions');
         const instructionsZipPath = findInstructionZipPath(currentDir);
+        const virtualTeamInstructionPath = path.join(currentDir, ...VIRTUAL_TEAM_INSTRUCTION_DOC_PATH_PARTS);
 
-        if (fs.existsSync(packageJsonPath) && (instructionsZipPath || fs.existsSync(instructionsDir))) {
+        if (fs.existsSync(packageJsonPath) && (instructionsZipPath || fs.existsSync(instructionsDir) || fs.existsSync(virtualTeamInstructionPath))) {
             return currentDir;
         }
 
@@ -129,6 +135,7 @@ export function buildInstructionEntriesFromInstructionsDir(instructionsDir: stri
             content: fs.readFileSync(fullPath),
             isCommonRules: path.basename(relPath).toLowerCase() === 'sample.md',
             isWorkflowGuide: path.basename(relPath).toLowerCase().endsWith('start_here.md'),
+            isTeamGuide: false,
         };
     });
 }
@@ -157,10 +164,40 @@ export function buildInstructionEntriesFromInstructionsZip(instructionsZipPath: 
                 content: entry.getData(),
                 isCommonRules: path.basename(relativePath).toLowerCase() === 'sample.md',
                 isWorkflowGuide: path.basename(relativePath).toLowerCase().endsWith('start_here.md'),
+                isTeamGuide: false,
             };
         })
         .filter((entry): entry is InstructionEntry => entry !== null)
         .sort((a, b) => compareInstructionPaths(a.displayPath, b.displayPath));
+}
+
+export function buildVirtualTeamInstructionEntry(projectRoot: string): InstructionEntry | null {
+    const sourcePath = path.join(projectRoot, ...VIRTUAL_TEAM_INSTRUCTION_DOC_PATH_PARTS);
+    if (!fs.existsSync(sourcePath)) {
+        return null;
+    }
+
+    return {
+        archivePath: VIRTUAL_TEAM_INSTRUCTION_ARCHIVE_PATH,
+        displayPath: VIRTUAL_TEAM_INSTRUCTION_ARCHIVE_PATH,
+        content: buildVirtualTeamArchiveInstructionContent(fs.readFileSync(sourcePath)),
+        isCommonRules: false,
+        isWorkflowGuide: false,
+        isTeamGuide: true,
+    };
+}
+
+function appendVirtualTeamInstructionEntry(instructionEntries: InstructionEntry[], projectRoot: string) {
+    if (instructionEntries.some(entry => entry.displayPath === VIRTUAL_TEAM_INSTRUCTION_ARCHIVE_PATH)) {
+        return instructionEntries;
+    }
+
+    const teamInstructionEntry = buildVirtualTeamInstructionEntry(projectRoot);
+    if (!teamInstructionEntry) {
+        return instructionEntries;
+    }
+
+    return [...instructionEntries, teamInstructionEntry].sort((a, b) => compareInstructionPaths(a.displayPath, b.displayPath));
 }
 
 /**
@@ -176,13 +213,18 @@ export function loadInstructionEntries(searchRoots: string[] = [process.cwd(), _
         if (instructionZipPath) {
             const zippedInstructionEntries = buildInstructionEntriesFromInstructionsZip(instructionZipPath);
             if (zippedInstructionEntries.length > 0) {
-                return zippedInstructionEntries;
+                return appendVirtualTeamInstructionEntry(zippedInstructionEntries, projectRoot);
             }
         }
 
         const instructionEntries = buildInstructionEntriesFromInstructionsDir(path.join(projectRoot, 'instructions'));
         if (instructionEntries.length > 0) {
-            return instructionEntries;
+            return appendVirtualTeamInstructionEntry(instructionEntries, projectRoot);
+        }
+
+        const teamInstructionEntry = buildVirtualTeamInstructionEntry(projectRoot);
+        if (teamInstructionEntry) {
+            return [teamInstructionEntry];
         }
     }
 

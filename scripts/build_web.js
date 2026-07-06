@@ -11,6 +11,8 @@ const draftingEntryId = 'src/web/drafting';
 const archiveEntryId = 'src/web/archive';
 const stampEntryId = 'src/web/stamp';
 const faxEntryId = 'src/web/fax';
+const virtualTeamInstructionFileName = '仮想チーム構成.md';
+const virtualTeamArchiveSectionHeading = '## AIアーカイブで使う場合';
 const moduleFiles = {
   'src/base/court_markdown': path.join(projectRoot, 'src/base/court_markdown.ts'),
   'src/lib/paged_toc': path.join(projectRoot, 'src/lib/paged_toc.ts'),
@@ -22,6 +24,7 @@ const moduleFiles = {
   'src/lib/ai_archive/readme_renderer': path.join(projectRoot, 'src/lib/ai_archive/readme_renderer.ts'),
   'src/lib/ai_archive/renderers': path.join(projectRoot, 'src/lib/ai_archive/renderers.ts'),
   'src/lib/ai_archive/start_here_renderer': path.join(projectRoot, 'src/lib/ai_archive/start_here_renderer.ts'),
+  'src/lib/ai_archive/team_instruction': path.join(projectRoot, 'src/lib/ai_archive/team_instruction.ts'),
   'src/lib/ai_archive/utils': path.join(projectRoot, 'src/lib/ai_archive/utils.ts'),
   'src/lib/ai_archive/warnings_renderer': path.join(projectRoot, 'src/lib/ai_archive/warnings_renderer.ts'),
   'src/web/document_title': path.join(projectRoot, 'src/web/document_title.ts'),
@@ -97,6 +100,33 @@ function compileTs(filePath) {
 
 function jsString(value) {
   return JSON.stringify(value);
+}
+
+function normalizeNewlines(value) {
+  return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function extractMarkdownSection(markdown, heading) {
+  const lines = normalizeNewlines(markdown).split('\n');
+  const startIndex = lines.findIndex(line => line.trim() === heading);
+  if (startIndex < 0) return null;
+
+  const sectionLines = [];
+  for (let index = startIndex + 1; index < lines.length; index++) {
+    const line = lines[index];
+    if (/^##\s+/.test(line.trim())) break;
+    sectionLines.push(line);
+  }
+
+  return sectionLines.join('\n').trim();
+}
+
+function buildVirtualTeamArchiveInstructionContent(sourceContent) {
+  const sourceText = normalizeNewlines(sourceContent);
+  const archiveSection = extractMarkdownSection(sourceText, virtualTeamArchiveSectionHeading);
+  if (!archiveSection) return `${sourceText.trim()}\n`;
+
+  return `# 仮想チーム構成\n\n${archiveSection}\n`;
 }
 
 function splitTemplateAiNotes(markdown) {
@@ -282,9 +312,21 @@ function readArchiveData() {
       displayPath: 'instructions/00_START_HERE.md',
       content: buildArchiveStartHere(files),
       isCommonRules: false,
-      isWorkflowGuide: true
+      isWorkflowGuide: true,
+      isTeamGuide: false
     }
   ];
+
+  const virtualTeamInstructionPath = path.join(projectRoot, 'docs', virtualTeamInstructionFileName);
+  if (fs.existsSync(virtualTeamInstructionPath)) {
+    instructions.push({
+      displayPath: `instructions/${virtualTeamInstructionFileName}`,
+      content: buildVirtualTeamArchiveInstructionContent(fs.readFileSync(virtualTeamInstructionPath, 'utf-8')),
+      isCommonRules: false,
+      isWorkflowGuide: false,
+      isTeamGuide: true
+    });
+  }
 
   for (const file of files) {
     const parsed = splitTemplateAiNotes(fs.readFileSync(file.path, 'utf-8'));
@@ -293,7 +335,8 @@ function readArchiveData() {
       displayPath: `instructions/${file.name}`,
       content: instructionContent.replace(placeholder, replacement),
       isCommonRules: file.name === 'sample.md',
-      isWorkflowGuide: false
+      isWorkflowGuide: false,
+      isTeamGuide: false
     });
   }
 
@@ -322,6 +365,7 @@ fs.writeFileSync(path.join(webDir, 'archive.js'), buildBundle(archiveEntryId, {
   'src/lib/ai_archive/readme_renderer': moduleFiles['src/lib/ai_archive/readme_renderer'],
   'src/lib/ai_archive/renderers': moduleFiles['src/lib/ai_archive/renderers'],
   'src/lib/ai_archive/start_here_renderer': moduleFiles['src/lib/ai_archive/start_here_renderer'],
+  'src/lib/ai_archive/team_instruction': moduleFiles['src/lib/ai_archive/team_instruction'],
   'src/lib/ai_archive/utils': moduleFiles['src/lib/ai_archive/utils'],
   'src/lib/ai_archive/warnings_renderer': moduleFiles['src/lib/ai_archive/warnings_renderer'],
   'src/web/zip': moduleFiles['src/web/zip'],

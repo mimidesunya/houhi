@@ -1,0 +1,82 @@
+name: Release Windows
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish"
+        required: true
+        default: "v0.1.0-alpha.1"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build Windows package
+        id: package
+        shell: pwsh
+        run: |
+          $env:HOUHI_RELEASE_LABEL = "${{ env.RELEASE_TAG }}"
+          npm run release:win
+          $zip = Get-ChildItem -Path release -Filter "houhi-win-x64-*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $zip) {
+            throw "Release ZIP was not created."
+          }
+          "zip_path=$($zip.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: houhi-win-x64-${{ env.RELEASE_TAG }}
+          path: ${{ steps.package.outputs.zip_path }}
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ env.RELEASE_TAG }}"
+          $zip = "${{ steps.package.outputs.zip_path }}"
+          $title = "HOUHI " + $tag.TrimStart("v")
+
+          gh release view $tag --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $zip --clobber --repo $env:GITHUB_REPOSITORY
+            exit $LASTEXITCODE
+          }
+
+          gh release create $tag $zip `
+            --repo $env:GITHUB_REPOSITORY `
+            --title $title `
+            --notes-file RELEASE_NOTES.md `
+            --prerelease

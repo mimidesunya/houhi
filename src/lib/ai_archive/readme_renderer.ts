@@ -39,8 +39,8 @@ ${warningLine}- **\`${caseRoot}/\`** — The user's actual case documents from t
 `;
 
     if (hasInstructions) {
-        readmeContent += `- **\`instructions/\`** — Bundled drafting instructions.
-  You may use these files as reference material when preparing court documents. Follow the matching instruction file for structure, formatting, and standard phrasing.
+        readmeContent += `- **\`instructions/\`** — Bundled AI instructions and drafting references.
+  Use these files as operational guidance for AI-assisted folder work and as reference material when drafting court documents.
 `;
     }
 
@@ -56,9 +56,11 @@ ${directoryStructure}\`\`\`
             .map(entry => {
                 const description = entry.isWorkflowGuide
                     ? 'Conversation flow for selecting a document type and collecting required facts.'
-                    : entry.isCommonRules
-                        ? 'Common Markdown rules for all document types.'
-                        : 'Reference instruction for the corresponding document type.';
+                    : entry.isTeamGuide
+                        ? 'Codex virtual team roles and litigation-folder work instructions.'
+                        : entry.isCommonRules
+                            ? 'Common Markdown rules for all document types.'
+                            : 'Reference instruction for the corresponding document type.';
                 return `- \`${entry.displayPath}\` — ${description}`;
             })
             .join('\n');
@@ -67,10 +69,10 @@ ${directoryStructure}\`\`\`
         const workflowGuide = instructionEntries.find(entry => entry.isWorkflowGuide);
 
         readmeContent += `
-## Drafting Instructions
+## AI Instructions
 
-The files in \`instructions/\` are included so they can be used as reference material when drafting court documents.
-Use the materials in \`${caseRoot}/\` for the facts of this case, and use the matching files in \`instructions/\` for writing guidance.
+The files in \`instructions/\` are included as AI-facing operational guidance and drafting references.
+Use the materials in \`${caseRoot}/\` for the facts of this case, and use the matching files in \`instructions/\` only as guidance.
 
 ${workflowGuide ? `When the user has not yet chosen a filing type, start with \`${workflowGuide.displayPath}\`.\n` : ''}${hasCommonRules ? 'Start with `instructions/sample.md`, then use the document-type instruction that best matches the filing you want to prepare.\n\n' : ''}Available instruction files:
 ${instructionList}

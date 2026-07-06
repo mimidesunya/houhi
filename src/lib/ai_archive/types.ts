@@ -9,6 +9,8 @@ export type InstructionEntry = {
     isCommonRules: boolean;
     /** `START_HERE.md` は単体アップロード時の対話手順として、書面テンプレートとは分けて扱う。 */
     isWorkflowGuide: boolean;
+    /** 仮想チーム構成は、書面テンプレートではなく事件フォルダ運用指示として扱う。 */
+    isTeamGuide: boolean;
 };
 
 export type CaseFileEntry = {

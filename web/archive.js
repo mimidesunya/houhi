@@ -285,9 +285,11 @@ function buildArchiveManifest(caseName, scan, instructionEntries) {
             path: entry.displayPath,
             role: entry.isWorkflowGuide
                 ? 'drafting_workflow_guide'
-                : entry.isCommonRules
-                    ? 'common_drafting_rules'
-                    : 'drafting_instruction',
+                : entry.isTeamGuide
+                    ? 'virtual_team_instruction'
+                    : entry.isCommonRules
+                        ? 'common_drafting_rules'
+                        : 'drafting_instruction',
             sizeBytes: entry.content.length,
         })),
         skippedFiles: scan.skippedFiles,
@@ -335,8 +337,8 @@ ${warningLine}- **\`${caseRoot}/\`** — The user's actual case documents from t
   These are the files you should read, analyze, and use as source material.
 `;
     if (hasInstructions) {
-        readmeContent += `- **\`instructions/\`** — Bundled drafting instructions.
-  You may use these files as reference material when preparing court documents. Follow the matching instruction file for structure, formatting, and standard phrasing.
+        readmeContent += `- **\`instructions/\`** — Bundled AI instructions and drafting references.
+  Use these files as operational guidance for AI-assisted folder work and as reference material when drafting court documents.
 `;
     }
     readmeContent += `
@@ -350,19 +352,21 @@ ${directoryStructure}\`\`\`
             .map(entry => {
             const description = entry.isWorkflowGuide
                 ? 'Conversation flow for selecting a document type and collecting required facts.'
-                : entry.isCommonRules
-                    ? 'Common Markdown rules for all document types.'
-                    : 'Reference instruction for the corresponding document type.';
+                : entry.isTeamGuide
+                    ? 'Codex virtual team roles and litigation-folder work instructions.'
+                    : entry.isCommonRules
+                        ? 'Common Markdown rules for all document types.'
+                        : 'Reference instruction for the corresponding document type.';
             return `- \`${entry.displayPath}\` — ${description}`;
         })
             .join('\n');
         const hasCommonRules = instructionEntries.some(entry => entry.isCommonRules);
         const workflowGuide = instructionEntries.find(entry => entry.isWorkflowGuide);
         readmeContent += `
-## Drafting Instructions
+## AI Instructions
 
-The files in \`instructions/\` are included so they can be used as reference material when drafting court documents.
-Use the materials in \`${caseRoot}/\` for the facts of this case, and use the matching files in \`instructions/\` for writing guidance.
+The files in \`instructions/\` are included as AI-facing operational guidance and drafting references.
+Use the materials in \`${caseRoot}/\` for the facts of this case, and use the matching files in \`instructions/\` only as guidance.
 
 ${workflowGuide ? `When the user has not yet chosen a filing type, start with \`${workflowGuide.displayPath}\`.\n` : ''}${hasCommonRules ? 'Start with `instructions/sample.md`, then use the document-type instruction that best matches the filing you want to prepare.\n\n' : ''}Available instruction files:
 ${instructionList}
@@ -396,8 +400,10 @@ Object.defineProperty(exports, "buildWarningsMarkdown", { enumerable: true, get:
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildStartHere = buildStartHere;
+const team_instruction_1 = require("./team_instruction");
 function buildStartHere(caseName, scan, instructionEntries) {
     const hasInstructions = instructionEntries.length > 0;
+    const hasVirtualTeamInstruction = instructionEntries.some(entry => entry.displayPath === team_instruction_1.VIRTUAL_TEAM_INSTRUCTION_ARCHIVE_PATH);
     const warningLine = scan.warnings.length > 0
         ? '- `WARNINGS.md` がある場合は、空ファイル・長大ファイル・除外ファイルなどの注意点を先に確認してください。'
         : '- このアーカイブには、読み込み前に確認すべき警告は検出されていません。';
@@ -411,7 +417,7 @@ function buildStartHere(caseName, scan, instructionEntries) {
 2. \`CASE_INDEX.md\` - 事件資料の一覧、推奨読解順、証拠番号や日付候補を確認してください。
 3. \`manifest.json\` - 機械可読の索引です。必要に応じてファイル一覧や警告を確認してください。
 4. \`${scan.caseRoot}/\` - 事件の事実関係を示す本文資料です。
-${hasInstructions ? `5. \`instructions/\` - 書面を起案するときの形式・文体・Markdownルールです。事件の事実そのものではありません。` : ''}
+${hasInstructions ? `5. \`instructions/\` - AI向けの補助指示です。仮想チーム構成や、書面起案時の形式・文体・Markdownルールを確認してください。事件の事実そのものではありません。` : ''}
 
 ## ユーザーから具体的な指示がない場合
 
@@ -432,6 +438,8 @@ ${hasInstructions ? `5. \`instructions/\` - 書面を起案するときの形式
 - 相手方主張への反論案を作る
 - 裁判所や相手方に提出する短い連絡文・上申書案を作る
 
+${hasVirtualTeamInstruction ? (0, team_instruction_1.buildVirtualTeamStartHereSection)() : ''}
+
 ## ユーザーから具体的な指示がある場合
 
 ユーザーが「訴状を起案して」「時系列を作って」「準備書面を起案して」「この証拠を評価して」など具体的に依頼している場合は、その依頼を優先してください。
@@ -440,7 +448,7 @@ ${hasInstructions ? `5. \`instructions/\` - 書面を起案するときの形式
 ## 重要な区別
 
 - \`${scan.caseRoot}/\` は、ユーザーが渡した事件資料です。事実認定、経過整理、証拠確認、質問回答ではこのフォルダを主な根拠にしてください。
-${hasInstructions ? '- `instructions/` は、起案時の書式・構成・定型表現の参照資料です。ここに書かれた内容を事件の事実として扱わないでください。' : ''}
+${hasInstructions ? '- `instructions/` は、AIへの補助指示です。チーム作業時は仮想チーム構成を、書面起案時は該当する書式・構成・定型表現を参照してください。ここに書かれた内容を事件の事実として扱わないでください。' : ''}
 - 回答では、可能な限り根拠ファイルのパスを示してください。例: \`${scan.caseRoot}/訴状.md\`
 - 不明な点、資料から読み取れない点、推測が混じる点は、断定せずに質問または留保してください。
 - 事実、推測、法的評価、起案上の提案は分けて説明してください。
@@ -450,10 +458,57 @@ ${warningLine}
 
 - 元フォルダ名: \`${caseName}\`
 - 事件資料ファイル数: ${scan.caseFiles.length}
-- 起案指示書ファイル数: ${instructionEntries.length}
+- 同梱指示書ファイル数: ${instructionEntries.length}
 - ZIPに含めなかった非対象ファイル数: ${scan.skippedFiles.length}
 - 警告・注意点: ${scan.warnings.length}
 
+`;
+}
+
+},
+"src/lib/ai_archive/team_instruction": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.VIRTUAL_TEAM_INSTRUCTION_DOC_PATH_PARTS = exports.VIRTUAL_TEAM_INSTRUCTION_ARCHIVE_PATH = exports.VIRTUAL_TEAM_INSTRUCTION_FILE_NAME = void 0;
+exports.buildVirtualTeamArchiveInstructionContent = buildVirtualTeamArchiveInstructionContent;
+exports.buildVirtualTeamStartHereSection = buildVirtualTeamStartHereSection;
+exports.VIRTUAL_TEAM_INSTRUCTION_FILE_NAME = '仮想チーム構成.md';
+exports.VIRTUAL_TEAM_INSTRUCTION_ARCHIVE_PATH = `instructions/${exports.VIRTUAL_TEAM_INSTRUCTION_FILE_NAME}`;
+exports.VIRTUAL_TEAM_INSTRUCTION_DOC_PATH_PARTS = ['docs', exports.VIRTUAL_TEAM_INSTRUCTION_FILE_NAME];
+const AI_ARCHIVE_SECTION_HEADING = '## AIアーカイブで使う場合';
+function normalizeNewlines(value) {
+    return value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+function extractMarkdownSection(markdown, heading) {
+    const lines = normalizeNewlines(markdown).split('\n');
+    const startIndex = lines.findIndex(line => line.trim() === heading);
+    if (startIndex < 0) {
+        return null;
+    }
+    const sectionLines = [];
+    for (let index = startIndex + 1; index < lines.length; index++) {
+        const line = lines[index];
+        if (/^##\s+/.test(line.trim())) {
+            break;
+        }
+        sectionLines.push(line);
+    }
+    return sectionLines.join('\n').trim();
+}
+function buildVirtualTeamArchiveInstructionContent(sourceContent) {
+    const sourceText = Buffer.isBuffer(sourceContent) ? sourceContent.toString('utf-8') : String(sourceContent);
+    const archiveSection = extractMarkdownSection(sourceText, AI_ARCHIVE_SECTION_HEADING);
+    if (!archiveSection) {
+        return Buffer.from(`${normalizeNewlines(sourceText).trim()}\n`, 'utf-8');
+    }
+    return Buffer.from(`# 仮想チーム構成\n\n${archiveSection}\n`, 'utf-8');
+}
+function buildVirtualTeamStartHereSection() {
+    return `## 仮想チームで処理する場合
+
+ユーザーが「この訴訟フォルダで仮想チームを結成して」「この訴訟フォルダでAIエージェントによる仮想チームを結成して」「法匪で整理して」「この訴訟フォルダを整理して」など、チーム作業又はフォルダ整理を依頼している場合は、まず \`${exports.VIRTUAL_TEAM_INSTRUCTION_ARCHIVE_PATH}\` を読んでください。
+
+このファイルが、AIアーカイブでの仮想チーム構成と担当別出力の扱いを定義する一次指示です。AIアーカイブは整理済み資料として扱い、OCR、文書ごとの分割・結合、フォルダ作成、フォルダ振り分けは完了済み又は別工程で扱う前提です。Chat AI が作成するのは Markdown までであり、PDF 作成、号証スタンプ、PDF 結合、FAX 向け PDF 化は HOUHI で行う前提です。
 `;
 }
 
@@ -942,6 +997,7 @@ function buildInstructionEntries() {
         content: encoder.encode(entry.content),
         isCommonRules: entry.isCommonRules,
         isWorkflowGuide: entry.isWorkflowGuide,
+        isTeamGuide: entry.isTeamGuide,
     }));
 }
 function ensureUniqueEntries(entries) {

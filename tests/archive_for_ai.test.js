@@ -307,6 +307,16 @@ test('buildStartHere: separates case documents from drafting instructions', () =
                 displayPath: 'instructions/sample.md',
                 content: Buffer.from('sample'),
                 isCommonRules: true,
+                isWorkflowGuide: false,
+                isTeamGuide: false,
+            },
+            {
+                archivePath: 'instructions/仮想チーム構成.md',
+                displayPath: 'instructions/仮想チーム構成.md',
+                content: Buffer.from('team'),
+                isCommonRules: false,
+                isWorkflowGuide: false,
+                isTeamGuide: true,
             },
         ]);
 
@@ -315,6 +325,11 @@ test('buildStartHere: separates case documents from drafting instructions', () =
         assert.ok(startHere.includes('事件の事実そのものではありません'));
         assert.ok(startHere.includes('ユーザーから具体的な指示がない場合'));
         assert.ok(startHere.includes('次に取れる手'));
+        assert.ok(startHere.includes('仮想チーム'));
+        assert.ok(startHere.includes('instructions/仮想チーム構成.md'));
+        assert.ok(startHere.includes('Markdown まで'));
+        assert.ok(startHere.includes('HOUHI'));
+        assert.ok(!startHere.includes('| 後処理係 |'));
     } finally {
         cleanup(dir);
     }
@@ -383,12 +398,16 @@ test('buildArchiveReadme: mentions drafting references and lists instruction fil
             displayPath: 'instructions/sample.md',
             content: Buffer.from('sample'),
             isCommonRules: true,
+            isWorkflowGuide: false,
+            isTeamGuide: false,
         },
         {
             archivePath: 'instructions/準備書面.md',
             displayPath: 'instructions/準備書面.md',
             content: Buffer.from('brief'),
             isCommonRules: false,
+            isWorkflowGuide: false,
+            isTeamGuide: false,
         },
     ]);
 
@@ -429,11 +448,22 @@ test('CLI archive: writes case root, AI entrypoints, manifest, and warnings', ()
         assert.ok(entryNames.includes('manifest.json'));
         assert.ok(entryNames.includes('README.md'));
         assert.ok(entryNames.includes('WARNINGS.md'));
+        assert.ok(entryNames.includes('instructions/仮想チーム構成.md'));
 
         const manifest = JSON.parse(zip.readAsText('manifest.json'));
         assert.equal(manifest.counts.caseFiles, 1);
         assert.equal(manifest.counts.skippedFiles, 1);
         assert.equal(manifest.files[0].path, 'case/facts.md');
+        assert.ok(zip.readAsText('START_HERE.md').includes('instructions/仮想チーム構成.md'));
+        const teamInstruction = zip.readAsText('instructions/仮想チーム構成.md');
+        assert.ok(teamInstruction.includes('ボス弁護士'));
+        assert.ok(teamInstruction.includes('整理係` を置かない'));
+        assert.ok(teamInstruction.includes('PDF 作成以外'));
+        assert.ok(teamInstruction.includes('HOUHI で PDF 作成'));
+        assert.ok(!teamInstruction.includes('02-整理係'));
+        assert.ok(!teamInstruction.includes('| 整理係 |'));
+        assert.ok(!teamInstruction.includes('実フォルダで作業する場合'));
+        assert.ok(manifest.instructions.some(entry => entry.role === 'virtual_team_instruction'));
     } finally {
         cleanup(parentDir);
     }

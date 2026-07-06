@@ -11,6 +11,7 @@ type ArchiveInstructionData = {
     content: string;
     isCommonRules: boolean;
     isWorkflowGuide: boolean;
+    isTeamGuide: boolean;
 };
 
 type ArchiveWebData = {
@@ -301,6 +302,7 @@ function buildInstructionEntries() {
         content: encoder.encode(entry.content) as any,
         isCommonRules: entry.isCommonRules,
         isWorkflowGuide: entry.isWorkflowGuide,
+        isTeamGuide: entry.isTeamGuide,
     } satisfies InstructionEntry));
 }
 
