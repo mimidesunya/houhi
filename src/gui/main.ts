@@ -6,6 +6,7 @@ const { loadConfigForEditor, saveConfigFromEditor } = require('../lib/config_edi
 
 let settingsWindow = null;
 const DRAFTING_KIT_FILE_NAME = 'houhi-drafting-kit.zip';
+const NODE_EXECUTABLE_NAME = process.platform === 'win32' ? 'node.exe' : 'node';
 
 function findUpward(startDir, fileName) {
     let currentDir = path.resolve(startDir);
@@ -211,15 +212,61 @@ const SCRIPTS = {
     'address_label': { path: 'src/address_label.js', name: '宛名ラベルPDF作成' }
 };
 
+function resolveBundledNodePath() {
+    const resourcesPath = (process as any).resourcesPath;
+    const runtimeRoot = process.execPath ? path.dirname(path.dirname(process.execPath)) : null;
+    const candidates = [
+        process.env.HOUHI_NODE || null,
+        runtimeRoot ? path.join(runtimeRoot, 'node', NODE_EXECUTABLE_NAME) : null,
+        resourcesPath ? path.join(resourcesPath, 'node', NODE_EXECUTABLE_NAME) : null,
+        path.resolve(__dirname, '../../../../runtime/node', NODE_EXECUTABLE_NAME),
+        path.resolve(__dirname, '../../../../node', NODE_EXECUTABLE_NAME)
+    ].filter(Boolean);
+
+    return candidates.find(candidate => fs.existsSync(candidate)) || null;
+}
+
+function resolveNodeRuntime() {
+    const bundledNodePath = resolveBundledNodePath();
+    if (bundledNodePath) {
+        return {
+            command: bundledNodePath,
+            label: 'houhi bundled-node'
+        };
+    }
+
+    return {
+        command: NODE_EXECUTABLE_NAME,
+        label: NODE_EXECUTABLE_NAME
+    };
+}
+
+function createNodeScriptProcess(scriptPath, scriptArgs, cwd, nodeRuntime) {
+    return spawn(nodeRuntime.command, [scriptPath, ...scriptArgs], {
+        cwd,
+        shell: false,
+        windowsHide: true,
+        env: { ...process.env }
+    });
+}
+
+function isIgnorableChildStderrLine(line) {
+    return line.includes('crashpad') &&
+        line.includes('CreateFile') &&
+        line.includes('Access is denied');
+}
+
 ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, options }) => {
     if (!SCRIPTS[scriptKey]) {
         throw new Error('Invalid script key');
     }
 
     const script = SCRIPTS[scriptKey];
-    const scriptPath = path.resolve(__dirname, '../../', script.path);
+    const scriptRoot = path.resolve(__dirname, '../../');
+    const scriptPath = path.resolve(scriptRoot, script.path);
     const extraArgs = Array.isArray(options) ? options : [];
     const scriptArgs = [...extraArgs, ...filePaths];
+    const nodeRuntime = resolveNodeRuntime();
 
     // Create console window for this task
     const consoleWin = createConsoleWindow();
@@ -241,9 +288,9 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, options }
     // Log command to console window
     const quotedOptions = extraArgs.map(arg => `"${arg}"`).join(' ');
     const quotedPaths = filePaths.map(p => `"${p}"`).join(' ');
-    const command = `node "${scriptPath}" ${quotedOptions} ${quotedPaths}`.trim();
-    consoleWin.webContents.send('console-command', `実行コマンド: node ${path.basename(scriptPath)} ...`);
-    consoleWin.webContents.send('console-info', `作業ディレクトリ: ${path.resolve(__dirname, '../../')}`);
+    const command = `"${nodeRuntime.command}" "${scriptPath}" ${quotedOptions} ${quotedPaths}`.trim();
+    consoleWin.webContents.send('console-command', `実行コマンド: ${nodeRuntime.label} ${path.basename(scriptPath)} ...`);
+    consoleWin.webContents.send('console-info', `作業ディレクトリ: ${scriptRoot}`);
 
     // Also send to main window
     event.sender.send('script-log', `実行コマンド: ${command}\n`);
@@ -251,13 +298,9 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, options }
     return new Promise((resolve, reject) => {
         // Use spawn for real-time output streaming
         // shell: false to properly handle spaces in file paths
-        // Use 'node' command (from PATH) instead of process.execPath (which is Electron)
-        const childProcess = spawn('node', [scriptPath, ...scriptArgs], {
-            cwd: path.resolve(__dirname, '../../'),
-            shell: false,
-            windowsHide: true,
-            env: { ...process.env }
-        });
+        // Prefer the Node runtime bundled with the Windows release package so
+        // clean machines do not need a separate Node.js install.
+        const childProcess = createNodeScriptProcess(scriptPath, scriptArgs, scriptRoot, nodeRuntime);
 
         let stdout = '';
         let stderr = '';
@@ -530,10 +573,10 @@ button{padding:6px 20px;border:none;border-radius:6px;font-size:14px;cursor:poin
         // Stream stderr in real-time
         childProcess.stderr.on('data', (data) => {
             const text = data.toString();
-            stderr += text;
-            
+
             text.split('\n').forEach(line => {
-                if (line.trim()) {
+                if (line.trim() && !isIgnorableChildStderrLine(line)) {
+                    stderr += line + '\n';
                     safeSend('console-error', line);
                 }
             });

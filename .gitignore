@@ -12,7 +12,6 @@ yarn-error.log*
 
 # Python
 __pycache__/
-__init__.py
 *.pyc
 *.pyo
 *.pyd
@@ -23,15 +22,17 @@ venv/
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Project specific
-output/*
-!output/.gitkeep
-copper_drivers/
-*.zip
-houhi-drafting-kit/
+# Build outputs
 dist/
+release/
 platforms/windows/launcher/bin/
 platforms/windows/launcher/obj/
+
+# Generated archives and working files
+*.zip
+houhi-drafting-kit/
+output/
+copper_drivers/
 
 # OS
 .DS_Store
@@ -52,7 +53,7 @@ temp_rendered.html
 
 # Local reference manuals
 docs/*民事保全・非訟マニュアル*
-```
+
 # AIエージェント用ローカルガイド（git管理外）
 AGENTS.md
 CLAUDE.md

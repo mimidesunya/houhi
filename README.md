@@ -38,8 +38,34 @@ https://mimidesunya.github.io/houhi/
 
 ### GUI の起動
 
-- `bin/法匪.exe` をダブルクリック（Windows環境）
+- 配布版: `release/houhi-win-x64/houhi.exe` をダブルクリック（Windows環境）
 - 開発環境の場合: `npm run gui`
+
+### Windowsリリースパッケージの作成
+
+何も入っていないWindowsでも起動できる配布物を作る場合は、開発環境で次を実行します。
+
+```bash
+npm run release:win
+```
+
+出力先:
+
+```text
+release/houhi-win-x64/houhi.exe
+release/houhi-win-x64-YYYYMMDD-HHMMSS.zip
+```
+
+配布時は `release/houhi-win-x64/` フォルダごと渡します。利用者は `houhi.exe` を起動します。  
+このリリースパッケージは Electron と Node.js 実行環境を同梱するため、利用者側で Node.js / npm / .NET ランタイムをインストールする必要はありません。
+
+```text
+houhi-win-x64/
+├── houhi.exe
+├── README-START.txt
+├── app/
+└── runtime/
+```
 
 ### ローカルWeb版の起動
 
@@ -231,7 +257,7 @@ PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine
 | `npm run gui` | TypeScript をビルドして GUI を起動 |
 | `npm run build` | TypeScript をビルド（`dist/` に出力） |
 | `npm run ensure:native` | `canvas` などのネイティブ依存を現在のOS向けに確認・再構築 |
-| `npm run build:launcher` | Windows 用ランチャー `bin/法匪.exe` を Native AOT で再生成 |
+| `npm run build:launcher` | Windows 用開発ランチャー `bin/houhi.exe` を Native AOT で再生成 |
 | `npm run setup` | ビルド後に `houhi-drafting-kit.zip` と初期設定を生成 |
 | `npm test` | ビルド後にユニットテストを実行 |
 | `npm run docs:tools` | ツールコメントから `docs/ツール詳細.md` を再生成 |
@@ -239,7 +265,7 @@ PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine
 
 ### Windows ランチャーのアイコン
 
-`bin/法匪.exe` は Native AOT で小さく生成しています。アイコンは [platforms/windows/launcher/app.ico](platforms/windows/launcher/app.ico) を使って埋め込んでいます。  
+`bin/houhi.exe` は Native AOT で小さく生成しています。アイコンは [platforms/windows/launcher/app.ico](platforms/windows/launcher/app.ico) を使って埋め込んでいます。  
 アイコンやランチャー本体を更新した場合は、次のコマンドで再生成してください。
 
 ```bash
@@ -270,7 +296,7 @@ npm run build:launcher
 
 ```text
 .
-├── bin/法匪.exe                 # 起動ランチャー
+├── bin/houhi.exe               # 開発用起動ランチャー
 ├── copper_drivers/             # Copper PDF用ドライバ
 ├── docs/                       # 補足ドキュメント
 │   ├── ツール詳細.md            # 各ツールの詳細説明（自動生成）
