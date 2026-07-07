@@ -329,6 +329,7 @@ test('buildStartHere: separates case documents from drafting instructions', () =
         assert.ok(startHere.includes('instructions/仮想チーム構成.md'));
         assert.ok(startHere.includes('Markdown まで'));
         assert.ok(startHere.includes('HOUHI'));
+        assert.ok(startHere.includes('github.com/mimidesunya/houhi'));
         assert.ok(!startHere.includes('| 後処理係 |'));
     } finally {
         cleanup(dir);
@@ -460,6 +461,7 @@ test('CLI archive: writes case root, AI entrypoints, manifest, and warnings', ()
         assert.ok(teamInstruction.includes('整理係` を置かない'));
         assert.ok(teamInstruction.includes('PDF 作成以外'));
         assert.ok(teamInstruction.includes('HOUHI で PDF 作成'));
+        assert.ok(teamInstruction.includes('github.com/mimidesunya/houhi'));
         assert.ok(!teamInstruction.includes('02-整理係'));
         assert.ok(!teamInstruction.includes('| 整理係 |'));
         assert.ok(!teamInstruction.includes('実フォルダで作業する場合'));

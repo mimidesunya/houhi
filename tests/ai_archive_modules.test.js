@@ -134,6 +134,7 @@ test('renderer modules: generate each AI-facing markdown artifact directly', () 
     assert.ok(startHere.includes('整理済み資料'));
     assert.ok(startHere.includes('Markdown まで'));
     assert.ok(startHere.includes('PDF 作成'));
+    assert.ok(startHere.includes('github.com/mimidesunya/houhi'));
     assert.ok(!startHere.includes('| ボス弁護士 |'));
     assert.ok(!startHere.includes('AGENTS.override.md'));
     assert.ok(buildCaseIndex('matter', scan).includes('ZIPに含めなかったファイル'));
@@ -180,6 +181,7 @@ test('archive writer module: writes ZIP with AI entrypoints directly', () => {
         assert.ok(teamInstruction.includes('整理係` を置かない'));
         assert.ok(teamInstruction.includes('PDF 作成以外'));
         assert.ok(teamInstruction.includes('HOUHI で PDF 作成'));
+        assert.ok(teamInstruction.includes('github.com/mimidesunya/houhi'));
         assert.ok(!teamInstruction.includes('02-整理係'));
         assert.ok(!teamInstruction.includes('| 整理係 |'));
         assert.ok(!teamInstruction.includes('実フォルダで作業する場合'));

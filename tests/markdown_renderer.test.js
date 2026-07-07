@@ -215,6 +215,7 @@ test('generated archive instructions: move template AI notes outside Markdown co
     assert.match(teamInstruction.content, /整理係` を置かない/);
     assert.match(teamInstruction.content, /PDF 作成以外/);
     assert.match(teamInstruction.content, /HOUHI で PDF 作成/);
+    assert.match(teamInstruction.content, /github\.com\/mimidesunya\/houhi/);
     assert.doesNotMatch(teamInstruction.content, /02-整理係/);
     assert.doesNotMatch(teamInstruction.content, /\| 整理係 \|/);
     assert.doesNotMatch(teamInstruction.content, /実フォルダで作業する場合/);

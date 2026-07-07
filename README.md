@@ -22,7 +22,7 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 | **mfax FAX送信** | 送付書Markdownと1件以上の添付PDF、またはPDFのみをFAX用に二値化し、プレビュー確認後にメールFAXとして送信します。 | `.pdf`, `.md` |
 | **FAX PDF化** | PDFを画像化・二値化して、FAX向けのPDFを作成します（CLI向け補助ツール）。 | `.pdf` |
 
-OCR、文書ごとの分割・結合は [`mimi-ocr`](https://github.com/mimidesunya/mimi-ocr) 側を使用してください。PDF 作成、号証スタンプ、証拠 PDF の結合、FAX 向け PDF 化は HOUHI 側で扱います。
+OCR、文書ごとの分割・結合は [`mimi-ocr`](https://github.com/mimidesunya/mimi-ocr) 側を使用してください。PDF 作成、号証スタンプ、証拠 PDF の結合、FAX 向け PDF 化は [`HOUHI`](https://github.com/mimidesunya/houhi) 側で扱います。利用環境に HOUHI がない場合は、先に HOUHI のセットアップをしてください。
 
 各ツールの詳細は [docs/ツール詳細.md](docs/%E3%83%84%E3%83%BC%E3%83%AB%E8%A9%B3%E7%B4%B0.md) を参照してください。
 
