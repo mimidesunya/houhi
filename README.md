@@ -26,6 +26,8 @@ OCR、文書ごとの分割・結合は [`mimi-ocr`](https://github.com/mimidesu
 
 各ツールの詳細は [docs/ツール詳細.md](docs/%E3%83%84%E3%83%BC%E3%83%AB%E8%A9%B3%E7%B4%B0.md) を参照してください。
 
+HOUHI リポジトリを開発・保守するときの仮想開発チーム構成は [docs/仮想開発チーム構成.md](docs/%E4%BB%AE%E6%83%B3%E9%96%8B%E7%99%BA%E3%83%81%E3%83%BC%E3%83%A0%E6%A7%8B%E6%88%90.md) を参照してください。
+
 ## 使い方
 
 ### 公開サイト
@@ -319,7 +321,8 @@ npm run build:launcher
 │   ├── ツール詳細.md            # 各ツールの詳細説明（自動生成）
 │   ├── Markdown仕様書.md       # Markdown拡張書式の仕様
 │   ├── 訴訟フォルダ構成.md      # 本人訴訟フォルダの前提
-│   └── 仮想チーム構成.md        # AIエージェント仮想チームの担当構成
+│   ├── 仮想チーム構成.md        # 訴訟フォルダ内のAIエージェント仮想チーム
+│   └── 仮想開発チーム構成.md    # HOUHI開発用の仮想チーム構成
 ├── houhi-drafting-kit.zip      # 書面起案用の指示書一式（setupで生成）
 ├── houhi-drafting-kit/         # 起案キットの展開確認用ファイル
 ├── config.template.json        # 初期設定テンプレート
