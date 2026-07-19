@@ -42,7 +42,17 @@ const nodemailer = require('nodemailer');
 const { ImapFlow } = require('imapflow');
 const { PDFDocument } = require('pdf-lib');
 const { createCanvas, registerFont, loadImage } = require('canvas');
-const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+
+// pdfjs-dist 4+ is ESM-only. Preserve this project's CommonJS output while
+// delegating module loading to Node's native dynamic import.
+const importEsmModule = new Function('specifier', 'return import(specifier)') as
+    (specifier: string) => Promise<any>;
+let pdfjsLibPromise: Promise<any> | undefined;
+
+function loadPdfJs() {
+    pdfjsLibPromise ??= importEsmModule('pdfjs-dist/legacy/build/pdf.mjs');
+    return pdfjsLibPromise;
+}
 const { loadConfig } = require('./lib/config_loader');
 const { convertHtmlToPdf } = require('./lib/pdf_converter');
 const { renderPreTags } = require('./lib/markdown_renderer');
@@ -232,6 +242,7 @@ class SafeCanvasFactory {
 }
 
 async function binarizePdfForFax(inputPath, previewDir, noDither = false) {
+    const pdfjsLib = await loadPdfJs();
     const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
     const previewPaths = [];
     const rawPaths = [];

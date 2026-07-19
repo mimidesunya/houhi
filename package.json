@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node scripts/clean_dist.js && tsc -p . && copyfiles -u 1 \"src/**/*.html\" \"src/**/*.css\" \"src/**/*.md\" dist/src",
     "build:launcher": "dotnet publish platforms/windows/launcher/Launcher.csproj -c Release -p:PublishDir=../../../bin/",
-    "release:win": "npm run ensure:native && npm run setup && node scripts/package_windows_release.js",
+    "release:win": "npm run ensure:native && npm run setup && node scripts/package_pdfjs5_release.js",
     "build:web": "node scripts/build_web.js",
     "serve:web": "node scripts/serve_web.js",
     "ensure:native": "node scripts/ensure_native_modules.js",
@@ -25,7 +25,7 @@
     "nodemailer": "^8.0.1",
     "pagedjs": "^0.4.3",
     "pdf-lib": "^1.17.1",
-    "pdfjs-dist": "^3.11.174"
+    "pdfjs-dist": "^5.7.284"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

@@ -30,7 +30,17 @@ const fs = require('fs');
 const path = require('path');
 const { PDFDocument } = require('pdf-lib');
 const { createCanvas, registerFont } = require('canvas');
-const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+
+// pdfjs-dist 4+ is ESM-only. Preserve this project's CommonJS output while
+// delegating module loading to Node's native dynamic import.
+const importEsmModule = new Function('specifier', 'return import(specifier)') as
+    (specifier: string) => Promise<any>;
+let pdfjsLibPromise: Promise<any> | undefined;
+
+function loadPdfJs() {
+    pdfjsLibPromise ??= importEsmModule('pdfjs-dist/legacy/build/pdf.mjs');
+    return pdfjsLibPromise;
+}
 
 const DEFAULT_DPI = 200;
 const DEFAULT_THRESHOLD = 170;
@@ -296,6 +306,7 @@ if (typeof module !== 'undefined') {
 }
 
 async function convertPdfForFax(inputPath, options) {
+    const pdfjsLib = await loadPdfJs();
     const pdfjsPackageDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
     const standardFontDataUrl = path.join(pdfjsPackageDir, 'standard_fonts') + path.sep;
     const cMapUrl = path.join(pdfjsPackageDir, 'cmaps') + path.sep;
