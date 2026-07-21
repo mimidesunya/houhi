@@ -83,6 +83,8 @@ Rules for alignment blocks:
 - **Write monetary amounts in court style with Japanese `万` units and no comma separators.** Use `金160万円`, `金1万3000円`, and `2万6000円`; do not write `金1,600,000円`, `13,000円`, or mix comma notation with `万` notation. For amounts below 1万円, use plain yen without commas, such as `2000円`.
 - To underline part of a paragraph, heading, or table cell, wrap only that part in `++`: `本件投稿のうち、++権利侵害部分++は次のとおりである。`.
 - To add ruby, use the explicit Aozora-style marker `｜親文字《ルビ》`: `本件｜投稿《とうこう》は次のとおりである。`. Always include `｜` so the base text range is clear.
+- To insert an explicit line break within a paragraph, heading, or table cell, use `<br>` or `<br/>`. Do not add attributes or use other HTML tags.
+- For an unordered bullet list, use either `* item` or `- item`; both forms render identically. A hyphen item containing a key-value colon, such as `- 項目:内容`, is rendered as a list table instead.
 
 ## 6. Table of Contents
 

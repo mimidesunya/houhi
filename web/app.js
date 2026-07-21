@@ -13,18 +13,24 @@ exports.convertMarkdownToCourtHtml = convertMarkdownToCourtHtml;
  * 半角文字を0.5em、全角文字を1emとして計算します。
  */
 function getVisualWidth(text) {
-    let width = 0;
+    let maxWidth = 0;
+    let lineWidth = 0;
     for (let i = 0; i < text.length; i++) {
         const code = text.charCodeAt(i);
+        if (code === 0x000a) {
+            maxWidth = Math.max(maxWidth, lineWidth);
+            lineWidth = 0;
+            continue;
+        }
         // 半角文字（ASCII, 半角カナ）は0.5、それ以外は1
         if ((code >= 0x0020 && code <= 0x007e) || (code >= 0xff61 && code <= 0xff9f)) {
-            width += 0.5;
+            lineWidth += 0.5;
         }
         else {
-            width += 1.0;
+            lineWidth += 1.0;
         }
     }
-    return width;
+    return Math.max(maxWidth, lineWidth);
 }
 function escapeHtmlAttribute(value) {
     return String(value)
@@ -46,7 +52,8 @@ function stripInlineMarkdown(value) {
         .replace(/(?<!\\)｜([^《\r\n]+?)《([^》\r\n]+?)》/g, '$1')
         .replace(/\+\+(.+?)\+\+/g, '$1')
         .replace(new RegExp(escapedPlus, 'g'), '++')
-        .replace(/\\([｜《》])/g, '$1');
+        .replace(/\\([｜《》])/g, '$1')
+        .replace(/<br\s*\/?>/gi, '\n');
 }
 function renderInlineMarkdown(value) {
     const escapedPlus = '\uE000';
@@ -55,7 +62,8 @@ function renderInlineMarkdown(value) {
         .replace(/(?<!\\)｜([^《\r\n]+?)《([^》\r\n]+?)》/g, (_match, baseText, rubyText) => `<ruby>${baseText}<rt>${rubyText}</rt></ruby>`)
         .replace(/\+\+(.+?)\+\+/g, (_match, text) => `<span class="underline">${text}</span>`)
         .replace(new RegExp(escapedPlus, 'g'), '++')
-        .replace(/\\([｜《》])/g, '$1');
+        .replace(/\\([｜《》])/g, '$1')
+        .replace(/&lt;br\s*\/?&gt;/gi, '<br>');
 }
 function stripHtmlComments(value) {
     return String(value || '').replace(/<!--[\s\S]*?-->/g, '');
@@ -440,8 +448,8 @@ function convertMarkdownToCourtHtml(markdown) {
             html += flushEvidenceTable();
             inEvidenceTable = false;
         }
-        // シンプルなリスト形式の処理: * 項目名
-        const simpleListMatch = trimmedLine.match(/^[*＊]\s+(.+)$/);
+        // シンプルなリスト形式の処理: * 項目名、- 項目名
+        const simpleListMatch = trimmedLine.match(/^[*＊-]\s+(.+)$/);
         if (simpleListMatch) {
             if (!inSimpleList) {
                 while (lastLevel > 0) {

@@ -116,6 +116,8 @@ test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI'
     assert.match(rules, /`金1万3000円`/);
     assert.match(rules, /`｜親文字《ルビ》`/);
     assert.match(rules, /Always include `｜`/);
+    assert.match(rules, /use `<br>` or `<br\/>`/);
+    assert.match(rules, /use either `\* item` or `- item`/);
     assert.match(rules, /Treat template examples as format references/);
     assert.match(rules, /ask targeted questions before drafting/);
     assert.match(rules, /`【要確認】`/);

@@ -58,6 +58,16 @@ test('convertMarkdownToCourtHtml: keeps escaped ruby marker literal', () => {
     assert.ok(result.includes('<p>これは｜投稿《とうこう》です。</p>'));
 });
 
+test('convertMarkdownToCourtHtml: converts br tags to inline line breaks', () => {
+    const result = convertMarkdownToCourtHtml('1行目<br>2行目<br/>3行目<br />4行目');
+    assert.ok(result.includes('<p>1行目<br>2行目<br>3行目<br>4行目</p>'));
+});
+
+test('convertMarkdownToCourtHtml: keeps HTML other than plain br tags escaped', () => {
+    const result = convertMarkdownToCourtHtml('本文<br class="unsafe"><script>危険</script>');
+    assert.ok(result.includes('本文&lt;br class="unsafe"&gt;&lt;script&gt;危険&lt;/script&gt;'));
+});
+
 test('convertMarkdownToCourtHtml: handles empty input', () => {
     const result = convertMarkdownToCourtHtml('');
     assert.ok(typeof result === 'string');
@@ -119,6 +129,17 @@ test('convertMarkdownToCourtHtml: converts list-style table', () => {
     const result = convertMarkdownToCourtHtml(md);
     assert.ok(result.includes('項目名'));
     assert.ok(result.includes('値'));
+    assert.ok(result.includes('<table'));
+    assert.ok(!result.includes('<ul>'));
+});
+
+test('convertMarkdownToCourtHtml: accepts asterisks and hyphens for bullet lists', () => {
+    const md = '* アスタリスクの項目\n- ハイフンの項目';
+    const result = convertMarkdownToCourtHtml(md);
+    assert.ok(result.includes('<ul>'));
+    assert.ok(result.includes('<li>アスタリスクの項目</li>'));
+    assert.ok(result.includes('<li>ハイフンの項目</li>'));
+    assert.equal((result.match(/<ul>/g) || []).length, 1);
 });
 
 test('convertMarkdownToCourtHtml: converts numbered colon rows as attachment-style list rows', () => {
