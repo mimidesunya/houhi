@@ -41,18 +41,8 @@ const readline = require('readline');
 const nodemailer = require('nodemailer');
 const { ImapFlow } = require('imapflow');
 const { PDFDocument } = require('pdf-lib');
-const { createCanvas, registerFont, loadImage } = require('canvas');
-
-// pdfjs-dist 4+ is ESM-only. Preserve this project's CommonJS output while
-// delegating module loading to Node's native dynamic import.
-const importEsmModule = new Function('specifier', 'return import(specifier)') as
-    (specifier: string) => Promise<any>;
-let pdfjsLibPromise: Promise<any> | undefined;
-
-function loadPdfJs() {
-    pdfjsLibPromise ??= importEsmModule('pdfjs-dist/legacy/build/pdf.mjs');
-    return pdfjsLibPromise;
-}
+const { createCanvas, GlobalFonts, loadImage } = require('@napi-rs/canvas');
+const { loadPdfJs } = require('./lib/pdfjs_loader');
 const { loadConfig } = require('./lib/config_loader');
 const { convertHtmlToPdf } = require('./lib/pdf_converter');
 const { renderPreTags } = require('./lib/markdown_renderer');
@@ -213,7 +203,7 @@ const JAPANESE_FONT_CANDIDATES = [
 
 function registerJapaneseFonts() {
     for (const c of JAPANESE_FONT_CANDIDATES) {
-        try { if (fs.existsSync(c.path)) registerFont(c.path, { family: c.family }); } catch (_) {}
+        try { if (fs.existsSync(c.path)) GlobalFonts.registerFromPath(c.path, c.family); } catch (_) {}
     }
 }
 

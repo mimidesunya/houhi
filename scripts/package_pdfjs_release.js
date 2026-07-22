@@ -15,7 +15,13 @@ const requiredFiles = [
     path.join('legacy', 'build', 'pdf.mjs'),
     path.join('legacy', 'build', 'pdf.worker.mjs'),
 ];
-const requiredDirectories = ['image_decoders', 'wasm', 'iccs'];
+const requiredDirectories = ['image_decoders'];
+const requiredRuntimeFiles = [
+    path.join('app', 'dist', 'src', 'lib', 'pdfjs_loader.js'),
+    path.join('app', 'node_modules', '@napi-rs', 'canvas', 'index.js'),
+    path.join('app', 'node_modules', '@napi-rs', 'canvas-win32-x64-msvc', 'skia.win32-x64-msvc.node'),
+    path.join('runtime', 'node', 'node.exe'),
+];
 
 function formatTimestamp(date) {
     const pad = value => String(value).padStart(2, '0');
@@ -163,6 +169,54 @@ function postprocessPdfJsAssets(options = {}) {
     }
 }
 
+function assertReleaseRuntime(targetPackageDir = packageDir, targetZipPath) {
+    for (const relativePath of requiredRuntimeFiles) {
+        const targetPath = path.join(targetPackageDir, relativePath);
+        assertInside(targetPackageDir, targetPath);
+        if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isFile()) {
+            throw new Error(`Release output is missing PDF runtime file: ${targetPath}`);
+        }
+    }
+
+    const appDir = path.join(targetPackageDir, 'app');
+    const nodePath = path.join(targetPackageDir, 'runtime', 'node', 'node.exe');
+    const probe = [
+        "const { createCanvas } = require('@napi-rs/canvas');",
+        "const canvas = createCanvas(1, 1);",
+        "const context = canvas.getContext('2d');",
+        "context.fillStyle = '#000';",
+        "context.fillRect(0, 0, 1, 1);",
+        "if (context.getImageData(0, 0, 1, 1).data[3] !== 255) process.exit(2);",
+        "require('./dist/src/lib/pdfjs_loader.js').loadPdfJs()",
+        "  .then(pdfjs => { if (typeof pdfjs.getDocument !== 'function') process.exit(3); })",
+        "  .catch(error => { console.error(error); process.exit(4); });",
+    ].join('');
+    const result = childProcess.spawnSync(nodePath, ['-e', probe], {
+        cwd: appDir,
+        encoding: 'utf-8',
+        windowsHide: true,
+        shell: false,
+    });
+    if (result.error) {
+        throw result.error;
+    }
+    if (result.status !== 0) {
+        const details = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+        throw new Error(`Packaged PDF runtime probe failed with status ${result.status}${details ? `:\n${details}` : ''}`);
+    }
+
+    if (targetZipPath) {
+        const zip = new AdmZip(targetZipPath);
+        const prefix = `${path.basename(targetPackageDir)}/`;
+        for (const relativePath of requiredRuntimeFiles) {
+            const zipEntryPath = prefix + relativePath.replace(/\\/g, '/');
+            if (!zip.getEntry(zipEntryPath)) {
+                throw new Error(`ZIP output is missing PDF runtime file: ${relativePath}`);
+            }
+        }
+    }
+}
+
 function main() {
     const releaseTimestamp = process.env.HOUHI_RELEASE_TIMESTAMP || formatTimestamp(new Date());
     const releaseLabel = sanitizeReleaseLabel(process.env.HOUHI_RELEASE_LABEL || process.env.GITHUB_REF_NAME);
@@ -185,7 +239,8 @@ function main() {
     }
 
     postprocessPdfJsAssets({ zipPath });
-    console.log('[release] PDF.js 5 assets verified in release folder and ZIP');
+    assertReleaseRuntime(packageDir, zipPath);
+    console.log('[release] PDF.js and Canvas runtime verified in release folder and ZIP');
 }
 
 if (require.main === module) {
@@ -194,7 +249,9 @@ if (require.main === module) {
 
 module.exports = {
     assertInside,
+    assertReleaseRuntime,
     postprocessPdfJsAssets,
     requiredDirectories,
     requiredFiles,
+    requiredRuntimeFiles,
 };

@@ -275,7 +275,7 @@ PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine
 | :--- | :--- |
 | `npm run gui` | TypeScript をビルドして GUI を起動 |
 | `npm run build` | TypeScript をビルド（`dist/` に出力） |
-| `npm run ensure:native` | `canvas` などのネイティブ依存を現在のOS向けに確認・再構築 |
+| `npm run ensure:native` | `@napi-rs/canvas` のネイティブ描画を現在のOS向けに確認・再構築 |
 | `npm run build:launcher` | Windows 用開発ランチャー `bin/houhi.exe` を Native AOT で再生成 |
 | `npm run setup` | ビルド後に `houhi-drafting-kit.zip` と初期設定を生成 |
 | `npm test` | ビルド後にユニットテストを実行 |

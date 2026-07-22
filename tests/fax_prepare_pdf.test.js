@@ -1,5 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { PDFDocument } = require('pdf-lib');
+const fontkit = require('@pdf-lib/fontkit');
+const { createCanvas } = require('@napi-rs/canvas');
+const { loadPdfJs } = require('../dist/src/lib/pdfjs_loader.js');
 
 const {
     computeLuminanceData,
@@ -7,7 +14,8 @@ const {
     detectPhotoContent,
     toFaxBinaryAuto,
     toFaxBinary,
-    parseArgs
+    parseArgs,
+    convertPdfForFax
 } = require('../dist/src/fax_prepare_pdf.js');
 
 // ─── ヘルパー: ImageData風オブジェクト生成 ──────────────────
@@ -22,6 +30,65 @@ function makeImageData(width, height, fillFn) {
         }
     }
     return { data, width, height };
+}
+
+class TestCanvasFactory {
+    create(width, height) {
+        const canvas = createCanvas(Math.ceil(width), Math.ceil(height));
+        return { canvas, context: canvas.getContext('2d') };
+    }
+
+    reset(canvasAndContext, width, height) {
+        canvasAndContext.canvas.width = Math.ceil(width);
+        canvasAndContext.canvas.height = Math.ceil(height);
+    }
+
+    destroy(canvasAndContext) {
+        canvasAndContext.canvas = null;
+        canvasAndContext.context = null;
+    }
+}
+
+async function countNonWhitePixels(pdfPath) {
+    const pdfjsLib = await loadPdfJs();
+    const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
+    const source = await pdfjsLib.getDocument({
+        data: new Uint8Array(fs.readFileSync(pdfPath)),
+        standardFontDataUrl: path.join(pdfjsDir, 'standard_fonts') + path.sep,
+        cMapUrl: path.join(pdfjsDir, 'cmaps') + path.sep,
+        cMapPacked: true,
+        CanvasFactory: TestCanvasFactory,
+        useSystemFonts: false,
+        disableFontFace: true,
+        useWorkerFetch: false,
+        isEvalSupported: false,
+    }).promise;
+
+    try {
+        const page = await source.getPage(1);
+        const viewport = page.getViewport({ scale: 1 });
+        const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+        const context = canvas.getContext('2d');
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({
+            canvasContext: context,
+            viewport,
+            canvasFactory: new TestCanvasFactory(),
+            background: 'rgb(255,255,255)',
+        }).promise;
+
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+        let nonWhitePixels = 0;
+        for (let index = 0; index < pixels.length; index += 4) {
+            if (pixels[index] < 250 || pixels[index + 1] < 250 || pixels[index + 2] < 250) {
+                nonWhitePixels++;
+            }
+        }
+        return nonWhitePixels;
+    } finally {
+        await source.destroy();
+    }
 }
 
 // ─── computeLuminanceData ───────────────────────────────────
@@ -235,4 +302,34 @@ test('parseArgs: combines multiple options', () => {
     assert.equal(result.auto, true);
     assert.equal(result.dpi, 150);
     assert.deepEqual(result.inputFiles, ['a.pdf', 'b.pdf']);
+});
+
+test('convertPdfForFax: preserves embedded-font glyphs when rasterizing a PDF', async (t) => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-fax-render-'));
+    t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+    const inputPath = path.join(tempRoot, 'input.pdf');
+    const source = await PDFDocument.create();
+    source.registerFontkit(fontkit);
+    const pdfjsDir = path.dirname(require.resolve('pdfjs-dist/package.json'));
+    const fontBytes = fs.readFileSync(path.join(pdfjsDir, 'standard_fonts', 'LiberationSans-Regular.ttf'));
+    const font = await source.embedFont(fontBytes, { subset: true });
+    const page = source.addPage([200, 300]);
+    page.drawText('Embedded font smoke test', { x: 20, y: 150, size: 14, font });
+    fs.writeFileSync(inputPath, await source.save());
+
+    const outputPath = await convertPdfForFax(inputPath, {
+        dpi: 72,
+        threshold: 170,
+        auto: false,
+    });
+
+    assert.equal(outputPath, path.join(tempRoot, 'input_fax.pdf'));
+    assert.ok(fs.statSync(outputPath).size > 0);
+    const output = await PDFDocument.load(fs.readFileSync(outputPath));
+    assert.equal(output.getPageCount(), 1);
+    assert.ok(
+        await countNonWhitePixels(outputPath) > 100,
+        'embedded-font glyphs must not become a blank page',
+    );
 });

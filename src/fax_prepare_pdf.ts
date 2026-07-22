@@ -29,18 +29,8 @@
 const fs = require('fs');
 const path = require('path');
 const { PDFDocument } = require('pdf-lib');
-const { createCanvas, registerFont } = require('canvas');
-
-// pdfjs-dist 4+ is ESM-only. Preserve this project's CommonJS output while
-// delegating module loading to Node's native dynamic import.
-const importEsmModule = new Function('specifier', 'return import(specifier)') as
-    (specifier: string) => Promise<any>;
-let pdfjsLibPromise: Promise<any> | undefined;
-
-function loadPdfJs() {
-    pdfjsLibPromise ??= importEsmModule('pdfjs-dist/legacy/build/pdf.mjs');
-    return pdfjsLibPromise;
-}
+const { createCanvas, GlobalFonts } = require('@napi-rs/canvas');
+const { loadPdfJs } = require('./lib/pdfjs_loader');
 
 const DEFAULT_DPI = 200;
 const DEFAULT_THRESHOLD = 170;
@@ -68,8 +58,9 @@ function registerJapaneseFonts() {
             if (!fs.existsSync(candidate.path)) {
                 continue;
             }
-            registerFont(candidate.path, { family: candidate.family });
-            loaded++;
+            if (GlobalFonts.registerFromPath(candidate.path, candidate.family)) {
+                loaded++;
+            }
         } catch (error) {
             // フォント読み込み失敗時は処理継続
         }
@@ -302,7 +293,15 @@ function toFaxBinary(imageData, threshold) {
 
 // module.exports for testing
 if (typeof module !== 'undefined') {
-    module.exports = { computeLuminanceData, otsuThreshold, detectPhotoContent, toFaxBinaryAuto, toFaxBinary, parseArgs };
+    module.exports = {
+        computeLuminanceData,
+        otsuThreshold,
+        detectPhotoContent,
+        toFaxBinaryAuto,
+        toFaxBinary,
+        parseArgs,
+        convertPdfForFax,
+    };
 }
 
 async function convertPdfForFax(inputPath, options) {
@@ -415,7 +414,7 @@ async function main() {
         ? `dpi=${options.dpi}, mode=auto (ヒストグラム自動調整)`
         : `dpi=${options.dpi}, threshold=${options.threshold}`;
     console.log(`FAX変換を開始します (${modeLabel})`);
-    console.log(`Canvas backend: ${require.resolve('canvas')}`);
+    console.log(`Canvas backend: ${require.resolve('@napi-rs/canvas')}`);
     console.log(`Japanese fonts registered: ${loadedFonts}`);
     console.log('─'.repeat(50));
 

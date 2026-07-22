@@ -3,11 +3,20 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const repoRoot = path.resolve(__dirname, '..');
-const canvasPackagePath = path.join(repoRoot, 'node_modules', 'canvas', 'package.json');
+const canvasModulePath = path.join(repoRoot, 'node_modules', '@napi-rs', 'canvas');
+const canvasPackagePath = path.join(canvasModulePath, 'package.json');
 
 function canLoadCanvas() {
     try {
-        require(path.join(repoRoot, 'node_modules', 'canvas'));
+        const { createCanvas } = require(canvasModulePath);
+        const canvas = createCanvas(1, 1);
+        const context = canvas.getContext('2d');
+        context.fillStyle = '#000000';
+        context.fillRect(0, 0, 1, 1);
+        const pixel = context.getImageData(0, 0, 1, 1).data;
+        if (pixel[0] !== 0 || pixel[1] !== 0 || pixel[2] !== 0 || pixel[3] !== 255) {
+            throw new Error('@napi-rs/canvas produced an unexpected test pixel.');
+        }
         return true;
     } catch (error) {
         const message = String(error && error.message ? error.message : error);
@@ -32,7 +41,7 @@ function canLoadCanvas() {
 
 function rebuildCanvas() {
     const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    const result = spawnSync(npmCommand, ['rebuild', 'canvas'], {
+    const result = spawnSync(npmCommand, ['rebuild', '@napi-rs/canvas'], {
         cwd: repoRoot,
         env: process.env,
         stdio: 'inherit'
@@ -49,18 +58,19 @@ function rebuildCanvas() {
 
 function main() {
     if (!fs.existsSync(canvasPackagePath)) {
-        return;
+        console.error('[native] @napi-rs/canvas is not installed. Run npm install first.');
+        process.exit(1);
     }
 
     if (canLoadCanvas()) {
         return;
     }
 
-    console.log(`[native] rebuilding canvas for ${process.platform}...`);
+    console.log(`[native] rebuilding @napi-rs/canvas for ${process.platform}...`);
     rebuildCanvas();
 
     if (!canLoadCanvas()) {
-        console.error('[native] canvas is still unavailable after rebuild.');
+        console.error('[native] @napi-rs/canvas is still unavailable after rebuild.');
         process.exit(1);
     }
 }

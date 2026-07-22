@@ -138,38 +138,6 @@ function shouldCopyElectronRuntime(sourcePath, _destinationPath, entry) {
     return true;
 }
 
-function shouldCopyCanvasEntry(relative, entry) {
-    const parts = relative.split('/');
-
-    if (parts.length === 1) {
-        return true;
-    }
-
-    const child = parts[1];
-    if (child === 'build') {
-        if (parts.length <= 3) {
-            return true;
-        }
-
-        if (parts[2] !== 'Release') {
-            return false;
-        }
-
-        if (entry.isDirectory()) {
-            return false;
-        }
-
-        const extension = path.extname(entry.name).toLowerCase();
-        return extension === '.dll' || extension === '.node';
-    }
-
-    return child === 'lib' ||
-        child === 'index.js' ||
-        child === 'package.json' ||
-        child === 'Readme.md' ||
-        child === 'CHANGELOG.md';
-}
-
 function shouldCopyPdfJsDistEntry(relative, entry) {
     const parts = relative.split('/');
 
@@ -294,7 +262,6 @@ function shouldCopyNodeModule(sourcePath, _destinationPath, entry) {
         }
     }
 
-    if (top === 'canvas') return shouldCopyCanvasEntry(relative, entry);
     if (top === 'pdfjs-dist') return shouldCopyPdfJsDistEntry(relative, entry);
     if (top === 'pdf-lib') return shouldCopyPdfLibEntry(relative, entry);
     if (top === '@pdf-lib') return shouldCopyPdfLibScopeEntry(relative, entry);
