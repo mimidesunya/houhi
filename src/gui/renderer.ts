@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const toolDescriptions: Record<ToolCardKey, string> = {
         pdf: 'Markdown/HTMLをPDFへ変換',
+        word: 'Markdownを編集可能なWord（.docx）へ変換',
         ai_archive: 'AI分析用データをZIP化',
         stamp: 'PDFに号証番号を赤字でスタンプ',
         fax_send: 'mfax経由でFAX送信',
@@ -58,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const isScriptKey = (value: any): value is ScriptKey => {
-        return value === 'pdf' || value === 'ai_archive' || value === 'stamp' || value === 'fax_send' || value === 'transcribe_audio' || value === 'address_label';
+        return value === 'pdf' || value === 'word' || value === 'ai_archive' || value === 'stamp' || value === 'fax_send' || value === 'transcribe_audio' || value === 'address_label';
     };
 
     const isPdfEngine = (value: any) => value === 'chrome' || value === 'copper';

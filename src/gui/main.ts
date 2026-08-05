@@ -205,6 +205,7 @@ app.on('window-all-closed', () => {
 // Script definitions
 const SCRIPTS = {
     'pdf': { path: 'src/convert_to_pdf.js', name: '裁判文書PDF作成' },
+    'word': { path: 'src/convert_to_word.js', name: '裁判文書Word作成' },
     'ai_archive': { path: 'src/archive_for_ai.js', name: 'AI分析用アーカイブ作成' },
     'stamp': { path: 'src/stamp_evidence_number.js', name: '号証スタンプ' },
     'fax_send': { path: 'src/fax_send.js', name: 'mfax FAX送信' },

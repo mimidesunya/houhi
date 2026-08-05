@@ -18,8 +18,12 @@ const requiredFiles = [
 const requiredDirectories = ['image_decoders'];
 const requiredRuntimeFiles = [
     path.join('app', 'dist', 'src', 'lib', 'pdfjs_loader.js'),
+    path.join('app', 'dist', 'src', 'lib', 'court_document_model.js'),
+    path.join('app', 'dist', 'src', 'lib', 'docx_converter.js'),
+    path.join('app', 'dist', 'src', 'convert_to_word.js'),
     path.join('app', 'node_modules', '@napi-rs', 'canvas', 'index.js'),
     path.join('app', 'node_modules', '@napi-rs', 'canvas-win32-x64-msvc', 'skia.win32-x64-msvc.node'),
+    path.join('app', 'node_modules', 'docx', 'dist', 'index.cjs'),
     path.join('runtime', 'node', 'node.exe'),
 ];
 
@@ -182,13 +186,18 @@ function assertReleaseRuntime(targetPackageDir = packageDir, targetZipPath) {
     const nodePath = path.join(targetPackageDir, 'runtime', 'node', 'node.exe');
     const probe = [
         "const { createCanvas } = require('@napi-rs/canvas');",
+        "const { Document, Packer, Paragraph } = require('docx');",
         "const canvas = createCanvas(1, 1);",
         "const context = canvas.getContext('2d');",
         "context.fillStyle = '#000';",
         "context.fillRect(0, 0, 1, 1);",
         "if (context.getImageData(0, 0, 1, 1).data[3] !== 255) process.exit(2);",
-        "require('./dist/src/lib/pdfjs_loader.js').loadPdfJs()",
-        "  .then(pdfjs => { if (typeof pdfjs.getDocument !== 'function') process.exit(3); })",
+        "const wordDocument = new Document({ sections: [{ children: [new Paragraph('HOUHI Word probe')] }] });",
+        "Promise.all([require('./dist/src/lib/pdfjs_loader.js').loadPdfJs(), Packer.toBuffer(wordDocument)])",
+        "  .then(([pdfjs, docxBuffer]) => {",
+        "    if (typeof pdfjs.getDocument !== 'function') process.exit(3);",
+        "    if (!Buffer.isBuffer(docxBuffer) || docxBuffer.length < 1000) process.exit(5);",
+        "  })",
         "  .catch(error => { console.error(error); process.exit(4); });",
     ].join('');
     const result = childProcess.spawnSync(nodePath, ['-e', probe], {
@@ -202,7 +211,7 @@ function assertReleaseRuntime(targetPackageDir = packageDir, targetZipPath) {
     }
     if (result.status !== 0) {
         const details = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
-        throw new Error(`Packaged PDF runtime probe failed with status ${result.status}${details ? `:\n${details}` : ''}`);
+        throw new Error(`Packaged PDF/Word runtime probe failed with status ${result.status}${details ? `:\n${details}` : ''}`);
     }
 
     if (targetZipPath) {
@@ -240,7 +249,7 @@ function main() {
 
     postprocessPdfJsAssets({ zipPath });
     assertReleaseRuntime(packageDir, zipPath);
-    console.log('[release] PDF.js and Canvas runtime verified in release folder and ZIP');
+    console.log('[release] PDF.js, Canvas, and Word runtime verified in release folder and ZIP');
 }
 
 if (require.main === module) {

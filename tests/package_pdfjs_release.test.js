@@ -8,6 +8,7 @@ const {
     postprocessPdfJsAssets,
     requiredDirectories,
     requiredFiles,
+    requiredRuntimeFiles,
 } = require('../scripts/package_pdfjs_release.js');
 
 test('PDF raster dependencies stay pinned to the compatible runtime pair', () => {
@@ -15,6 +16,13 @@ test('PDF raster dependencies stay pinned to the compatible runtime pair', () =>
     assert.equal(packageJson.dependencies['pdfjs-dist'], '4.10.38');
     assert.equal(packageJson.dependencies['@napi-rs/canvas'], '0.1.100');
     assert.equal(packageJson.dependencies.canvas, undefined);
+});
+
+test('Word generation dependency stays pinned for reproducible Windows releases', () => {
+    const packageJson = require('../package.json');
+    assert.equal(packageJson.dependencies.docx, '9.7.1');
+    assert.ok(requiredRuntimeFiles.includes(path.join('app', 'node_modules', 'docx', 'dist', 'index.cjs')));
+    assert.ok(requiredRuntimeFiles.includes(path.join('app', 'dist', 'src', 'convert_to_word.js')));
 });
 
 test('PDF.js release assets: copies every runtime asset required by the pinned version', (t) => {

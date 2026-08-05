@@ -2,7 +2,7 @@
 
 **「法匪（HOUHI）」は、法的文書の作成・分析プロセスをAIと連携して革新する、法律実務家のためのリーガルテックツールです。**
 
-Markdown形式で裁判文書を起案し、チャットAIと組み合わせて証拠分析・書面起案・PDF生成までを一貫して行えます。
+Markdown形式で裁判文書を起案し、チャットAIと組み合わせて証拠分析・書面起案・Word編集用文書・提出用PDFの生成までを一貫して行えます。
 
 ## 特徴
 
@@ -15,6 +15,7 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 | ツール名 | 機能概要 | 対応形式 |
 | :--- | :--- | :--- |
 | **PDF作成** | Markdown / HTML を裁判所提出用PDF（CSS組版）に変換します。既定は Chrome、必要に応じて Copper PDF へ切り替えられます。 | `.md`, `.html` |
+| **Word作成** | Markdownを、あとから編集できるWord文書へ変換します。同名ファイルは上書きせず、A4・裁判文書用余白・見出し・表・画像などを `.docx` に反映します。 | `.md` |
 | **起案** | ChatGPTに渡す `houhi-drafting-kit.zip` の場所を開き、書面起案の使い方を案内します。 | `.zip` |
 | **AIアーカイブ** | フォルダ内の `.md` / `.txt` を `case/` に収録し、`START_HERE.md`・目録・manifest・起案指示書付きのZIPを作成します（主にChatGPT向け）。 | フォルダ |
 | **号証スタンプ** | `甲1_契約書.pdf`、`乙2_メール.pdf` のようなファイル名先頭から証拠番号を読み取り、PDF / 画像の右上に赤文字で追記します。複数ファイルは証拠番号順に結合できます。 | `.pdf`, `.jpg`, `.png` |
@@ -22,7 +23,7 @@ Markdown形式で裁判文書を起案し、チャットAIと組み合わせて�
 | **mfax FAX送信** | 送付書Markdownと1件以上の添付PDF、またはPDFのみをFAX用に二値化し、プレビュー確認後にメールFAXとして送信します。 | `.pdf`, `.md` |
 | **FAX PDF化** | PDFを画像化・二値化して、FAX向けのPDFを作成します（CLI向け補助ツール）。 | `.pdf` |
 
-OCR、文書ごとの分割・結合は [`mimi-ocr`](https://github.com/mimidesunya/mimi-ocr) 側を使用してください。PDF 作成、号証スタンプ、証拠 PDF の結合、FAX 向け PDF 化は [`HOUHI`](https://github.com/mimidesunya/houhi) 側で扱います。利用環境に HOUHI がない場合は、先に HOUHI のセットアップをしてください。
+OCR、文書ごとの分割・結合は [`mimi-ocr`](https://github.com/mimidesunya/mimi-ocr) 側を使用してください。Word・PDF作成、号証スタンプ、証拠PDFの結合、FAX向けPDF化は [`HOUHI`](https://github.com/mimidesunya/houhi) 側で扱います。利用環境に HOUHI がない場合は、先に HOUHI のセットアップをしてください。
 
 各ツールの詳細は [docs/ツール詳細.md](docs/%E3%83%84%E3%83%BC%E3%83%AB%E8%A9%B3%E7%B4%B0.md) を参照してください。
 
@@ -110,13 +111,15 @@ npm run serve:web -- 8080
 3. 処理ログは画面下部または別ウィンドウに表示されます。
 4. 出力ファイルは、多くの場合、入力ファイルと同じ場所に生成されます。
 
-GUI には `PDF作成`、`AIアーカイブ`、`号証スタンプ`、`FAX送信`、`起案`、`設定` のカードがあります。各カードへ直接ドロップすると、そのツールに切り替えたうえで処理を実行します。
+GUI には `PDF作成`、`Word作成`、`AIアーカイブ`、`号証スタンプ`、`FAX送信`、`起案`、`設定` などのカードがあります。各カードへ直接ドロップすると、そのツールに切り替えたうえで処理を実行します。
 
 選択中のツールに応じて、次のオプションが表示されます。
 
 - `PDF作成`: PDFエンジン（Chrome / Copper PDF）
 - `号証スタンプ`: 結合PDFに空白ページを入れない（FAX向け）
 - `FAX送信`: ディザリングOFF（写真なし文書向け）
+
+`Word作成` には `.md` ファイルをドロップします。入力と同じ場所へ同じ基礎名の `.docx` を作り、既存の同名Wordファイルがある場合は `_2`、`_3` と連番を付けて原本を保護します。Wordを開いたときのフィールド更新は要求しないため、目次を更新する場合は `Ctrl+A`、`F9` を押してください。Wordは編集用です。PDFとは改ページ、表幅、目次のページ番号が異なる場合があるため、提出・印刷にはWordで最終確認したうえで `PDF作成` を使用してください。
 
 `音声認識` は、音声ファイルをドロップすると同じフォルダにMarkdownを生成します。画面のオプションで `一般` と `法匪（反訳書）`、および OpenAI `gpt-4o-transcribe-diarize` / Gemini `gemini-3.5-flash` を選択できます。法匪では `YYYY-MM-DD_反訳書_表題.md`、一般では `YYYY-MM-DD_音声認識_表題.md` になります。日付は反訳結果から推定し、取れない場合は音声ファイルの更新日を使います。
 
@@ -269,6 +272,8 @@ FAX送信を使う場合は、`mail` と `mfax` の設定が必要です。`mfax
 
 PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine=copper` または GUI の「PDFエンジン」から Copper PDF に切り替えられます。Chrome を自動検出できない場合は `pdf.chromePath` に実行ファイルのパスを設定してください。
 
+Word作成はGUIの `Word作成` へ `.md` をドロップするか、ビルド後に `node dist/src/convert_to_word.js --no-open <書面.md>` で実行できます。WordやLibreOfficeがインストールされていないPCでも `.docx` 自体は生成できます。
+
 ### 開発者向けコマンド
 
 | コマンド | 内容 |
@@ -333,7 +338,7 @@ npm run build:launcher
 ├── src/                        # TypeScript ソースコード
 │   ├── base/                   # 文書書式（CSS/HTML）定義・サンプル
 │   ├── gui/                    # GUI アプリケーション
-│   ├── lib/                    # 共通ライブラリ（設定読込・PDF変換など）
+│   ├── lib/                    # 共通ライブラリ（設定読込・PDF/Word変換など）
 │   ├── templates/              # 書面テンプレート
 │   └── *.ts                    # 各ツールスクリプト
 ├── tests/                      # ユニットテスト
@@ -348,5 +353,6 @@ npm run build:launcher
 - **言語**: Node.js / TypeScript
 - **UI**: Electron
 - **PDF生成**: Copper PDF (CTI) / Chrome headless
+- **Word生成**: docx（WordprocessingML）
 - **OCR**: `mimi-ocr` を別プロジェクトとして利用
 - **マークアップ**: HTML5 + CSS 2.1

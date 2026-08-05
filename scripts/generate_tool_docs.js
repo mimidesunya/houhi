@@ -8,6 +8,7 @@ const outputPath = path.join(repoRoot, 'docs', 'ツール詳細.md');
 const DISPLAY_NAMES = {
     archive_for_ai: 'AIアーカイブ',
     convert_to_pdf: 'PDF変換',
+    convert_to_word: 'Word変換',
     fax_prepare_pdf: 'FAX PDF化',
     fax_send: 'mfax FAX送信',
     stamp_evidence_number: '号証スタンプ'
@@ -15,6 +16,7 @@ const DISPLAY_NAMES = {
 
 const ORDER = [
     'convert_to_pdf',
+    'convert_to_word',
     'archive_for_ai',
     'stamp_evidence_number',
     'fax_send',

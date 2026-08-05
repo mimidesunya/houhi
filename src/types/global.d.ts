@@ -4,6 +4,7 @@ declare module 'pdfjs-dist/legacy/build/pdf.mjs';
 declare global {
     type ScriptKey =
         | 'pdf'
+        | 'word'
         | 'ai_archive'
         | 'stamp'
         | 'fax_send'

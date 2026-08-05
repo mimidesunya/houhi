@@ -1,11 +1,13 @@
 # HOUHI 0.1 alpha 1
 
-HOUHI の初回アルファ公開版です。Windows で本人訴訟フォルダを扱うエージェント補助ツールとして、裁判文書 Markdown、PDF 作成、AI アーカイブ、号証スタンプ、FAX 用 PDF 化、音声反訳などをまとめています。
+HOUHI の初回アルファ公開版です。Windows で本人訴訟フォルダを扱うエージェント補助ツールとして、裁判文書 Markdown、Word・PDF作成、AI アーカイブ、号証スタンプ、FAX 用 PDF 化、音声反訳などをまとめています。
 
 ## 主な内容
 
 - Windows 向け GUI と `houhi.exe` ランチャー
 - 裁判所提出文書向け Markdown から PDF への変換
+- 裁判文書 Markdown から編集用 Word（`.docx`）への変換（既存ファイル非上書き）
+- Word文書を開いたときに不要なフィールド更新確認を表示しない安全な出力
 - ChatGPT 等に渡す AI アーカイブ ZIP の作成
 - 証拠番号に基づく号証スタンプ
 - FAX 送信用の PDF 二値化と送信補助
