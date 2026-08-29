@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const { convertMarkdownToCourtHtml } = require('../dist/src/base/court_markdown.js');
 
@@ -13,6 +15,18 @@ test('convertMarkdownToCourtHtml: converts heading to HTML', () => {
 test('convertMarkdownToCourtHtml: converts paragraph text', () => {
     const result = convertMarkdownToCourtHtml('これは本文のテストです。');
     assert.ok(result.includes('これは本文のテストです。'));
+});
+
+test('convertMarkdownToCourtHtml: renders the administrative communication without unsupported alignment text', () => {
+    const markdown = fs.readFileSync(path.resolve('src/templates/訴訟.事務連絡.md'), 'utf-8');
+    const result = convertMarkdownToCourtHtml(markdown);
+
+    assert.match(result, /<div class="doc-title">事務連絡<\/div>/);
+    assert.match(result, /class="right"/);
+    assert.match(result, /class="left"/);
+    assert.match(result, /事件番号/);
+    assert.match(result, /上記事件について/);
+    assert.doesNotMatch(result, /中央|--中央|AI NOTE/);
 });
 
 test('convertMarkdownToCourtHtml: converts underline inline syntax', () => {
@@ -207,7 +221,7 @@ test('convertMarkdownToCourtHtml: preserves list hierarchy around images', () =>
     ].join('\n');
     const result = convertMarkdownToCourtHtml(md);
     const imageIndex = result.indexOf('<div class="image-block">');
-    const secondItemIndex = result.indexOf('<p>画像の後。</p>');
+    const secondItemIndex = result.indexOf('<p><span class="num">(2) </span>画像の後。</p>');
     const closeLevelThreeIndex = result.indexOf('</ol>', imageIndex);
     assert.ok(imageIndex > -1);
     assert.ok(secondItemIndex > imageIndex);
@@ -254,12 +268,12 @@ test('convertMarkdownToCourtHtml: converts first two marker levels to headings f
     const result = convertMarkdownToCourtHtml(md);
     assert.ok(result.includes('<h1>第1　本書面の要旨</h1>'));
     assert.ok(!result.includes('<h2>1　原告らは代表者ではない。</h2>'));
-    assert.ok(result.includes('<p>原告らは代表者ではない。</p>'));
+    assert.ok(result.includes('<p><span class="num">1　</span>原告らは代表者ではない。</p>'));
     assert.ok(result.includes('<h2>2　任意的訴訟担当</h2>'));
     assert.ok(!result.includes('<h2>3　本文として扱われる番号行である。</h2>'));
-    assert.ok(result.includes('<p>本文として扱われる番号行である。</p>'));
+    assert.ok(result.includes('<p><span class="num">3　</span>本文として扱われる番号行である。</p>'));
     assert.ok(!result.includes('<h3>(1)　これは本文階層である。</h3>'));
-    assert.ok(result.includes('<p>これは本文階層である。</p>'));
+    assert.ok(result.includes('<p><span class="num">(1) </span>これは本文階層である。</p>'));
 });
 
 // ─── 複合文書 ──────────────────────────────────────────────
