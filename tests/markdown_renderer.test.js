@@ -202,6 +202,34 @@ test('generated web drafting data: separates AI notes from user-facing template 
     assert.match(template.content, /^# 上告理由書$/m);
 });
 
+test('administrative communication template stays concise and is available in drafting data', () => {
+    const templatePath = path.resolve('src/templates/訴訟.事務連絡.md');
+    const source = fs.readFileSync(templatePath, 'utf-8');
+    const data = readWebAssignment('web/drafting-data.js', 'HOUHI_DRAFTING_DATA');
+    const generated = data.templates.find(item => item.id === '訴訟.事務連絡.md');
+
+    assert.match(source, /^# 事務連絡$/m);
+    assert.match(source, /令和〇年〇月〇日/);
+    assert.match(source, /〇〇地方裁判所第〇民事部　御中/);
+    assert.match(source, /- 差出人:〇〇　〇〇/);
+    assert.match(source, /- 事件番号:令和〇年（ワ）第〇〇号/);
+    assert.match(source, /上記事件について、〇〇とご連絡します。/);
+    assert.doesNotMatch(source, /〒|住所|電話|FAX/);
+    assert.doesNotMatch(source, /^記$|^以上$/m);
+    assert.doesNotMatch(source, /### --中央|^中央$/m);
+    assert.deepEqual(
+        [...source.matchAll(/^### (.*)$/gm)].map(match => match[1]),
+        ['--右', '--', '--左', '--', '--右', '--', '--左', '--']
+    );
+
+    assert.ok(generated);
+    assert.equal(generated.name, '訴訟.事務連絡');
+    assert.match(generated.content, /^# 事務連絡$/m);
+    assert.match(generated.aiNotes, /confirm only the date, destination court or division, sender, case number, and short message/);
+    assert.doesNotMatch(generated.content, /<!--|-->|AI NOTE/);
+    assert.doesNotMatch(generated.content, /### --中央|^中央$/m);
+});
+
 test('generated archive instructions: move template AI notes outside Markdown code blocks', () => {
     const data = readWebAssignment('web/archive-data.js', 'HOUHI_ARCHIVE_DATA');
     const instruction = data.instructions.find(item => item.displayPath === 'instructions/訴訟.上告理由書.md');

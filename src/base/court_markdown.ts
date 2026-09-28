@@ -254,13 +254,57 @@ export function convertMarkdownToCourtHtml(markdown) {
         const dataRows = evidenceTableBuffer.slice(1); // セパレーターは既に除外済みのためヘッダーのみスキップ
         
         tableHtml += indent(lastLevel) + '<table class="evidence">' + nl;
-        
+
+        // 列の役割は見出し語で決める（列の順序や有無に依存しない）。
+        // 旧書式「号証｜標目｜原本写｜作成年月日｜作成者｜立証趣旨」でも、
+        // 新法書式「号証｜標目｜作成年月日｜作成者｜立証趣旨｜備考」でも同じ幅指定になる。
+        const evidenceColClass = (header) => {
+            const h = (header || '').replace(/\s/g, '');
+            if (h.includes('号証')) return 'col-no';
+            if (h.includes('標目')) return 'col-title';
+            if (h.includes('原本') || h.includes('写')) return 'col-orig';
+            if (h.includes('年月日')) return 'col-date';
+            if (h.includes('作成者')) return 'col-author';
+            if (h.includes('立証')) return 'col-purpose';
+            if (h.includes('備考')) return 'col-note';
+            return 'col-other';
+        };
+        const colClasses = headerRow.map(c => evidenceColClass(c.trim()));
+
+        // 列幅は固定レイアウトで比例配分する。Copper PDF の自動レイアウトは、
+        // 幅 auto の列が 2 つ以上（標目と立証趣旨）あると一方へ偏るため。
+        // 短い列（号証・原本写し・年月日・作成者・備考）は内容の最大幅（上限あり）、
+        // 標目と立証趣旨は残りを 2:3 で分ける。
+        // getVisualWidth は全角=1・半角=0.5 で数える（= em）。
+        const shortMaxEm = { 'col-no': 5, 'col-orig': 2.5, 'col-date': 5.5, 'col-author': 5, 'col-note': 4.5 };
+        const shortMinEm = { 'col-no': 3, 'col-orig': 2, 'col-date': 4, 'col-author': 3, 'col-note': 3 };
+        const colW = colClasses.map(() => 0);
+        dataRows.forEach(row => row.forEach((cell, i) => {
+            const w = getVisualWidth(stripInlineMarkdown((cell || '').trim()));
+            if (w > colW[i]) colW[i] = w;
+        }));
+        const fixedEm = colClasses.map((cls, i) => {
+            if (cls in shortMaxEm) return Math.min(Math.max(colW[i] + 0.8, shortMinEm[cls]), shortMaxEm[cls]);
+            return 0;
+        });
+        const flexible = colClasses.map(cls => cls === 'col-title' ? 2 : (cls === 'col-purpose' ? 3 : (cls === 'col-other' ? 1 : 0)));
+        // 本文幅を概ね 40em（10.5pt・A4・余白込み）とみて em を % に換算
+        const bodyEm = 38;
+        const fixedTotal = fixedEm.reduce((x, y) => x + y, 0);
+        const flexTotal = flexible.reduce((x, y) => x + y, 0) || 1;
+        const remain = Math.max(bodyEm - fixedTotal, 10);
+        const widthsEm = colClasses.map((cls, i) => fixedEm[i] > 0 ? fixedEm[i] : remain * flexible[i] / flexTotal);
+        const sumEm = widthsEm.reduce((x, y) => x + y, 0);
+        tableHtml += indent(lastLevel + 1) + '<colgroup>'
+            + widthsEm.map(w => `<col style="width:${(100 * w / sumEm).toFixed(1)}%">`).join('')
+            + '</colgroup>' + nl;
+
         // ヘッダー行を生成
         tableHtml += indent(lastLevel + 1) + '<thead>' + nl;
         tableHtml += indent(lastLevel + 2) + '<tr>' + nl;
         headerRow.forEach((cell, i) => {
             const text = cell.trim();
-            tableHtml += indent(lastLevel + 3) + `<th class="col-${i + 1}">${renderInlineMarkdown(text)}</th>` + nl;
+            tableHtml += indent(lastLevel + 3) + `<th class="${colClasses[i]}">${renderInlineMarkdown(text)}</th>` + nl;
         });
         tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
         tableHtml += indent(lastLevel + 1) + '</thead>' + nl;
@@ -347,7 +391,7 @@ export function convertMarkdownToCourtHtml(markdown) {
                 }
                 
                 const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
-                tableHtml += indent(lastLevel + 3) + `<td class="col-${colIndex + 1}"${rowspanAttr}>${renderInlineMarkdown(text)}</td>` + nl;
+                tableHtml += indent(lastLevel + 3) + `<td class="${colClasses[colIndex] || 'col-other'}"${rowspanAttr}>${renderInlineMarkdown(text)}</td>` + nl;
             });
             
             tableHtml += indent(lastLevel + 2) + '</tr>' + nl;

@@ -532,12 +532,14 @@ table.att td:first-child:before {
    ========================================= */
 table.evidence {
     border-collapse: collapse;
+    table-layout: fixed; /* 列幅は colgroup（court_markdown.ts）で比例配分 */
     width: 100%;
     margin: 1.618em 0;
 }
 
 table.evidence th,
 table.evidence td {
+    overflow-wrap: break-word;
     border: 0.5pt solid #000;
     padding: 2pt 4pt;
     vertical-align: top;
@@ -549,31 +551,14 @@ table.evidence th {
     text-align: center;
 }
 
-/* 列幅の設定 */
-.evidence .col-1 {
-    width: 3em; /* 号証 */
+/* 列の体裁（幅は colgroup で決まる。役割クラスは court_markdown.ts の evidenceColClass） */
+.evidence .col-no,
+.evidence .col-date {
+    white-space: nowrap;
 }
 
-.evidence .col-2 {
-    width: auto; /* 標目 */
-}
-
-.evidence .col-3 {
-    width: 2em; /* 原本／写 - 2文字固定 */
+.evidence .col-orig {
     text-align: center;
-}
-
-.evidence .col-4 {
-    width: 5em; /* 作成年月日 */
-    white-space: nowrap; /* ラップ禁止 */
-}
-
-.evidence .col-5 {
-    width: 3em; /* 作成者 */
-}
-
-.evidence .col-6 {
-    width: auto; /* 立証趣旨 */
 }
 
 /* レベルを飛ばして下位リストを開いた場合の中間項目。

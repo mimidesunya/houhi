@@ -38,6 +38,7 @@ type VCardContact = {
     organization: string;
     address: VCardAddress;
     phone: string;
+    nameNote: string;
 };
 
 type ParsedLine = {
@@ -264,6 +265,8 @@ function parseVCard(text: string): VCardContact {
         name,
         organization: first('ORG'),
         phone: first('TEL'),
+        // 氏名の後ろに付ける添え書き（「親展」など）。赤字で表示する。
+        nameNote: first('X-HOUHI-NAME-NOTE'),
         address: {
             postalCode: adrParts[5] || '',
             region: adrParts[4] || '',
@@ -349,6 +352,11 @@ function displayName(contact: VCardContact) {
     return compactSpaces(contact.name || contact.organization || '氏名未設定');
 }
 
+// 宛名（FN）に敬称が既に含まれている場合は「御中」を重ねて付けない
+function hasHonorificSuffix(value: string) {
+    return /(?:御中|様|先生|殿)$/u.test(String(value || '').trim());
+}
+
 function htmlEscape(value: string) {
     return String(value || '')
         .replace(/&/g, '&amp;')
@@ -387,9 +395,10 @@ function calculateAutoFontSize(contact: VCardContact, role: 'to' | 'from', layou
     const metrics = (LABEL_BLOCK_METRICS[layout] || LABEL_BLOCK_METRICS.ordinary)[role];
     const postalCode = cleanPostalCode(contact.address.postalCode);
     const addressLines = formatAddressLines(contact);
-    const nameSuffix = role === 'to' ? ' 御中' : '';
+    const nameSuffix = role === 'to' && !hasHonorificSuffix(displayName(contact)) ? ' 御中' : '';
     const phone = compactSpaces(contact.phone);
-    const name = `${displayName(contact)}${nameSuffix}`;
+    const nameNote = role === 'to' ? compactSpaces(contact.nameNote) : '';
+    const name = `${displayName(contact)}${nameSuffix}${nameNote ? `　${nameNote}` : ''}`;
     const visibleLines = [
         postalCode ? `〒${postalCode}` : '',
         ...addressLines,
@@ -432,15 +441,17 @@ function renderAutoFontStyle(fontSizePt: number) {
 function renderContactBlock(contact: VCardContact, role: 'to' | 'from', layout: string) {
     const postalCode = cleanPostalCode(contact.address.postalCode);
     const addressLines = formatAddressLines(contact);
-    const nameSuffix = role === 'to' ? ' 御中' : '';
+    const nameSuffix = role === 'to' && !hasHonorificSuffix(displayName(contact)) ? ' 御中' : '';
     const phone = compactSpaces(contact.phone);
+    const nameNote = role === 'to' ? compactSpaces(contact.nameNote) : '';
+    const nameNoteHtml = nameNote ? `　<span class="name-note">${htmlEscape(nameNote)}</span>` : '';
     const fontSizePt = calculateAutoFontSize(contact, role, layout);
     const style = renderAutoFontStyle(fontSizePt);
 
     return [
         postalCode ? `<div class="postal">〒${htmlEscape(postalCode)}</div>` : '',
         `<div class="address-lines">${renderLines(addressLines)}</div>`,
-        `<div class="name">${htmlEscape(displayName(contact))}${nameSuffix}</div>`,
+        `<div class="name">${htmlEscape(displayName(contact))}${nameSuffix}${nameNoteHtml}</div>`,
         phone ? `<div class="phone">℡ ${htmlEscape(phone)}</div>` : ''
     ].filter(Boolean).join('\n')
         .replace(/^/, `<div class="contact-fit" style="${style}">\n`)
@@ -535,6 +546,10 @@ body {
   line-height: 1.25;
   margin-bottom: var(--phone-gap);
   font-weight: 500;
+}
+.name-note {
+  color: #d00000;
+  font-weight: 700;
 }
 .phone {
   font-size: var(--phone-size);

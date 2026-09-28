@@ -43,7 +43,7 @@ const { ImapFlow } = require('imapflow');
 const { PDFDocument } = require('pdf-lib');
 const { createCanvas, GlobalFonts, loadImage } = require('@napi-rs/canvas');
 const { loadPdfJs } = require('./lib/pdfjs_loader');
-const { loadConfig } = require('./lib/config_loader');
+const { loadConfig, findConfigPath } = require('./lib/config_loader');
 const { convertHtmlToPdf } = require('./lib/pdf_converter');
 const { renderPreTags } = require('./lib/markdown_renderer');
 
@@ -186,6 +186,38 @@ function findPagedMarkdownForPdfs(pdfPaths) {
         }
     }
     return null;
+}
+
+function getConfigSearchStartDirs() {
+    return [...new Set([process.cwd(), __dirname, path.dirname(process.execPath)].filter(Boolean).map(p => path.resolve(p)))];
+}
+
+function getFaxSendConfiguration(config, { configPath = null, searchStartDirs = getConfigSearchStartDirs() } = {}) {
+    const mailConfig = config?.mail;
+    const mfaxConfig = config?.mfax;
+    const missing = [];
+    if (!mailConfig?.user) missing.push('mail.user');
+    if (!mailConfig?.password) missing.push('mail.password');
+    if (!mfaxConfig?.sendPassword) missing.push('mfax.sendPassword');
+
+    if (missing.length > 0) {
+        const searchText = searchStartDirs.length > 0
+            ? searchStartDirs.join(' / ')
+            : '(探索起点を取得できませんでした)';
+        throw new Error([
+            'FAX送信設定が不足しています。PDFファイルの読込・結合・二値化は開始していません。',
+            `設定ファイル: ${configPath || 'config.json は見つかりませんでした'}`,
+            `config.json の探索起点（各親フォルダも確認）: ${searchText}`,
+            `不足項目: ${missing.join(', ')}`,
+            '対処: HOUHIの「設定」を開いて不足項目を保存し、同じPDFをもう一度開いてください。',
+        ].join('\n'));
+    }
+
+    return {
+        mailConfig,
+        fromAddress: mfaxConfig.fromAddress || mailConfig.user,
+        sendPassword: mfaxConfig.sendPassword,
+    };
 }
 
 // ─── FAX二値化 ───────────────────────────────────────────────
@@ -613,8 +645,9 @@ async function saveToSent(rawMessage, mailConfig) {
 
 // ─── メイン ──────────────────────────────────────────────────
 
-async function main() {
-    const args = process.argv.slice(2);
+async function main(runtime: any = {}) {
+    const args = runtime.args || process.argv.slice(2);
+    const loadConfigForSend = runtime.loadConfig || loadConfig;
 
     if (args.length < 1) {
         console.log('-------------------------------------------------------');
@@ -663,20 +696,22 @@ async function main() {
     }
 
     // ─ 設定読み込み ─
-    const config = loadConfig();
-    const mailConfig = config?.mail;
-    const mfaxConfig = config?.mfax;
-    if (!mailConfig?.user || !mailConfig?.password) {
-        console.error('[エラー] config.json に mail 設定が見つかりません。');
+    // 設定不足のまま画像処理へ進み、利用者の時間を無駄にしないためPDF処理前に確認する。
+    let sendConfiguration;
+    try {
+        const config = loadConfigForSend();
+        const configPath = Object.prototype.hasOwnProperty.call(runtime, 'configPath')
+            ? runtime.configPath
+            : findConfigPath();
+        sendConfiguration = getFaxSendConfiguration(config, {
+            configPath,
+            searchStartDirs: runtime.configSearchStartDirs || getConfigSearchStartDirs(),
+        });
+    } catch (error) {
+        console.error(`[設定エラー] ${getErrorMessage(error)}`);
         return;
     }
-    if (!mfaxConfig?.sendPassword) {
-        console.error('[エラー] config.json に mfax.sendPassword が見つかりません。');
-        return;
-    }
-
-    const fromAddress = mfaxConfig.fromAddress || mailConfig.user;
-    const sendPassword = mfaxConfig.sendPassword;
+    const { mailConfig, fromAddress, sendPassword } = sendConfiguration;
 
     // ─ FAX番号抽出 ─
     let faxNumbers = [];
@@ -855,5 +890,7 @@ module.exports = {
     classifyFaxInputFiles,
     createFaxAttachmentFilename,
     findPagedMarkdownForPdfs,
+    getFaxSendConfiguration,
     describeMailServerError,
+    main,
 };

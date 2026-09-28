@@ -12,6 +12,28 @@ import {
     normalizeArchivePath,
 } from './utils';
 
+/**
+ * ディレクトリを読めなかった理由を表す。読めた場合は error を持たない。
+ * Windows では削除保留中(DELETE_PENDING)のフォルダが EPERM を返すことがあり、
+ * その1件で事件全体のアーカイブが止まらないようにする。
+ */
+type DirectoryReadResult = {
+    entries: fs.Dirent[];
+    error?: NodeJS.ErrnoException;
+};
+
+function readDirectorySafely(dir: string): DirectoryReadResult {
+    try {
+        return { entries: getSortedDirectoryEntries(dir) };
+    } catch (error) {
+        const err = error as NodeJS.ErrnoException;
+        if (err.code === 'EPERM' || err.code === 'EACCES' || err.code === 'EBUSY' || err.code === 'ENOENT') {
+            return { entries: [], error: err };
+        }
+        throw error;
+    }
+}
+
 function getSortedDirectoryEntries(dir: string) {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
 
@@ -103,9 +125,17 @@ function buildArchiveWarnings(caseFiles: CaseFileEntry[], skippedFiles: SkippedF
 export function scanCaseDirectory(targetDir: string, caseRoot = CASE_DOCUMENTS_ROOT): CaseArchiveScan {
     const caseFiles: CaseFileEntry[] = [];
     const skippedFiles: SkippedFileEntry[] = [];
+    const unreadableDirs: { relativePath: string; code: string }[] = [];
 
     function scan(currentDir: string) {
-        const entries = getSortedDirectoryEntries(currentDir);
+        const { entries, error } = readDirectorySafely(currentDir);
+        if (error) {
+            unreadableDirs.push({
+                relativePath: normalizeArchivePath(path.relative(targetDir, currentDir)) || '.',
+                code: error.code || 'UNKNOWN',
+            });
+            return;
+        }
 
         for (const entry of entries) {
             const fullPath = path.join(currentDir, entry.name);
@@ -138,7 +168,14 @@ export function scanCaseDirectory(targetDir: string, caseRoot = CASE_DOCUMENTS_R
         caseRoot,
         caseFiles,
         skippedFiles,
-        warnings: buildArchiveWarnings(caseFiles, skippedFiles),
+        warnings: [
+            ...buildArchiveWarnings(caseFiles, skippedFiles),
+            ...unreadableDirs.map(dir => ({
+                path: `${caseRoot}/${dir.relativePath}`,
+                severity: 'warning' as const,
+                message: `フォルダを読み取れなかったため、その中身をアーカイブに含めていません（${dir.code}）。`,
+            })),
+        ],
     };
 }
 
@@ -148,7 +185,7 @@ export function scanCaseDirectory(targetDir: string, caseRoot = CASE_DOCUMENTS_R
  */
 export function getDirectoryStructure(dir: string, baseDir: string, indent = "") {
     let structure = "";
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const { entries } = readDirectorySafely(dir);
 
     // フォルダを先に、ファイルを後にソート
     entries.sort((a, b) => {
@@ -179,7 +216,7 @@ export function getDirectoryStructure(dir: string, baseDir: string, indent = "")
  * 空フォルダや画像だけのフォルダを ZIP / README に出さないための事前判定に使う。
  */
 export function hasTargetFiles(dir: string): boolean {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const { entries } = readDirectorySafely(dir);
     for (const entry of entries) {
         if (entry.isDirectory()) {
             if (hasTargetFiles(path.join(dir, entry.name))) return true;

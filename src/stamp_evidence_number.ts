@@ -1,20 +1,24 @@
 /**
  * 証拠番号スタンプツール
- * PDF／画像ファイル名から証拠番号（例: 甲1_契約書.pdf、乙A1_写真.pdf）を抽出し、各ページの右上に赤文字でスタンプする。
+ * PDF／画像ファイル名から証拠番号・資料番号（例: 甲1_契約書.pdf、乙A1_写真.pdf、資料1_ウェブサイト.pdf）を抽出し、各ページの右上に赤文字でスタンプする。
  * 出力先: 入力ディレクトリ内の stamped/ フォルダ
  *
  * 入力:
  * - PDF または画像ファイル（JPG, PNG）を 1 件以上指定できます。
  * - 画像ファイルは自動的にA4サイズのPDFに変換してから処理します。
  * - ファイル名先頭の `甲1_契約書.pdf`, `乙2_メール.pdf`, `甲3-1_領収書.pdf`, `乙A1の2_写真.pdf` などから証拠番号を抽出します。
+ * - 苦情申出の意見書などに付ける資料は `資料1_〇〇.pdf`, `資料2-1_〇〇.pdf` の形式に対応します。
+ *   資料には「号証」を付けず、`資料1` とだけスタンプします。
  *
  * 出力:
  * - 最初の入力ファイルの親フォルダに `stamped/` を作成し、その中へ個別PDFを出力します。
- * - 成功ファイルが 2 件以上ある場合は `_結合_号証一式.pdf` も作成します。
+ * - 成功ファイルが 2 件以上ある場合は `_結合_号証一式.pdf`（資料のみなら `_結合_資料一式.pdf`）も作成します。
  *
  * オプション:
  * - `--all-pages`: 全ページにスタンプします（既定は1ページ目のみ）。
  * - `--font-size N`: A4印刷換算のフォントサイズを指定します。
+ * - `--mints`: 民事裁判書類電子提出システム（mints）向け。表記を「甲001」「甲002-1」の形式（「号証」なし、主番号3桁）にし、
+ *   出力先を `mints/`、ファイル名の先頭を同じ形式に改め、結合PDFは作らない（mints は1証拠1ファイル、A4/A3のみ）。
  *
  * 補足:
  * - ファイルは証拠番号順に自然ソートして処理します。
@@ -28,6 +32,7 @@
  *   --all-pages   全ページにスタンプ（デフォルトは1ページ目のみ）
  *   --font-size N A4印刷換算のフォントサイズ指定（デフォルト: 20）
  *   --no-blank-pages 結合時に空白ページを挿入しない（FAX向け）
+ *   --mints       mints 提出用（「甲001」形式・mints/ へ出力・結合なし）
  */
 const fs = require('fs');
 const path = require('path');
@@ -220,27 +225,60 @@ async function convertImageToPdf(imagePath) {
 }
 
 /**
- * ファイル名から証拠番号を抽出（枝番・英字分類対応: 甲4-1, 乙A1の2 など）
+ * ファイル名から証拠番号・資料番号を抽出
+ * （枝番・英字分類対応: 甲4-1, 乙A1の2, 資料1, 資料2-1 など）
  */
 function extractEvidenceNumber(filename) {
     const normalizedName = path.basename(filename)
         .replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
         .replace(/[Ａ-Ｚａ-ｚ]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
         .replace(/[a-z]/g, char => char.toUpperCase());
+    const shiryoMatch = normalizedName.match(/^(資料\d+(?:[\-ー－の]\d+)?)/);
+    if (shiryoMatch) return shiryoMatch[1].replace(/[ー－]/g, '-');
     const match = normalizedName.match(/^([甲乙丙丁戊証疎][A-Z]?\d+(?:[\-ー－の]\d+)?)/);
     return match ? match[1].replace(/[ー－]/g, '-') : null;
 }
 
 /**
- * 自然順ソート用キー（枝番・英字分類対応）
- * @returns {[number, number, number]} [英字分類, 主番号, 枝番号]
+ * 号証か資料かを判定する
+ */
+function isShiryo(evidenceNumber) {
+    return /^資料/.test(String(evidenceNumber || ''));
+}
+
+/**
+ * スタンプに刷る文字列。号証には「号証」を付け、資料はそのまま用いる。
+ */
+function buildStampText(evidenceNumber, mints = false) {
+    if (mints) return toMintsNumber(evidenceNumber);
+    return isShiryo(evidenceNumber) ? evidenceNumber : `${evidenceNumber}${STAMP_SUFFIX}`;
+}
+
+/**
+ * mints の号証表記に変換する。「甲1」→「甲001」、「甲2-1」→「甲002-1」、「乙A12」→「乙A012」。
+ * 枝番と資料はそのまま。裁判所「証拠説明書の記載要領・記載例」（令和8年3月27日）の記載例に合わせる。
+ */
+function toMintsNumber(evidenceNumber) {
+    const m = String(evidenceNumber).match(/^([甲乙丙丁戊証疎][A-Z]?)(\d+)((?:-\d+)?)$/);
+    if (!m) return String(evidenceNumber);
+    return `${m[1]}${m[2].padStart(3, '0')}${m[3]}`;
+}
+
+/**
+ * 自然順ソート用キー（枝番・英字分類・資料対応）
+ * @returns {[number, number, number, number]} [種別（号証0・資料1）, 英字分類, 主番号, 枝番号]
  */
 function naturalSortKey(filepath) {
     const evidenceNumber = extractEvidenceNumber(filepath);
+    if (isShiryo(evidenceNumber)) {
+        const shiryo = evidenceNumber.match(/資料(\d+)(?:[\-の](\d+))?/);
+        if (!shiryo) return [1, 0, 0, 0];
+        return [1, 0, parseInt(shiryo[1], 10), shiryo[2] ? parseInt(shiryo[2], 10) : 0];
+    }
     const match = evidenceNumber && evidenceNumber.match(/[甲乙丙丁戊証疎]([A-Z]?)(\d+)(?:[\-の](\d+))?/);
-    if (!match) return [0, 0, 0];
+    if (!match) return [0, 0, 0, 0];
     const letterRank = match[1] ? match[1].charCodeAt(0) - 64 : 0;
-    return [letterRank, parseInt(match[2], 10), match[3] ? parseInt(match[3], 10) : 0];
+    return [0, letterRank, parseInt(match[2], 10), match[3] ? parseInt(match[3], 10) : 0];
 }
 
 /**
@@ -249,11 +287,12 @@ function naturalSortKey(filepath) {
 type StampOptions = {
     allPages?: boolean;
     fontSize?: number;
+    mints?: boolean;
 };
 
 async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: StampOptions = {}) {
-    const { allPages = false, fontSize = DEFAULT_FONT_SIZE } = options;
-    const stampText = `${evidenceNumber}${STAMP_SUFFIX}`;
+    const { allPages = false, fontSize = DEFAULT_FONT_SIZE, mints = false } = options;
+    const stampText = buildStampText(evidenceNumber, mints);
 
     const rawPdfBytes = fs.readFileSync(inputPath);
     const normalizedPdfBytes = await ensureA4Pages(rawPdfBytes);
@@ -261,7 +300,9 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
 
     // フォント登録
     pdfDoc.registerFontkit(fontkit);
-    const embeddedFont = await pdfDoc.embedFont(font, { subset: false });
+    // subset: false だとフォント全体（数MB）が各ファイルに埋め込まれ、証拠1点あたり数MB増える。
+    // スタンプ文字は号証番号だけなので、サブセット埋め込みで足りる。
+    const embeddedFont = await pdfDoc.embedFont(font, { subset: true });
 
     const pages = pdfDoc.getPages();
     const pagesToStamp = allPages ? pages : [pages[0]];
@@ -349,6 +390,7 @@ async function main() {
     // オプション解析
     const allPages = args.includes('--all-pages');
     const noBlankPages = args.includes('--no-blank-pages');
+    const mints = args.includes('--mints');
     let fontSize = DEFAULT_FONT_SIZE;
     const fontSizeIdx = args.indexOf('--font-size');
     if (fontSizeIdx !== -1 && args[fontSizeIdx + 1]) {
@@ -377,7 +419,7 @@ async function main() {
 
     // 出力ディレクトリ（最初のファイルの親ディレクトリ基準）
     const firstDir = path.dirname(filePaths[0]);
-    const outputDir = path.join(firstDir, 'stamped');
+    const outputDir = path.join(firstDir, mints ? 'mints' : 'stamped');
     if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
     }
@@ -385,13 +427,13 @@ async function main() {
     // ソート
     // 甲*.pdf に限定せず、乙・丙等も対象
     const sortedPaths = [...filePaths].sort((a, b) => {
-        const [aLetter, aMain, aBranch] = naturalSortKey(a);
-        const [bLetter, bMain, bBranch] = naturalSortKey(b);
-        return aLetter - bLetter || aMain - bMain || aBranch - bBranch;
+        const [aKind, aLetter, aMain, aBranch] = naturalSortKey(a);
+        const [bKind, bLetter, bMain, bBranch] = naturalSortKey(b);
+        return aKind - bKind || aLetter - bLetter || aMain - bMain || aBranch - bBranch;
     });
 
     const stampMode = allPages ? '全ページ' : '1ページ目のみ';
-    const blankMode = noBlankPages ? '空白ページなし' : '両面印刷対応';
+    const blankMode = mints ? 'mints提出用（結合なし）' : (noBlankPages ? '空白ページなし' : '両面印刷対応');
     console.log(`対象: ${sortedPaths.length} ファイル`);
     console.log(`出力: ${outputDir}`);
     console.log(`モード: ${stampMode} / フォントサイズ: ${fontSize}pt / ${blankMode}`);
@@ -427,15 +469,19 @@ async function main() {
             }
         }
 
-        const outputFilename = path.basename(filename, path.extname(filename)) + '.pdf';
+        let outputFilename = path.basename(filename, path.extname(filename)) + '.pdf';
+        if (mints) {
+            // ファイル名の先頭の号証を mints 表記に置き換える（「甲01_…」「甲1_…」→「甲001_…」）
+            outputFilename = outputFilename.replace(/^[甲乙丙丁戊証疎][A-Za-zＡ-Ｚａ-ｚ]?[0-9０-９]+(?:[\-ー－の][0-9０-９]+)?/, toMintsNumber(evidenceNum));
+        }
         const outputPath = path.join(outputDir, outputFilename);
         try {
-            const pdfBytes = await stampPdf(inputForStamp, outputPath, evidenceNum, fontBytes, { allPages, fontSize });
+            const pdfBytes = await stampPdf(inputForStamp, outputPath, evidenceNum, fontBytes, { allPages, fontSize, mints });
             // 画像→PDF変換の中間ファイルが出力先と異なる場合は削除
             if (tempPdfPath && tempPdfPath !== outputPath) {
                 try { fs.unlinkSync(tempPdfPath); } catch (_) {}
             }
-            console.log(`  完了  ${evidenceNum}${STAMP_SUFFIX} ← ${filename}`);
+            console.log(`  完了  ${buildStampText(evidenceNum, mints)} ← ${filename}`);
             return { success: true, bytes: pdfBytes, evidenceNum };
         } catch (err) {
             console.error(`  エラー ${filename}: ${err.message}`);
@@ -461,12 +507,14 @@ async function main() {
     console.log(`処理完了: ${okCount} 成功 / ${errCount} エラー`);
 
     // 結合PDF生成（2ファイル以上の場合）
-    if (stampedList.length >= 2) {
+    if (!mints && stampedList.length >= 2) {
         console.log('─'.repeat(50));
         const mergeMode = noBlankPages ? '結合PDF作成中（空白ページなし）...' : '結合PDF作成中（両面印刷対応）...';
         console.log(mergeMode);
         try {
-            const mergedPath = path.join(outputDir, '_結合_号証一式.pdf');
+            const kinds = new Set(stampedList.map(item => isShiryo(item.evidenceNum) ? '資料' : '号証'));
+            const mergedName = kinds.size === 1 ? `_結合_${[...kinds][0]}一式.pdf` : '_結合_一式.pdf';
+            const mergedPath = path.join(outputDir, mergedName);
             const { totalPages, blankPages } = await mergeStampedPdfs(stampedList, mergedPath, { insertBlankPages: !noBlankPages });
             console.log(`  完了  ${stampedList.length} 文書 → ${totalPages} ページ（空白ページ: ${blankPages}）`);
             console.log(`  出力: ${mergedPath}`);
@@ -489,6 +537,8 @@ if (require.main === module) {
 
 module.exports = {
     extractEvidenceNumber,
+    isShiryo,
+    buildStampText,
     naturalSortKey,
     isImageFile,
     findJapaneseFont,

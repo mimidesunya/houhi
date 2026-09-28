@@ -12,7 +12,9 @@ const {
     classifyFaxInputFiles,
     createFaxAttachmentFilename,
     findPagedMarkdownForPdfs,
+    getFaxSendConfiguration,
     describeMailServerError,
+    main,
 } = require('../dist/src/fax_send.js');
 
 // ─── wrapMarkdownInHtml ─────────────────────────────────────
@@ -78,6 +80,56 @@ test('findPagedMarkdownForPdfs: returns first matching _paged.md', (t) => {
     fs.writeFileSync(paged, '# 受領書');
 
     assert.equal(findPagedMarkdownForPdfs([first, second]), paged);
+});
+
+test('getFaxSendConfiguration: explains missing settings and that PDF processing has not started', () => {
+    assert.throws(() => getFaxSendConfiguration(null, {
+        configPath: 'C:\\portable\\houhi\\config.json',
+        searchStartDirs: ['C:\\portable\\houhi', 'C:\\portable\\houhi\\app\\dist\\src'],
+    }), error => {
+        assert.match(error.message, /FAX送信設定が不足しています/);
+        assert.match(error.message, /PDFファイルの読込・結合・二値化は開始していません/);
+        assert.match(error.message, /C:\\portable\\houhi\\config\.json/);
+        assert.match(error.message, /探索起点（各親フォルダも確認）/);
+        assert.match(error.message, /mail\.user/);
+        assert.match(error.message, /mfax\.sendPassword/);
+        assert.match(error.message, /HOUHIの「設定」を開いて/);
+        return true;
+    });
+
+    const result = getFaxSendConfiguration({
+        mail: { user: 'sender@example.test', password: 'secret' },
+        mfax: { sendPassword: 'fax-secret', fromAddress: 'fax@example.test' },
+    });
+    assert.equal(result.mailConfig.user, 'sender@example.test');
+    assert.equal(result.fromAddress, 'fax@example.test');
+    assert.equal(result.sendPassword, 'fax-secret');
+});
+
+test('main: stops before reading an invalid PDF when FAX settings are missing', async (t) => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-fax-preflight-'));
+    t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+    const inputPath = path.join(tempRoot, 'input.pdf');
+    fs.writeFileSync(inputPath, Buffer.from('not a PDF'));
+
+    const errors = [];
+    const originalConsoleError = console.error;
+    console.error = (...parts) => errors.push(parts.join(' '));
+    try {
+        await main({
+            args: ['--no-dither', inputPath],
+            loadConfig: () => null,
+            configPath: null,
+            configSearchStartDirs: ['C:\\portable\\houhi'],
+        });
+    } finally {
+        console.error = originalConsoleError;
+    }
+
+    assert.match(errors.join('\n'), /\[設定エラー\]/);
+    assert.match(errors.join('\n'), /PDFファイルの読込・結合・二値化は開始していません/);
+    assert.match(errors.join('\n'), /config\.json は見つかりませんでした/);
 });
 
 test('describeMailServerError: explains expired SMTP certificate context', () => {
