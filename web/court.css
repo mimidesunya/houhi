@@ -552,8 +552,10 @@ table.evidence th {
 }
 
 /* 列の体裁（幅は colgroup で決まる。役割クラスは court_markdown.ts の evidenceColClass） */
-.evidence .col-no,
-.evidence .col-date {
+/* 号証は折り返さない。作成年月日は「年」の後ろ、見出しは「号証」「年月日」の前でだけ折り返す
+   （塊 .nw は court_markdown.ts の dateChunks・evidenceHeaderChunks） */
+.evidence td.col-no,
+.evidence .nw {
     white-space: nowrap;
 }
 

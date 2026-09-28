@@ -32,6 +32,21 @@ function getVisualWidth(text) {
     }
     return Math.max(maxWidth, lineWidth);
 }
+/**
+ * 証拠説明書の作成年月日を、折り返してよい位置（「年」の後ろ）で塊に分けます。
+ * 「令和8年3月31日」は「令和8年」「3月31日」になり、各塊は折り返さずに組みます。
+ */
+function dateChunks(text) {
+    return String(text).split(/(?<=年)/).filter(chunk => chunk !== '');
+}
+/**
+ * 証拠説明書の見出しを、折り返してよい位置で塊に分けます。
+ * 「乙A号証」は「乙A」「号証」、「作成年月日」は「作成」「年月日」になり、
+ * 狭い列でも「乙A号／証」のような割れ方をしない。
+ */
+function evidenceHeaderChunks(text) {
+    return String(text).split(/(?=号証)|(?=年月日)/).filter(chunk => chunk !== '');
+}
 function escapeHtmlAttribute(value) {
     return String(value)
         .replace(/&/g, '&amp;')
@@ -285,29 +300,82 @@ function convertMarkdownToCourtHtml(markdown) {
         const colClasses = headerRow.map(c => evidenceColClass(c.trim()));
         // 列幅は固定レイアウトで比例配分する。Copper PDF の自動レイアウトは、
         // 幅 auto の列が 2 つ以上（標目と立証趣旨）あると一方へ偏るため。
-        // 短い列（号証・原本写し・年月日・作成者・備考）は内容の最大幅（上限あり）、
-        // 標目と立証趣旨は残りを 2:3 で分ける。
-        // getVisualWidth は全角=1・半角=0.5 で数える（= em）。
-        const shortMaxEm = { 'col-no': 5, 'col-orig': 2.5, 'col-date': 5.5, 'col-author': 5, 'col-note': 4.5 };
-        const shortMinEm = { 'col-no': 3, 'col-orig': 2, 'col-date': 4, 'col-author': 3, 'col-note': 3 };
+        // 短い列（号証・原本写し・年月日・作成者・備考）は内容の最大幅（折り返す列は上限あり）、
+        // 標目と立証趣旨は残りを中身の量（全行の文字幅の和）に比例して分ける——行の高さが揃う配分。
+        // getVisualWidth は全角=1・半角=0.5 で数える（= em）。セルの左右の余白と罫線（約 0.7em）は
+        // CELL_PAD で足す。折り返さない列（号証・年月日の塊）は見出しも含めて測り、上限で切らない
+        // ——切ると字が隣の列へはみ出す（2026-09-25 の証拠説明書3、TECH-20260925-001）。
+        const CELL_PAD = 0.8;
+        const nowrapCols = { 'col-no': true, 'col-date': true };
+        const shortMaxEm = { 'col-orig': 2.5, 'col-author': 4.5, 'col-note': 4.5 };
+        const shortMinEm = { 'col-no': 2, 'col-orig': 2, 'col-date': 3.5, 'col-author': 3, 'col-note': 3 };
         const colW = colClasses.map(() => 0);
-        dataRows.forEach(row => row.forEach((cell, i) => {
-            const w = getVisualWidth(stripInlineMarkdown((cell || '').trim()));
+        const colArea = colClasses.map(() => 0);
+        // 折り返さない塊の幅。Copper PDF は和文と欧文の間に四分アキ（0.25em）を入れ、
+        // 半角の英大文字は 0.5em より広い（「乙A号証」は 3.5em ではなく約 4.2em）
+        const nowrapWidth = (text) => {
+            let w = getVisualWidth(text);
+            for (let k = 0; k < text.length; k++) {
+                const half = /[\x20-\x7e]/.test(text[k]);
+                if (/[A-Z]/.test(text[k]))
+                    w += 0.2;
+                if (k > 0 && half !== /[\x20-\x7e]/.test(text[k - 1]))
+                    w += 0.25;
+            }
+            return w;
+        };
+        const measure = (cell, i, header) => {
+            const text = stripInlineMarkdown((cell || '').trim());
+            const w = header
+                ? Math.max(0, ...evidenceHeaderChunks(text).map(nowrapWidth))
+                : colClasses[i] === 'col-date'
+                    ? Math.max(0, ...dateChunks(text).map(nowrapWidth))
+                    : (nowrapCols[colClasses[i]] ? nowrapWidth(text) : getVisualWidth(text));
             if (w > colW[i])
                 colW[i] = w;
+        };
+        headerRow.forEach((cell, i) => { if (nowrapCols[colClasses[i]])
+            measure(cell, i, true); });
+        dataRows.forEach(row => row.forEach((cell, i) => {
+            measure(cell, i, false);
+            colArea[i] += getVisualWidth(stripInlineMarkdown((cell || '').trim()));
         }));
         const fixedEm = colClasses.map((cls, i) => {
-            if (cls in shortMaxEm)
-                return Math.min(Math.max(colW[i] + 0.8, shortMinEm[cls]), shortMaxEm[cls]);
-            return 0;
+            if (!(cls in shortMinEm))
+                return 0;
+            const content = Math.max(colW[i], shortMinEm[cls]);
+            return (nowrapCols[cls] ? content : Math.min(content, shortMaxEm[cls])) + CELL_PAD;
         });
-        const flexible = colClasses.map(cls => cls === 'col-title' ? 2 : (cls === 'col-purpose' ? 3 : (cls === 'col-other' ? 1 : 0)));
-        // 本文幅を概ね 40em（10.5pt・A4・余白込み）とみて em を % に換算
-        const bodyEm = 38;
+        // 標目は中身が少なくても 6 字分は残す。下限に張り付いた列の分は他の伸びる列から引き、
+        // 合計を本文幅に保つ（合計が本文幅を超えると 100% への換算で短い列まで縮む）
+        const flexMinEm = { 'col-title': 6, 'col-purpose': 8, 'col-other': 3 };
+        const flexible = colClasses.map((cls, i) => cls in flexMinEm ? Math.max(colArea[i], 1) : 0);
+        // 本文幅 160mm（A4・左右余白 30mm/20mm）÷ 12pt = 37.8em
+        const bodyEm = 37.8;
         const fixedTotal = fixedEm.reduce((x, y) => x + y, 0);
-        const flexTotal = flexible.reduce((x, y) => x + y, 0) || 1;
         const remain = Math.max(bodyEm - fixedTotal, 10);
-        const widthsEm = colClasses.map((cls, i) => fixedEm[i] > 0 ? fixedEm[i] : remain * flexible[i] / flexTotal);
+        const pinned = colClasses.map(() => false);
+        let flexWidths = colClasses.map(() => 0);
+        for (let pass = 0; pass < colClasses.length; pass++) {
+            const free = remain - flexWidths.reduce((x, y, i) => x + (pinned[i] ? y : 0), 0);
+            const freeTotal = flexible.reduce((x, y, i) => x + (pinned[i] ? 0 : y), 0) || 1;
+            let changed = false;
+            flexWidths = flexWidths.map((w, i) => {
+                if (!flexible[i] || pinned[i])
+                    return w;
+                const share = free * flexible[i] / freeTotal;
+                const min = flexMinEm[colClasses[i]] || 0;
+                if (share < min) {
+                    pinned[i] = true;
+                    changed = true;
+                    return min;
+                }
+                return share;
+            });
+            if (!changed)
+                break;
+        }
+        const widthsEm = colClasses.map((cls, i) => fixedEm[i] > 0 ? fixedEm[i] : flexWidths[i]);
         const sumEm = widthsEm.reduce((x, y) => x + y, 0);
         tableHtml += indent(lastLevel + 1) + '<colgroup>'
             + widthsEm.map(w => `<col style="width:${(100 * w / sumEm).toFixed(1)}%">`).join('')
@@ -317,7 +385,10 @@ function convertMarkdownToCourtHtml(markdown) {
         tableHtml += indent(lastLevel + 2) + '<tr>' + nl;
         headerRow.forEach((cell, i) => {
             const text = cell.trim();
-            tableHtml += indent(lastLevel + 3) + `<th class="${colClasses[i]}">${renderInlineMarkdown(text)}</th>` + nl;
+            const headerHtml = nowrapCols[colClasses[i]]
+                ? evidenceHeaderChunks(text).map(chunk => `<span class="nw">${renderInlineMarkdown(chunk)}</span>`).join('')
+                : renderInlineMarkdown(text);
+            tableHtml += indent(lastLevel + 3) + `<th class="${colClasses[i]}">${headerHtml}</th>` + nl;
         });
         tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
         tableHtml += indent(lastLevel + 1) + '</thead>' + nl;
@@ -392,7 +463,10 @@ function convertMarkdownToCourtHtml(markdown) {
                     rowspanMap.set(colIndex, { rowIndex, span: rowspan, text });
                 }
                 const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
-                tableHtml += indent(lastLevel + 3) + `<td class="${colClasses[colIndex] || 'col-other'}"${rowspanAttr}>${renderInlineMarkdown(text)}</td>` + nl;
+                const cellHtml = colClasses[colIndex] === 'col-date'
+                    ? dateChunks(text).map(chunk => `<span class="nw">${renderInlineMarkdown(chunk)}</span>`).join('')
+                    : renderInlineMarkdown(text);
+                tableHtml += indent(lastLevel + 3) + `<td class="${colClasses[colIndex] || 'col-other'}"${rowspanAttr}>${cellHtml}</td>` + nl;
             });
             tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
         });
