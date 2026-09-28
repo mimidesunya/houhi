@@ -81,6 +81,7 @@ function convertMarkdownToCourtHtml(markdown) {
     let tableHasHeader = false;
     let inRightBlock = false;
     let inLeftBlock = false;
+    let inLandscapeBlock = false;
     let lastHeader = '';
     let inEvidenceTable = false;
     let evidenceTableBuffer = [];
@@ -94,6 +95,10 @@ function convertMarkdownToCourtHtml(markdown) {
     const rightColWidths = [];
     const leftColWidths = [];
     const attColWidths = [];
+    // 附属書類の体裁（連番＋「1通」の右揃え）で組む見出し。
+    // 書面の種類によって「添付書類」「添付資料」とも書かれるため、いずれも同じ扱いにする。
+    const ATTACHMENT_HEADERS = ['附属書類', '証拠書類', '添付書類', '添付資料'];
+    const isAttachmentHeader = (header) => ATTACHMENT_HEADERS.includes((header || '').trim());
     const defaultColWidths = [];
     let scanHeader = '';
     let inScanEvidenceTable = false;
@@ -113,6 +118,9 @@ function convertMarkdownToCourtHtml(markdown) {
             scanInRight = false;
             continue;
         }
+        if (trimmed === '### --横' || trimmed === '### --縦') {
+            continue;
+        }
         if (trimmed === '### --') {
             scanInRight = false;
             scanInLeft = false;
@@ -128,12 +136,19 @@ function convertMarkdownToCourtHtml(markdown) {
             }
         }
         const tableMatch = trimmed.match(/^\|(.*)\|$/);
-        const listTableMatch = trimmed.match(/^[-*] (.*?)[：:](.*)$/);
-        const numberedListTableMatch = trimmed.match(/^([0-9０-９]+)[　\s]+(.+?)[：:](.*)$/);
+        let listTableMatch = trimmed.match(/^[-*] (.*?)[：:](.*)$/);
+        if (isProseColonLine(listTableMatch, 1))
+            listTableMatch = null;
+        let numberedListTableMatch = trimmed.match(/^([0-9０-９]+)[　\s]+(.+?)[：:](.*)$/);
+        if (isProseColonLine(numberedListTableMatch, 2))
+            numberedListTableMatch = null;
         if (tableMatch || listTableMatch || numberedListTableMatch) {
             // 証拠説明書テーブルの開始を検出
-            // 「号証」を含むヘッダー行を証拠説明書テーブルとして扱う
-            if (tableMatch && (tableMatch[1].includes('号証'))) {
+            // 「号証」に加えて「標目」又は「立証趣旨」を含むヘッダー行だけを
+            // 証拠説明書テーブルとして扱う。「甲号証」等の列を持つだけの一般表を
+            // 証拠説明書と誤認すると、専用の固定列幅が適用されて崩れるため。
+            if (tableMatch && tableMatch[1].includes('号証')
+                && (tableMatch[1].includes('標目') || tableMatch[1].includes('立証趣旨'))) {
                 inScanEvidenceTable = true;
             }
             // 証拠説明書テーブルは除外（別扱い）
@@ -154,7 +169,7 @@ function convertMarkdownToCourtHtml(markdown) {
                 }
                 // どの幅配列を使うか決定
                 let targetWidths = defaultColWidths;
-                if (numberedListTableMatch || scanHeader === '附属書類' || scanHeader === '証拠書類') {
+                if (numberedListTableMatch || isAttachmentHeader(scanHeader)) {
                     targetWidths = attColWidths;
                 }
                 else if (scanInRight) {
@@ -180,8 +195,30 @@ function convertMarkdownToCourtHtml(markdown) {
         if (tableBuffer.length === 0)
             return '';
         let tableHtml = '';
-        const effectiveClass = tableHasHeader ? tableClass + ' has-header' : tableClass;
-        tableHtml += indent(lastLevel) + `<table class="${effectiveClass}">` + nl;
+        // ヘッダー付きの一般パイプ表は、列内容の実測幅から比例配分した固定レイアウトにする。
+        // 自動レイアウトに任せると、Copper PDF が短い列へ過大な幅を割り当てて崩れるため。
+        const useFixedLayout = tableHasHeader && !tableClass.includes('info') && !tableClass.includes('att');
+        let colgroupHtml = '';
+        if (useFixedLayout) {
+            const colW = [];
+            tableBuffer.forEach(row => row.forEach((cell, i) => {
+                const w = getVisualWidth(stripInlineMarkdown(cell.trim()));
+                if (!colW[i] || w > colW[i])
+                    colW[i] = w;
+            }));
+            // 最低3文字分を確保しつつ、内容の最大幅に比例して100%を配分する
+            const eff = colW.map(w => Math.max(w || 0, 3));
+            const total = eff.reduce((a, b) => a + b, 0);
+            if (total > 0) {
+                colgroupHtml = indent(lastLevel + 1) + '<colgroup>'
+                    + eff.map(w => `<col style="width:${(100 * w / total).toFixed(1)}%">`).join('')
+                    + '</colgroup>' + nl;
+            }
+        }
+        const effectiveClass = (tableHasHeader ? tableClass + ' has-header' : tableClass)
+            + (useFixedLayout && colgroupHtml ? ' fixed' : '');
+        tableHtml += indent(lastLevel) + `<table class="${effectiveClass.trim()}">` + nl;
+        tableHtml += colgroupHtml;
         const renderRow = (row, tag) => {
             let rowHtml = indent(lastLevel + 2) + '<tr>' + nl;
             row.forEach((cell, i) => {
@@ -224,12 +261,63 @@ function convertMarkdownToCourtHtml(markdown) {
         const headerRow = evidenceTableBuffer[0];
         const dataRows = evidenceTableBuffer.slice(1); // セパレーターは既に除外済みのためヘッダーのみスキップ
         tableHtml += indent(lastLevel) + '<table class="evidence">' + nl;
+        // 列の役割は見出し語で決める（列の順序や有無に依存しない）。
+        // 旧書式「号証｜標目｜原本写｜作成年月日｜作成者｜立証趣旨」でも、
+        // 新法書式「号証｜標目｜作成年月日｜作成者｜立証趣旨｜備考」でも同じ幅指定になる。
+        const evidenceColClass = (header) => {
+            const h = (header || '').replace(/\s/g, '');
+            if (h.includes('号証'))
+                return 'col-no';
+            if (h.includes('標目'))
+                return 'col-title';
+            if (h.includes('原本') || h.includes('写'))
+                return 'col-orig';
+            if (h.includes('年月日'))
+                return 'col-date';
+            if (h.includes('作成者'))
+                return 'col-author';
+            if (h.includes('立証'))
+                return 'col-purpose';
+            if (h.includes('備考'))
+                return 'col-note';
+            return 'col-other';
+        };
+        const colClasses = headerRow.map(c => evidenceColClass(c.trim()));
+        // 列幅は固定レイアウトで比例配分する。Copper PDF の自動レイアウトは、
+        // 幅 auto の列が 2 つ以上（標目と立証趣旨）あると一方へ偏るため。
+        // 短い列（号証・原本写し・年月日・作成者・備考）は内容の最大幅（上限あり）、
+        // 標目と立証趣旨は残りを 2:3 で分ける。
+        // getVisualWidth は全角=1・半角=0.5 で数える（= em）。
+        const shortMaxEm = { 'col-no': 5, 'col-orig': 2.5, 'col-date': 5.5, 'col-author': 5, 'col-note': 4.5 };
+        const shortMinEm = { 'col-no': 3, 'col-orig': 2, 'col-date': 4, 'col-author': 3, 'col-note': 3 };
+        const colW = colClasses.map(() => 0);
+        dataRows.forEach(row => row.forEach((cell, i) => {
+            const w = getVisualWidth(stripInlineMarkdown((cell || '').trim()));
+            if (w > colW[i])
+                colW[i] = w;
+        }));
+        const fixedEm = colClasses.map((cls, i) => {
+            if (cls in shortMaxEm)
+                return Math.min(Math.max(colW[i] + 0.8, shortMinEm[cls]), shortMaxEm[cls]);
+            return 0;
+        });
+        const flexible = colClasses.map(cls => cls === 'col-title' ? 2 : (cls === 'col-purpose' ? 3 : (cls === 'col-other' ? 1 : 0)));
+        // 本文幅を概ね 40em（10.5pt・A4・余白込み）とみて em を % に換算
+        const bodyEm = 38;
+        const fixedTotal = fixedEm.reduce((x, y) => x + y, 0);
+        const flexTotal = flexible.reduce((x, y) => x + y, 0) || 1;
+        const remain = Math.max(bodyEm - fixedTotal, 10);
+        const widthsEm = colClasses.map((cls, i) => fixedEm[i] > 0 ? fixedEm[i] : remain * flexible[i] / flexTotal);
+        const sumEm = widthsEm.reduce((x, y) => x + y, 0);
+        tableHtml += indent(lastLevel + 1) + '<colgroup>'
+            + widthsEm.map(w => `<col style="width:${(100 * w / sumEm).toFixed(1)}%">`).join('')
+            + '</colgroup>' + nl;
         // ヘッダー行を生成
         tableHtml += indent(lastLevel + 1) + '<thead>' + nl;
         tableHtml += indent(lastLevel + 2) + '<tr>' + nl;
         headerRow.forEach((cell, i) => {
             const text = cell.trim();
-            tableHtml += indent(lastLevel + 3) + `<th class="col-${i + 1}">${renderInlineMarkdown(text)}</th>` + nl;
+            tableHtml += indent(lastLevel + 3) + `<th class="${colClasses[i]}">${renderInlineMarkdown(text)}</th>` + nl;
         });
         tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
         tableHtml += indent(lastLevel + 1) + '</thead>' + nl;
@@ -304,7 +392,7 @@ function convertMarkdownToCourtHtml(markdown) {
                     rowspanMap.set(colIndex, { rowIndex, span: rowspan, text });
                 }
                 const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
-                tableHtml += indent(lastLevel + 3) + `<td class="col-${colIndex + 1}"${rowspanAttr}>${renderInlineMarkdown(text)}</td>` + nl;
+                tableHtml += indent(lastLevel + 3) + `<td class="${colClasses[colIndex] || 'col-other'}"${rowspanAttr}>${renderInlineMarkdown(text)}</td>` + nl;
             });
             tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
         });
@@ -322,6 +410,10 @@ function convertMarkdownToCourtHtml(markdown) {
         { level: 6, regex: /^#*\s*([a-z])[　\s]/ },
         { level: 7, regex: /^#*\s*(\([a-z]\))[　\s]/ }
     ];
+    // 「ラベル：値」型の行だけを表として扱う。読点・句点を含む行は地の文とみなす。
+    function isProseColonLine(m, labelIdx) {
+        return !!(m && /[、。]/.test(m[labelIdx] + (m[labelIdx + 1] || '')));
+    }
     function getLevelInfo(line) {
         for (const m of markers) {
             const match = line.match(m.regex);
@@ -378,10 +470,46 @@ function convertMarkdownToCourtHtml(markdown) {
                 continue;
             }
         }
+        // 横置きセクションの開始・終了: ### --横 / ### --縦
+        // 以降の内容をA4横置きのページ（別紙など）として組む。頁番号は本体からの通し。
+        if (trimmedLine === '### --横') {
+            if (inTable) {
+                html += flushTable();
+                inTable = false;
+            }
+            while (lastLevel > 0) {
+                html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                lastLevel--;
+            }
+            if (!inLandscapeBlock) {
+                html += '<div class="landscape">' + nl;
+                inLandscapeBlock = true;
+            }
+            continue;
+        }
+        if (trimmedLine === '### --縦') {
+            if (inLandscapeBlock) {
+                if (inTable) {
+                    html += flushTable();
+                    inTable = false;
+                }
+                while (lastLevel > 0) {
+                    html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                    lastLevel--;
+                }
+                html += '</div>' + nl;
+                inLandscapeBlock = false;
+            }
+            continue;
+        }
         // テーブル行の処理: |書類名|通数|、- 書類名：通数、1 書類名：通数
         const tableMatch = trimmedLine.match(/^\|(.*)\|$/);
-        const listTableMatch = trimmedLine.match(/^[-*] (.*?)[：:](.*)$/);
-        const numberedListTableMatch = trimmedLine.match(/^([0-9０-９]+)[　\s]+(.+?)[：:](.*)$/);
+        let listTableMatch = trimmedLine.match(/^[-*] (.*?)[：:](.*)$/);
+        if (isProseColonLine(listTableMatch, 1))
+            listTableMatch = null;
+        let numberedListTableMatch = trimmedLine.match(/^([0-9０-９]+)[　\s]+(.+?)[：:](.*)$/);
+        if (isProseColonLine(numberedListTableMatch, 2))
+            numberedListTableMatch = null;
         if (tableMatch || listTableMatch || numberedListTableMatch) {
             // セパレーター行（|:---|:---|...）をチェック
             const isSeparator = tableMatch && /^[\s|:-]+$/.test(tableMatch[1]);
@@ -389,8 +517,9 @@ function convertMarkdownToCourtHtml(markdown) {
                 tableHasHeader = true;
                 continue;
             }
-            // ヘッダー行（「号証」を含む）をチェック
-            const isEvidenceHeader = tableMatch && tableMatch[1].includes('号証');
+            // ヘッダー行（「号証」＋「標目」又は「立証趣旨」を含む）をチェック
+            const isEvidenceHeader = tableMatch && tableMatch[1].includes('号証')
+                && (tableMatch[1].includes('標目') || tableMatch[1].includes('立証趣旨'));
             if (isEvidenceHeader || (inEvidenceTable && tableMatch)) {
                 // 証拠説明書テーブル
                 if (!inEvidenceTable) {
@@ -413,7 +542,7 @@ function convertMarkdownToCourtHtml(markdown) {
                     lastLevel--;
                 }
                 tableHasHeader = false;
-                if (numberedListTableMatch || lastHeader === '附属書類' || lastHeader === '証拠書類') {
+                if (numberedListTableMatch || isAttachmentHeader(lastHeader)) {
                     tableClass = 'att';
                 }
                 else if (inRightBlock) {
@@ -543,7 +672,7 @@ function convertMarkdownToCourtHtml(markdown) {
                 html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                 lastLevel--;
             }
-            html += `<div class="break">(${renderInlineMarkdown(breakText)})</div>` + nl;
+            html += (breakText ? `<div class="break">(${renderInlineMarkdown(breakText)})</div>` : '<div class="break"></div>') + nl;
             continue;
         }
         const levelInfo = getLevelInfo(trimmedLine);
@@ -552,7 +681,7 @@ function convertMarkdownToCourtHtml(markdown) {
             ? trimmedLine.replace(/^#*\s*/, '').replace(levelInfo.marker, '').trim()
             : '';
         const isTocHeading = !!levelInfo && (isHeader || (levelInfo.level <= 2 && !markerText.includes('。') && !/[：:]/.test(markerText)));
-        const liClass = isTocHeading ? ' class="heading-item"' : '';
+        const liClass = isTocHeading ? ' class="heading-item"' : (levelInfo ? ' class="num-lit"' : '');
         let level, text;
         if (levelInfo) {
             level = levelInfo.level;
@@ -573,7 +702,8 @@ function convertMarkdownToCourtHtml(markdown) {
             else {
                 lastLevel++;
             }
-            const currentLiClass = lastLevel === level ? liClass : '';
+            // レベルを飛ばして下位リストを開く場合、中間レベルの li は番号を表示しない
+            const currentLiClass = lastLevel === level ? liClass : ' class="filler"';
             html += indent(lastLevel - 1) + `<ol class="lvl${lastLevel}">` + nl + indent(lastLevel) + `<li${currentLiClass}>` + nl;
             openedNewLevel = true;
         }
@@ -633,7 +763,11 @@ function convertMarkdownToCourtHtml(markdown) {
             html += currentIndent + `<div class="dest">${renderInlineMarkdown(text)}</div>` + nl;
         }
         else {
-            html += currentIndent + `<p>${renderInlineMarkdown(text)}</p>` + nl;
+            // マーカー付きの段落は、md記載の番号をそのまま出力する（自動採番に頼らない）
+            const numPrefix = (levelInfo && !isTocHeading)
+                ? `<span class="num">${levelInfo.marker}${level === 2 ? '　' : (level === 1 ? '' : ' ')}</span>`
+                : '';
+            html += currentIndent + `<p>${numPrefix}${renderInlineMarkdown(text)}</p>` + nl;
         }
         lastLevel = level;
     }
@@ -651,6 +785,10 @@ function convertMarkdownToCourtHtml(markdown) {
         html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
         lastLevel--;
     }
+    if (inLandscapeBlock) {
+        html += '</div>' + nl;
+        inLandscapeBlock = false;
+    }
     // スタイルを生成
     let styleTag = '';
     if (rightColWidths.length > 0 || leftColWidths.length > 0 || attColWidths.length > 0 || defaultColWidths.length > 0 || isSoufusho) {
@@ -658,6 +796,9 @@ function convertMarkdownToCourtHtml(markdown) {
         if (isSoufusho) {
             styleTag += '* { font-size: 10.5pt; }' + nl;
         }
+        // 版面に収まる最大の全角文字数。これを超える幅を指定すると、
+        // 1行に収まらない項目が紙面の右へはみ出して切れる。
+        const MAX_COL_WIDTH_EM = 38;
         const generateTableStyle = (widths, className) => {
             let css = '';
             widths.forEach((w, i) => {
@@ -667,7 +808,14 @@ function convertMarkdownToCourtHtml(markdown) {
                     if (className === 'att' && i === 0) {
                         w += 2.5;
                     }
-                    css += `table.${className} td.col-${i + 1} { width: ${w}em; }` + nl;
+                    if (w > MAX_COL_WIDTH_EM) {
+                        // 長い項目名は1行に収まらない。幅の指定をやめて折り返させる。
+                        // 附属書類の1列目は既定で white-space: nowrap のため、あわせて解除する。
+                        css += `table.${className} td.col-${i + 1} { width: auto; white-space: normal; }` + nl;
+                    }
+                    else {
+                        css += `table.${className} td.col-${i + 1} { width: ${w}em; }` + nl;
+                    }
                 }
             });
             return css;

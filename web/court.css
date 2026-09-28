@@ -13,14 +13,14 @@
     size: A4;
     margin: 35mm 20mm 27mm 30mm;
     counter-increment: page;
-}
 
-body:before {
-    -cssj-page-content: footer;
-    bottom: -15mm;
-    text-align: center;
-    width: 100%;
-    content: '- ' counter(page) ' -';
+    /* ノンブル。Copper PDF 4 で独自拡張の -cssj-page-content が廃止され、
+       標準の @page マージンボックスへ一本化されたため、こちらで出す。
+       Chrome + Paged.js も同じ記法を解釈する。 */
+    @bottom-center {
+        content: '- ' counter(page) ' -';
+        vertical-align: middle;
+    }
 }
 
 /* =========================================
@@ -96,6 +96,12 @@ table.info td {
     min-width: 4em;
 }
 
+/* 値列（氏名等）は原稿側で字取りするため左揃え。ラベル列の均等割付は維持 */
+table.info td.col-2 {
+    text-align: left;
+    text-align-last: left;
+}
+
 /* ヘッダー行付きテーブル（反訳書・明細等）*/
 table.has-header {
     border-collapse: collapse;
@@ -115,6 +121,16 @@ table.has-header td {
 table.has-header thead th {
     border-bottom: 1pt solid #000;
     font-weight: bold;
+}
+
+/* 固定レイアウト表（一般パイプ表）: colgroupの比例幅に従い、セル内で折り返す */
+table.has-header.fixed {
+    table-layout: fixed;
+}
+
+table.has-header.fixed th,
+table.has-header.fixed td {
+    overflow-wrap: break-word;
 }
 
 table.info td:first-child {
@@ -421,6 +437,28 @@ ol.lvl7 > li:before {
     position: absolute; left: -1.5em; top: 0; width: 2.5em;
 }
 
+
+/* md記載の明示番号（span.num）を使う項目は、CSSカウンターの:beforeを抑止する */
+ol.lvl1 > li.num-lit:before,
+ol.lvl2 > li.num-lit:before,
+ol.lvl3 > li.num-lit:before,
+ol.lvl4 > li.num-lit:before,
+ol.lvl5 > li.num-lit:before,
+ol.lvl6 > li.num-lit:before,
+ol.lvl7 > li.num-lit:before {
+    content: "";
+    display: none;
+    width: 0;
+}
+
+ol.lvl1 > li.num-lit > p > span.num { display: inline-block; width: 2em; white-space: nowrap; }
+ol.lvl2 > li.num-lit > p > span.num { position: absolute; left: -.5em; top: 0; width: 1.5em; }
+ol.lvl3 > li.num-lit > p > span.num { position: absolute; left: -1em; top: 0; width: 2em; }
+ol.lvl4 > li.num-lit > p > span.num { position: absolute; left: -1em; top: 0; width: 2em; }
+ol.lvl5 > li.num-lit > p > span.num { position: absolute; left: -1.5em; top: 0; width: 2.5em; }
+ol.lvl6 > li.num-lit > p > span.num { position: absolute; left: -1em; top: 0; width: 2em; }
+ol.lvl7 > li.num-lit > p > span.num { position: absolute; left: -1.5em; top: 0; width: 2.5em; }
+
 li.heading-item {
     list-style-type: none;
 }
@@ -473,6 +511,10 @@ table.att tr { counter-increment: att-cnt; }
 table.att td {
     padding: 0;
     vertical-align: top;
+    /* 折り返した行が両端揃えで間延びしないようにする。
+       長い書類名は複数行になるため、均等割付は適さない。 */
+    text-align: left;
+    text-align-last: left;
 }
 
 table.att td:first-child {
@@ -490,12 +532,14 @@ table.att td:first-child:before {
    ========================================= */
 table.evidence {
     border-collapse: collapse;
+    table-layout: fixed; /* 列幅は colgroup（court_markdown.ts）で比例配分 */
     width: 100%;
     margin: 1.618em 0;
 }
 
 table.evidence th,
 table.evidence td {
+    overflow-wrap: break-word;
     border: 0.5pt solid #000;
     padding: 2pt 4pt;
     vertical-align: top;
@@ -507,31 +551,40 @@ table.evidence th {
     text-align: center;
 }
 
-/* 列幅の設定 */
-.evidence .col-1 {
-    width: 3em; /* 号証 */
+/* 列の体裁（幅は colgroup で決まる。役割クラスは court_markdown.ts の evidenceColClass） */
+.evidence .col-no,
+.evidence .col-date {
+    white-space: nowrap;
 }
 
-.evidence .col-2 {
-    width: auto; /* 標目 */
-}
-
-.evidence .col-3 {
-    width: 2em; /* 原本／写 - 2文字固定 */
+.evidence .col-orig {
     text-align: center;
 }
 
-.evidence .col-4 {
-    width: 5em; /* 作成年月日 */
-    white-space: nowrap; /* ラップ禁止 */
+/* レベルを飛ばして下位リストを開いた場合の中間項目。
+   番号（カウンタ）を表示・加算しない */
+ol > li.filler {
+    counter-increment: none !important;
 }
-
-.evidence .col-5 {
-    width: 3em; /* 作成者 */
-}
-
-.evidence .col-6 {
-    width: auto; /* 立証趣旨 */
+ol > li.filler:before {
+    content: none !important;
 }
 
 /* =========================================
+   横置きセクション（別紙など）
+   Markdownの「### --横」〜「### --縦」で囲んだ範囲を
+   A4横置きのページとして組む。頁番号は本体からの通し。
+   ========================================= */
+@page yoko {
+    size: A4 landscape;
+    margin: 25mm 20mm 22mm 25mm;
+
+    @bottom-center {
+        content: '- ' counter(page) ' -';
+        vertical-align: middle;
+    }
+}
+
+.landscape {
+    page: yoko;
+}
