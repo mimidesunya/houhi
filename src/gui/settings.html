@@ -334,6 +334,19 @@
             </section>
 
             <section>
+                <h2>FAX送信</h2>
+                <div class="grid">
+                    <div class="field full">
+                        <label for="faxProvider">送信サービス</label>
+                        <select id="faxProvider">
+                            <option value="mfax">mfax</option>
+                            <option value="byosoku">秒速FAX</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section>
                 <h2>mfax</h2>
                 <div class="grid">
                     <div class="field">
@@ -347,6 +360,28 @@
                     <div class="field full">
                         <label for="mfaxSelfFax">自分のFAX番号</label>
                         <input id="mfaxSelfFax" autocomplete="off">
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2>秒速FAX</h2>
+                <div class="grid">
+                    <div class="field">
+                        <label for="byosokuSendAddress">送信アドレス（秒速FAXが発行したもの）</label>
+                        <input id="byosokuSendAddress" autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label for="byosokuFromAddress">送信元アドレス（秒速FAXに登録したもの。空欄ならメールのユーザー）</label>
+                        <input id="byosokuFromAddress" autocomplete="email">
+                    </div>
+                    <div class="field">
+                        <label for="byosokuMaxPages">1通あたりの頁数の上限</label>
+                        <input id="byosokuMaxPages" type="number" min="1" autocomplete="off" placeholder="10">
+                    </div>
+                    <div class="field">
+                        <label for="byosokuMaxBytes">1通あたりの添付容量の上限（バイト）</label>
+                        <input id="byosokuMaxBytes" type="number" min="1" autocomplete="off" placeholder="1000000">
                     </div>
                 </div>
             </section>

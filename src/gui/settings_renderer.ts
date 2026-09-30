@@ -67,6 +67,8 @@ function fillForm(config: ConfigMap) {
     const smtp = asObject(mail.smtp);
     const imap = asObject(mail.imap);
     const mfax = asObject(config.mfax);
+    const fax = asObject(config.fax);
+    const byosokuFax = asObject(config.byosokuFax);
     const transcription = asObject(config.transcription);
 
     setValue('pdfEngine', pdf.engine || 'copper');
@@ -94,6 +96,12 @@ function fillForm(config: ConfigMap) {
     setValue('mfaxFromAddress', mfax.fromAddress);
     setValue('mfaxSelfFax', mfax.selfFax);
 
+    setValue('faxProvider', fax.provider || 'mfax');
+    setValue('byosokuSendAddress', byosokuFax.sendAddress);
+    setValue('byosokuFromAddress', byosokuFax.fromAddress);
+    setValue('byosokuMaxPages', byosokuFax.maxPagesPerMail || 10);
+    setValue('byosokuMaxBytes', byosokuFax.maxBytesPerMail || 1000000);
+
     setValue('transcriptionProvider', transcription.provider || 'openai');
     setValue('transcriptionLanguage', transcription.language || 'ja');
     setValue('transcriptionModel', transcription.model);
@@ -111,6 +119,8 @@ function buildConfigFromForm() {
     const smtp = { ...asObject(mail.smtp) };
     const imap = { ...asObject(mail.imap) };
     const mfax = { ...asObject(config.mfax) };
+    const fax = { ...asObject(config.fax) };
+    const byosokuFax = { ...asObject(config.byosokuFax) };
     const transcription = { ...asObject(config.transcription) };
 
     pdf.engine = input('pdfEngine').value.trim() || 'copper';
@@ -138,6 +148,12 @@ function buildConfigFromForm() {
     mfax.fromAddress = input('mfaxFromAddress').value.trim();
     mfax.selfFax = input('mfaxSelfFax').value.trim();
 
+    fax.provider = input('faxProvider').value.trim() || 'mfax';
+    byosokuFax.sendAddress = input('byosokuSendAddress').value.trim();
+    byosokuFax.fromAddress = input('byosokuFromAddress').value.trim();
+    byosokuFax.maxPagesPerMail = Number(input('byosokuMaxPages').value) || 10;
+    byosokuFax.maxBytesPerMail = Number(input('byosokuMaxBytes').value) || 1000000;
+
     transcription.provider = input('transcriptionProvider').value.trim() || 'openai';
     transcription.language = input('transcriptionLanguage').value.trim() || 'ja';
     transcription.model = input('transcriptionModel').value.trim();
@@ -152,6 +168,8 @@ function buildConfigFromForm() {
     config.copper = copper;
     config.mail = mail;
     config.mfax = mfax;
+    config.fax = fax;
+    config.byosokuFax = byosokuFax;
     config.transcription = transcription;
 
     return config;

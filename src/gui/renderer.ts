@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
         word: 'Markdownを編集可能なWord（.docx）へ変換',
         ai_archive: 'AI分析用データをZIP化',
         stamp: 'PDFに号証番号を赤字でスタンプ',
-        fax_send: 'mfax経由でFAX送信',
+        fax_send: 'メールFAX（mfax／秒速FAX）で送信',
         transcribe_audio: '音声をMarkdownへ変換',
         address_label: 'vCardから宛名ラベルPDFを作成',
         drafting: 'ChatGPT用の起案キットを開く',

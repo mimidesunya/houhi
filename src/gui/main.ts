@@ -208,7 +208,7 @@ const SCRIPTS = {
     'word': { path: 'src/convert_to_word.js', name: '裁判文書Word作成' },
     'ai_archive': { path: 'src/archive_for_ai.js', name: 'AI分析用アーカイブ作成' },
     'stamp': { path: 'src/stamp_evidence_number.js', name: '号証スタンプ' },
-    'fax_send': { path: 'src/fax_send.js', name: 'mfax FAX送信' },
+    'fax_send': { path: 'src/fax_send.js', name: 'FAX送信（mfax／秒速FAX）' },
     'transcribe_audio': { path: 'src/transcribe_audio.js', name: '音声認識' },
     'address_label': { path: 'src/address_label.js', name: '宛名ラベルPDF作成' }
 };

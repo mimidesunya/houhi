@@ -13,6 +13,14 @@ const {
     createFaxAttachmentFilename,
     findPagedMarkdownForPdfs,
     getFaxSendConfiguration,
+    normalizeFaxProvider,
+    checkByosokuFromAddress,
+    planFaxChunks,
+    buildFaxMailOptions,
+    chunkAttachmentFilename,
+    buildFaxPdfParts,
+    isBlankFaxPage,
+    findBlankFaxPages,
     describeMailServerError,
     main,
 } = require('../dist/src/fax_send.js');
@@ -104,6 +112,171 @@ test('getFaxSendConfiguration: explains missing settings and that PDF processing
     assert.equal(result.mailConfig.user, 'sender@example.test');
     assert.equal(result.fromAddress, 'fax@example.test');
     assert.equal(result.sendPassword, 'fax-secret');
+});
+
+// ─── 秒速FAX ─────────────────────────────────────────────────
+
+const byosokuBaseConfig = {
+    mail: { user: 'sender@example.test', password: 'secret' },
+    fax: { provider: 'byosoku' },
+    byosokuFax: { sendAddress: 'send-123@fax.example.test' },
+};
+
+test('normalizeFaxProvider: defaults to mfax and accepts byosoku aliases', () => {
+    assert.equal(normalizeFaxProvider(undefined), 'mfax');
+    assert.equal(normalizeFaxProvider('MFAX'), 'mfax');
+    assert.equal(normalizeFaxProvider('byosoku'), 'byosoku');
+    assert.equal(normalizeFaxProvider('秒速FAX'), 'byosoku');
+    assert.throws(() => normalizeFaxProvider('efax'), /mfax または byosoku/);
+});
+
+test('getFaxSendConfiguration: byosoku requires a real send address', () => {
+    assert.throws(() => getFaxSendConfiguration({
+        mail: { user: 'sender@example.test', password: 'secret' },
+        fax: { provider: 'byosoku' },
+        byosokuFax: { sendAddress: 'YOUR_BYOSOKU_SEND_ADDRESS' },
+    }, { configPath: 'config.json', searchStartDirs: ['C:\\houhi'] }), error => {
+        assert.match(error.message, /送信サービス: 秒速FAX/);
+        assert.match(error.message, /byosokuFax\.sendAddress/);
+        assert.doesNotMatch(error.message, /mfax\.sendPassword/);
+        return true;
+    });
+});
+
+test('getFaxSendConfiguration: byosoku uses mail.user as sender and default limits', () => {
+    const result = getFaxSendConfiguration(byosokuBaseConfig);
+    assert.equal(result.provider, 'byosoku');
+    assert.equal(result.fromAddress, 'sender@example.test');
+    assert.equal(result.sendAddress, 'send-123@fax.example.test');
+    assert.equal(result.maxPagesPerMail, 10);
+    assert.equal(result.maxBytesPerMail, 1000000);
+});
+
+test('getFaxSendConfiguration: provider override switches from mfax to byosoku', () => {
+    const result = getFaxSendConfiguration({ ...byosokuBaseConfig, fax: { provider: 'mfax' } }, { provider: 'byosoku' });
+    assert.equal(result.provider, 'byosoku');
+});
+
+test('getFaxSendConfiguration: rejects sender addresses byosoku cannot accept', () => {
+    assert.throws(() => getFaxSendConfiguration({
+        ...byosokuBaseConfig,
+        byosokuFax: { sendAddress: 'send-123@fax.example.test', fromAddress: 'me+fax@example.test' },
+    }), /「!」「\+」「\*」は使えません/);
+});
+
+test('checkByosokuFromAddress: enforces length and characters', () => {
+    assert.equal(checkByosokuFromAddress('tm@jigensha.info'), null);
+    assert.match(checkByosokuFromAddress(`${'a'.repeat(45)}@example.test`), /50文字/);
+    assert.match(checkByosokuFromAddress('日本語@example.test'), /半角英数記号/);
+    assert.match(checkByosokuFromAddress('not-an-address'), /形式/);
+});
+
+test('planFaxChunks: splits by page count', () => {
+    const chunks = planFaxChunks(Array(14).fill(50000), { maxPages: 10, maxBytes: 1000000 });
+    assert.deepEqual(chunks.map(c => c.length), [10, 4]);
+    assert.deepEqual(chunks.flat(), Array.from({ length: 14 }, (_v, i) => i));
+});
+
+test('planFaxChunks: splits by size while keeping page order', () => {
+    const chunks = planFaxChunks(Array(7).fill(300000), { maxPages: 10, maxBytes: 1000000 });
+    assert.deepEqual(chunks, [[0, 1, 2], [3, 4, 5], [6]]);
+});
+
+test('planFaxChunks: refuses a single page larger than the limit', () => {
+    assert.throws(() => planFaxChunks([100, 2000000], { maxPages: 10, maxBytes: 1000000 }), /2頁目だけで/);
+});
+
+test('buildFaxMailOptions: byosoku sends to the send address with the FAX number as subject', () => {
+    const content = Buffer.from('%PDF');
+    const byosoku = buildFaxMailOptions(
+        { provider: 'byosoku', fromAddress: 'tm@example.test', sendAddress: 'send-123@fax.example.test' },
+        { faxNumber: '0332001234', filename: 'a.pdf', content }
+    );
+    assert.equal(byosoku.to, 'send-123@fax.example.test');
+    assert.equal(byosoku.subject, '0332001234');
+    assert.equal(byosoku.text, '');
+    assert.equal(byosoku.from, 'tm@example.test');
+    assert.equal(byosoku.attachments.length, 1);
+
+    const mfax = buildFaxMailOptions(
+        { provider: 'mfax', fromAddress: 'tm@example.test', sendPassword: 'pw' },
+        { faxNumber: '0332001234', filename: 'a.pdf', content }
+    );
+    assert.equal(mfax.to, '0332001234@mfax.jp');
+    assert.equal(mfax.subject, 'pw');
+});
+
+test('chunkAttachmentFilename: numbers split attachments only', () => {
+    assert.equal(chunkAttachmentFilename('送付書.pdf', 0, 1), '送付書.pdf');
+    assert.equal(chunkAttachmentFilename('送付書.pdf', 1, 2), '送付書_2of2.pdf');
+});
+
+test('buildFaxPdfParts: every part stays within page and byte limits', async (t) => {
+    const { createCanvas } = require('@napi-rs/canvas');
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-fax-parts-'));
+    t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+    // 白黒ノイズの頁（圧縮が効かず大きい）と白紙の頁（小さい）を混ぜる
+    const previewPaths = [];
+    const pageDims = [];
+    for (let n = 0; n < 5; n++) {
+        const canvas = createCanvas(300, 300);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, 300, 300);
+        if (n % 2 === 0) {
+            const img = ctx.getImageData(0, 0, 300, 300);
+            for (let i = 0; i < img.data.length; i += 4) {
+                const v = Math.random() < 0.5 ? 0 : 255;
+                img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+            }
+            ctx.putImageData(img, 0, 0);
+        }
+        const p = path.join(tempRoot, `preview_${n + 1}.png`);
+        fs.writeFileSync(p, canvas.toBuffer('image/png'));
+        previewPaths.push(p);
+        pageDims.push({ pageW: 595.28, pageH: 841.89, x: 0, y: 0, width: 595.28, height: 841.89 });
+    }
+
+    // 1頁ずつのPDFの大きさを実測し、ノイズ頁2枚は入らないが1枚なら入る上限にする
+    const singles = await buildFaxPdfParts(previewPaths, pageDims, tempRoot, { maxPages: 1, maxBytes: 50000000 });
+    const largest = Math.max(...singles.map(p => p.bytes.length));
+    const maxBytes = Math.floor(largest * 1.5);
+    const parts = await buildFaxPdfParts(previewPaths, pageDims, tempRoot, { maxPages: 2, maxBytes });
+    assert.ok(parts.length >= 3);
+    assert.deepEqual(parts.flatMap(p => p.pages), [0, 1, 2, 3, 4]);
+    for (const part of parts) {
+        assert.ok(part.pages.length <= 2);
+        assert.ok(part.bytes.length <= maxBytes, `part of ${part.bytes.length} bytes exceeds ${maxBytes}`);
+        const pdf = await PDFDocument.load(part.bytes);
+        assert.equal(pdf.getPageCount(), part.pages.length);
+    }
+});
+
+test('findBlankFaxPages: reports all-white pages by page number', async (t) => {
+    const { createCanvas } = require('@napi-rs/canvas');
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-fax-blank-'));
+    t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+    function writePage(name, withMark) {
+        const canvas = createCanvas(200, 280);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, 200, 280);
+        if (withMark) {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(100, 140, 1, 1);
+        }
+        const p = path.join(tempRoot, name);
+        fs.writeFileSync(p, canvas.toBuffer('image/png'));
+        return p;
+    }
+
+    const marked = writePage('p1.png', true);
+    const blank = writePage('p2.png', false);
+    assert.equal(await isBlankFaxPage(marked), false);
+    assert.equal(await isBlankFaxPage(blank), true);
+    assert.deepEqual(await findBlankFaxPages([marked, blank, marked]), [2]);
 });
 
 test('main: stops before reading an invalid PDF when FAX settings are missing', async (t) => {

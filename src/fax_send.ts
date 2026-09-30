@@ -1,8 +1,8 @@
 /**
- * mfaxメールFAX送信ツール
+ * メールFAX送信ツール（mfax／秒速FAX）
  *
  * 送付書 Markdown と添付 PDF をもとに、FAX 送信用 PDF を生成し、
- * `@mfax.jp` 宛のメールとして送信します。
+ * メールFAXサービス宛のメールとして送信します。
  * 送信後は IMAP 上の送信済みフォルダへ保存します。
  *
  * 入力:
@@ -15,22 +15,32 @@
  *
  * 必要設定:
  * - `config.json` の `mail`
- * - `config.json` の `mfax`
+ * - `config.json` の `fax.provider`（`mfax` または `byosoku`。省略時は `mfax`）
+ * - mfax: `config.json` の `mfax`
+ * - 秒速FAX: `config.json` の `byosokuFax`（`sendAddress` は秒速FAXが発行した送信アドレス。
+ *   送信元アドレスは秒速FAXの「送受信アドレス設定」に登録したものでなければならない）
  *
  * 使い方:
  *   node src/fax_send.js <YYYY-MM-DD-送付書.md> <添付PDF...>
  *   node src/fax_send.js <添付PDF...>              ← 送付書なし（FAX番号を手入力）
+ *   node src/fax_send.js --provider=byosoku <...>  ← 設定によらず秒速FAXで送る
  *
  * 動作:
  *   1. 送付書.mdをPDF化（送付書がある場合）
  *   2. 送付書PDF + 添付PDF全件を結合（送付書がある場合）
  *   3. 送付書.mdからFAX番号を抽出 (FAX XXXXXXXXXX)、または手入力
- *   4. {FAX番号}@mfax.jp 宛にメール送信（本文空、PDFを添付）
+ *   4. メール送信（本文空、PDFを添付）
+ *      - mfax: {FAX番号}@mfax.jp 宛、件名は送信パスワード
+ *      - 秒速FAX: 送信アドレス宛、件名はFAX番号（ハイフンなし）。1通あたり10頁・1MBの上限があるので、
+ *        二値化後のPDFを上限内の束に分け、束ごとに1通ずつ送る（受信側には束の数だけFAXが届く）
  *   5. 送信済みメールをIMAPの送信済みフォルダへ保存
  *
  * 補足:
  * - 送信前に確認プロンプトを表示します。
  * - GUI実行時は確認・入力要求を標準出力マーカ経由でダイアログ化します。
+ * - 秒速FAXは正常終了の通知がなく、送れなかったときだけエラーメールが届きます。
+ * - 秒速FAXは白一色の頁を全面黒にして届けるので、白紙頁があれば送信前に止めます
+ *   （mfax では注意の表示だけ）。フォントが埋め込まれていないPDFは文字が描けず白紙になります。
  */
 'use strict';
 
@@ -192,13 +202,54 @@ function getConfigSearchStartDirs() {
     return [...new Set([process.cwd(), __dirname, path.dirname(process.execPath)].filter(Boolean).map(p => path.resolve(p)))];
 }
 
-function getFaxSendConfiguration(config, { configPath = null, searchStartDirs = getConfigSearchStartDirs() } = {}) {
+const FAX_PROVIDERS = {
+    mfax: 'mfax',
+    byosoku: '秒速FAX',
+};
+
+// 秒速FAXのメールFAX送信の上限（https://fax.toones.jp/send/system/fax-mail.html）
+const BYOSOKU_DEFAULT_MAX_PAGES = 10;
+const BYOSOKU_DEFAULT_MAX_BYTES = 1000000;
+
+function normalizeFaxProvider(value) {
+    const v = String(value || '').trim().toLowerCase();
+    if (!v || v === 'mfax') return 'mfax';
+    if (v === 'byosoku' || v === 'byosokufax' || v === '秒速fax') return 'byosoku';
+    throw new Error(`FAX送信サービスの指定が不正です: ${value}（mfax または byosoku）`);
+}
+
+function isUnsetValue(value) {
+    const s = String(value ?? '').trim();
+    return s === '' || s.startsWith('YOUR_');
+}
+
+/**
+ * 秒速FAXの送信元アドレスの条件（半角英数記号・50文字以内、「!」「+」「*」は不可）を確かめる。
+ * 条件に合わなければ理由を返し、合えば null を返す。
+ */
+function checkByosokuFromAddress(address) {
+    const s = String(address || '');
+    if (!/^[^@\s]+@[^@\s]+$/.test(s)) return 'メールアドレスの形式ではありません';
+    if (s.length > 50) return '50文字を超えています';
+    if (/[!+*]/.test(s)) return '「!」「+」「*」は使えません';
+    if (!/^[\x21-\x7e]+$/.test(s)) return '半角英数記号以外の文字が含まれています';
+    return null;
+}
+
+function getFaxSendConfiguration(config, { configPath = null, searchStartDirs = getConfigSearchStartDirs(), provider: providerOverride = null } = {}) {
     const mailConfig = config?.mail;
-    const mfaxConfig = config?.mfax;
+    const provider = normalizeFaxProvider(providerOverride || config?.fax?.provider);
     const missing = [];
     if (!mailConfig?.user) missing.push('mail.user');
     if (!mailConfig?.password) missing.push('mail.password');
-    if (!mfaxConfig?.sendPassword) missing.push('mfax.sendPassword');
+
+    const mfaxConfig = config?.mfax;
+    const byosokuConfig = config?.byosokuFax;
+    if (provider === 'mfax') {
+        if (!mfaxConfig?.sendPassword) missing.push('mfax.sendPassword');
+    } else if (isUnsetValue(byosokuConfig?.sendAddress)) {
+        missing.push('byosokuFax.sendAddress');
+    }
 
     if (missing.length > 0) {
         const searchText = searchStartDirs.length > 0
@@ -206,6 +257,7 @@ function getFaxSendConfiguration(config, { configPath = null, searchStartDirs = 
             : '(探索起点を取得できませんでした)';
         throw new Error([
             'FAX送信設定が不足しています。PDFファイルの読込・結合・二値化は開始していません。',
+            `送信サービス: ${FAX_PROVIDERS[provider]}`,
             `設定ファイル: ${configPath || 'config.json は見つかりませんでした'}`,
             `config.json の探索起点（各親フォルダも確認）: ${searchText}`,
             `不足項目: ${missing.join(', ')}`,
@@ -213,11 +265,78 @@ function getFaxSendConfiguration(config, { configPath = null, searchStartDirs = 
         ].join('\n'));
     }
 
+    if (provider === 'mfax') {
+        return {
+            provider,
+            mailConfig,
+            fromAddress: mfaxConfig.fromAddress || mailConfig.user,
+            sendPassword: mfaxConfig.sendPassword,
+        };
+    }
+
+    const fromAddress = isUnsetValue(byosokuConfig.fromAddress) ? mailConfig.user : byosokuConfig.fromAddress;
+    const fromProblem = checkByosokuFromAddress(fromAddress);
+    if (fromProblem) {
+        throw new Error([
+            `秒速FAXの送信元アドレス ${fromAddress} は使えません（${fromProblem}）。PDFファイルの処理は開始していません。`,
+            '対処: 秒速FAXの「送受信アドレス設定」に登録したアドレスを byosokuFax.fromAddress に設定してください。',
+        ].join('\n'));
+    }
     return {
+        provider,
         mailConfig,
-        fromAddress: mfaxConfig.fromAddress || mailConfig.user,
-        sendPassword: mfaxConfig.sendPassword,
+        fromAddress,
+        sendAddress: String(byosokuConfig.sendAddress).trim(),
+        maxPagesPerMail: Number(byosokuConfig.maxPagesPerMail) || BYOSOKU_DEFAULT_MAX_PAGES,
+        maxBytesPerMail: Number(byosokuConfig.maxBytesPerMail) || BYOSOKU_DEFAULT_MAX_BYTES,
     };
+}
+
+/**
+ * 頁ごとの推定バイト数から、1通あたりの頁数・容量の上限に収まる束（頁番号の配列の配列）を作る。
+ * 頁の順序は保つ。1頁だけで上限を超える場合はエラーにする。
+ */
+function planFaxChunks(pageBytes, { maxPages, maxBytes, baseOverhead = 1024, pageOverhead = 512 }) {
+    const chunks = [];
+    let current = [];
+    let currentBytes = baseOverhead;
+    pageBytes.forEach((bytes, index) => {
+        const pageCost = bytes + pageOverhead;
+        if (baseOverhead + pageCost > maxBytes) {
+            throw new Error(`${index + 1}頁目だけで1通あたりの容量上限（${maxBytes}バイト）を超えます（推定 ${baseOverhead + pageCost} バイト）。この頁をディザリングなしにするか、元の頁を軽くしてください。`);
+        }
+        if (current.length >= maxPages || currentBytes + pageCost > maxBytes) {
+            chunks.push(current);
+            current = [];
+            currentBytes = baseOverhead;
+        }
+        current.push(index);
+        currentBytes += pageCost;
+    });
+    if (current.length > 0) chunks.push(current);
+    return chunks;
+}
+
+/**
+ * 送信サービスごとのメール（宛先・件名）を組み立てる。本文は空にする（秒速FAXでは本文も1頁として送られるため）。
+ */
+function buildFaxMailOptions(sendConfiguration, { faxNumber, filename, content }) {
+    const { provider, fromAddress } = sendConfiguration;
+    const base = {
+        from: fromAddress,
+        text: '',
+        attachments: [{ filename, content, contentType: 'application/pdf' }],
+    };
+    if (provider === 'byosoku') {
+        return { ...base, to: sendConfiguration.sendAddress, subject: faxNumber };
+    }
+    return { ...base, to: `${faxNumber}@mfax.jp`, subject: sendConfiguration.sendPassword };
+}
+
+function chunkAttachmentFilename(filename, chunkIndex, chunkCount) {
+    if (chunkCount <= 1) return filename;
+    const ext = path.extname(filename) || '.pdf';
+    return `${path.basename(filename, ext)}_${chunkIndex + 1}of${chunkCount}${ext}`;
 }
 
 // ─── FAX二値化 ───────────────────────────────────────────────
@@ -353,6 +472,63 @@ async function buildFaxPdf(previewPaths, pageDims, outputPath) {
         p.drawImage(img, { x: dims.x, y: dims.y, width: dims.width, height: dims.height });
     }
     fs.writeFileSync(outputPath, await out.save({ useObjectStreams: false }));
+}
+
+/**
+ * 二値化済みの頁が白一色かを調べる。
+ * 秒速FAXは白一色の頁を全面黒にして届ける（2026-10-01 の試験送信で確認）。
+ * フォントが埋め込まれていないPDFは文字が描けず白紙になるので、その発見にも使う。
+ */
+async function isBlankFaxPage(pngPath) {
+    const img = await loadImage(pngPath);
+    const canvas = createCanvas(img.width, img.height);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i] < 128 || data[i + 1] < 128 || data[i + 2] < 128) return false;
+    }
+    return true;
+}
+
+async function findBlankFaxPages(previewPaths) {
+    const blank = [];
+    for (let i = 0; i < previewPaths.length; i++) {
+        if (await isBlankFaxPage(previewPaths[i])) blank.push(i + 1);
+    }
+    return blank;
+}
+
+/**
+ * 二値化済みの頁を、1通あたりの頁数・容量の上限に収まる束のPDFに分ける（秒速FAX用）。
+ * 頁ごとのPNGの大きさで束を見積もり、実際に作ったPDFが上限を超えた束はさらに半分に分ける。
+ */
+async function buildFaxPdfParts(previewPaths, pageDims, workDir, { maxPages, maxBytes }) {
+    const pageBytes = previewPaths.map(p => fs.statSync(p).size);
+    const planned = planFaxChunks(pageBytes, { maxPages, maxBytes });
+    const parts = [];
+    let serial = 0;
+
+    async function build(pages) {
+        const outPath = path.join(workDir, `fax_part_${++serial}.pdf`);
+        await buildFaxPdf(pages.map(i => previewPaths[i]), pages.map(i => pageDims[i]), outPath);
+        const bytes = fs.readFileSync(outPath);
+        if (bytes.length <= maxBytes) {
+            parts.push({ pages, bytes });
+            return;
+        }
+        if (pages.length === 1) {
+            throw new Error(`${pages[0] + 1}頁目だけで1通あたりの容量上限（${maxBytes}バイト）を超えます（${bytes.length} バイト）。この頁をディザリングなしにするか、元の頁を軽くしてください。`);
+        }
+        const half = Math.ceil(pages.length / 2);
+        await build(pages.slice(0, half));
+        await build(pages.slice(half));
+    }
+
+    for (const pages of planned) {
+        await build(pages);
+    }
+    return parts;
 }
 
 // ─── FAX番号抽出 ──────────────────────────────────────────────
@@ -651,9 +827,10 @@ async function main(runtime: any = {}) {
 
     if (args.length < 1) {
         console.log('-------------------------------------------------------');
-        console.log(' mfax FAX送信ツール');
+        console.log(' FAX送信ツール（mfax／秒速FAX）');
         console.log(' 使い方: node fax_send.js <送付書.md> <添付PDF...>');
         console.log('         node fax_send.js <添付PDF...>  (送付書なし)');
+        console.log('         --provider=mfax|byosoku  で送信サービスを指定（既定は config.json の fax.provider）');
         console.log(' ドロップ: YYYY-MM-DD-送付書.md と 送付するPDFをドロップ');
         console.log('           または PDF のみドロップ（FAX番号を手入力）');
         console.log('-------------------------------------------------------');
@@ -662,10 +839,13 @@ async function main(runtime: any = {}) {
 
     // ─ オプション解析 ─
     let noDither = false;
+    let providerOverride = null;
     const fileArgs = [];
     for (const arg of args) {
         if (arg === '--no-dither') {
             noDither = true;
+        } else if (arg.startsWith('--provider=')) {
+            providerOverride = arg.substring('--provider='.length);
         } else {
             fileArgs.push(arg);
         }
@@ -706,12 +886,14 @@ async function main(runtime: any = {}) {
         sendConfiguration = getFaxSendConfiguration(config, {
             configPath,
             searchStartDirs: runtime.configSearchStartDirs || getConfigSearchStartDirs(),
+            provider: providerOverride,
         });
     } catch (error) {
         console.error(`[設定エラー] ${getErrorMessage(error)}`);
         return;
     }
-    const { mailConfig, fromAddress, sendPassword } = sendConfiguration;
+    const { mailConfig, provider } = sendConfiguration;
+    console.log(`[FAX] 送信サービス: ${FAX_PROVIDERS[provider]}`);
 
     // ─ FAX番号抽出 ─
     let faxNumbers = [];
@@ -787,12 +969,38 @@ async function main(runtime: any = {}) {
         }
         faxNumbers = result.faxNumbers;
 
+        // ─ 白紙頁の確認 ─
+        const blankPages = await findBlankFaxPages(previewPaths);
+        if (blankPages.length > 0) {
+            const pagesText = blankPages.map(n => `${n}頁目`).join('、');
+            if (provider === 'byosoku') {
+                console.error(`[エラー] ${pagesText}が白紙です。秒速FAXは白紙の頁を全面黒にして届けるため、送信を止めました。`);
+                console.error('         フォントが埋め込まれていないPDFは文字が描けず白紙になります。元のPDFを確認し、白紙頁を除くか、PDFを作り直してから送ってください。');
+                return;
+            }
+            console.log(`[注意] ${pagesText}が白紙です。フォントが埋め込まれていないPDFは文字が描けず白紙になるので、元のPDFを確認してください。`);
+        }
+
         // ─ 確定したプレビューからFAX PDFを生成 ─
         console.log('[FAX] FAX PDF を生成中...');
         await buildFaxPdf(previewPaths, pageDims, faxPdfPath);
 
         const mergedPdfBytes = fs.readFileSync(faxPdfPath);
         const attachFilename = createFaxAttachmentFilename(attachPdfs);
+
+        // ─ 送信する束（1通ずつの添付）を作る ─
+        // mfax は全頁を1通で送る。秒速FAXは1通あたりの頁数・容量の上限に収まるよう分ける。
+        let parts = [{ pages: previewPaths.map((_p, i) => i), bytes: mergedPdfBytes }];
+        if (provider === 'byosoku') {
+            parts = await buildFaxPdfParts(previewPaths, pageDims, tmpDir, {
+                maxPages: sendConfiguration.maxPagesPerMail,
+                maxBytes: sendConfiguration.maxBytesPerMail,
+            });
+            console.log(`[FAX] 秒速FAXの上限（${sendConfiguration.maxPagesPerMail}頁・${sendConfiguration.maxBytesPerMail}バイト）に合わせて ${parts.length} 通に分けます。`);
+            parts.forEach((part, i) => {
+                console.log(`  ${i + 1}通目: ${part.pages[0] + 1}〜${part.pages[part.pages.length - 1] + 1}頁（${part.pages.length}頁、${(part.bytes.length / 1024).toFixed(1)} KB）`);
+            });
+        }
 
         const transporter = nodemailer.createTransport({
             host: mailConfig.smtp.host,
@@ -805,63 +1013,60 @@ async function main(runtime: any = {}) {
             }
         });
 
-        // ─ 宛先ごとに個別送信 ─
+        // ─ 宛先ごとに個別送信（秒速FAXは束ごとに1通ずつ）─
         for (let i = 0; i < faxNumbers.length; i++) {
             const { label, name, number: faxNum } = faxNumbers[i];
-            const toAddress = `${faxNum}@mfax.jp`;
-            console.log(`[FAX ${i + 1}/${faxNumbers.length}] ${formatFaxDestination({ label, name })} → ${toAddress}`);
-
-            const mailOptions = {
-                from: fromAddress,
-                to: toAddress,
-                subject: sendPassword,
-                text: '',
-                attachments: [
-                    {
-                        filename: attachFilename,
-                        content: mergedPdfBytes
-                    }
-                ]
-            };
-
-            let info;
-            try {
-                info = await transporter.sendMail(mailOptions);
-            } catch (error) {
-                throw toMailServerError(error, {
-                    protocol: 'SMTP',
-                    action: 'FAX送信用メールの送信',
-                    settingPath: 'mail.smtp',
-                    host: mailConfig.smtp.host,
-                    port: mailConfig.smtp.port,
-                    secure: mailConfig.smtp.secure,
+            for (let k = 0; k < parts.length; k++) {
+                const mailOptions = buildFaxMailOptions(sendConfiguration, {
+                    faxNumber: faxNum,
+                    filename: chunkAttachmentFilename(attachFilename, k, parts.length),
+                    content: parts[k].bytes,
                 });
+                const partText = parts.length > 1 ? ` [${k + 1}/${parts.length}通目]` : '';
+                console.log(`[FAX ${i + 1}/${faxNumbers.length}]${partText} ${formatFaxDestination({ label, name })} (${faxNum}) → ${mailOptions.to}`);
+
+                let info;
+                try {
+                    info = await transporter.sendMail(mailOptions);
+                } catch (error) {
+                    throw toMailServerError(error, {
+                        protocol: 'SMTP',
+                        action: 'FAX送信用メールの送信',
+                        settingPath: 'mail.smtp',
+                        host: mailConfig.smtp.host,
+                        port: mailConfig.smtp.port,
+                        secure: mailConfig.smtp.secure,
+                    });
+                }
+                console.log(`[FAX ${i + 1}/${faxNumbers.length}]${partText} 送信完了: ${info.messageId}`);
+
+                // 全件IMAPに保存
+                const rawMessage = await new Promise((resolve, reject) => {
+                    const mail = nodemailer.createTransport({ streamTransport: true });
+                    mail.sendMail(mailOptions, (err, info) => {
+                        if (err) return reject(err);
+                        const chunks = [];
+                        info.message.on('data', c => chunks.push(c));
+                        info.message.on('end', () => resolve(Buffer.concat(chunks)));
+                        info.message.on('error', reject);
+                    });
+                });
+                console.log(`[IMAP] 送信済みメールを保存中...`);
+                await saveToSent(rawMessage, mailConfig);
             }
-            console.log(`[FAX ${i + 1}/${faxNumbers.length}] 送信完了: ${info.messageId}`);
-
-            // 全件IMAPに保存
-            const rawMessage = await new Promise((resolve, reject) => {
-                const mail = nodemailer.createTransport({ streamTransport: true });
-                mail.sendMail(mailOptions, (err, info) => {
-                    if (err) return reject(err);
-                    const chunks = [];
-                    info.message.on('data', c => chunks.push(c));
-                    info.message.on('end', () => resolve(Buffer.concat(chunks)));
-                    info.message.on('error', reject);
-                });
-            });
-            console.log(`[IMAP] 送信済みメールを保存中...`);
-            await saveToSent(rawMessage, mailConfig);
         }
 
         transporter.close();
 
-        console.log('\n✅ FAX送信が完了しました。');
+        console.log(`\n✅ FAX送信メールを送りました（${FAX_PROVIDERS[provider]}）。`);
         for (let i = 0; i < faxNumbers.length; i++) {
             const { label, name, number } = faxNumbers[i];
             console.log(`   ${i + 1}. ${formatFaxDestination({ label, name })}  (${number})`);
         }
-        console.log(`   添付: ${attachFilename} (${(mergedPdfBytes.length / 1024).toFixed(1)} KB)`);
+        console.log(`   添付: ${attachFilename} (${(mergedPdfBytes.length / 1024).toFixed(1)} KB、${previewPaths.length}頁${parts.length > 1 ? `、${parts.length}通に分割` : ''})`);
+        if (provider === 'byosoku') {
+            console.log('   秒速FAXは正常終了の通知がありません。送れなかった場合だけエラーメールが届くので、数分後に受信箱を確認してください。');
+        }
         if (attachPdfs.length > 1) {
             console.log('   結合順:');
             attachPdfs.forEach((pdfPath, i) => {
@@ -891,6 +1096,16 @@ module.exports = {
     createFaxAttachmentFilename,
     findPagedMarkdownForPdfs,
     getFaxSendConfiguration,
+    normalizeFaxProvider,
+    checkByosokuFromAddress,
+    planFaxChunks,
+    buildFaxMailOptions,
+    chunkAttachmentFilename,
+    buildFaxPdfParts,
+    binarizePdfForFax,
+    buildFaxPdf,
+    isBlankFaxPage,
+    findBlankFaxPages,
     describeMailServerError,
     main,
 };

@@ -27,10 +27,19 @@
         "user": "YOUR_MAIL_ADDRESS",
         "password": "YOUR_MAIL_PASSWORD"
     },
+    "fax": {
+        "provider": "mfax"
+    },
     "mfax": {
         "sendPassword": "YOUR_MFAX_SEND_PASSWORD",
         "fromAddress": "YOUR_FROM_ADDRESS",
         "selfFax": "自分のFAX番号（数字のみ。送付書への記載分を除外するために利用）"
+    },
+    "byosokuFax": {
+        "sendAddress": "YOUR_BYOSOKU_SEND_ADDRESS",
+        "fromAddress": "",
+        "maxPagesPerMail": 10,
+        "maxBytesPerMail": 1000000
     },
     "transcription": {
         "provider": "openai",
