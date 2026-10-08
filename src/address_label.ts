@@ -8,6 +8,14 @@
  * 出力:
  * - 宛先ファイルと同じディレクトリに PDF を作成します。
  *
+ * 宛先 vCard の拡張項目:
+ * - X-HOUHI-NAME-NOTE: 宛名の後ろに赤字で添える文言（「上告状在中（令和8年（ネ）第920号）」など）
+ * - X-HOUHI-ITEM: レターパックの品名。ラベルの外枠をレターパックの宛名欄全体（実測125×156mm）にし、
+ *   ご依頼主の区画の下に品名を入れ、
+ *   区画の下端に「☑リチウム電池なし」「☑高圧ガスなし」「☑引火性液体なし」をチェックした状態で横一列に並べる
+ *   （2025年版のレターパックの品名欄にあるチェック欄。ラベルで隠れるため）。貼るとレターパックの品名欄に
+ *   かかる。「品名」の語は封筒に印字されているので書かない。省略時の品名は「書類」
+ *
  * 使い方:
  *   node src/address_label.js [--label-layout=ordinary|letterpack] [--pdf-engine=copper|chrome] <宛先.vcf>
  *   node src/address_label.js --chrome <宛先.vcf>
@@ -20,6 +28,12 @@ const { convertHtmlToPdf } = require('./lib/pdf_converter');
 
 const SENDER_VCARD_FILE_NAME = '差出人.vcf';
 const DEFAULT_LABEL_LAYOUT = 'ordinary';
+// レターパックの品名の既定。裁判所・相手方への書面の送付が主な用途のため
+const DEFAULT_LETTERPACK_ITEM = '書類';
+// 2025年版のレターパックは、品名欄の中に「□リチウム電池なし」「□高圧ガスなし」「□引火性液体なし」の
+// チェック欄が縦に並ぶ。ラベルを貼るとこの欄が隠れるので、チェックした状態でラベルに書く。
+// 「品名」の語は封筒に印字されているので書かない
+const LETTERPACK_ITEM_CHECKS = ['リチウム電池なし', '高圧ガスなし', '引火性液体なし'];
 const LABEL_LAYOUTS = new Set(['ordinary', 'letterpack']);
 const PDF_ENGINES = new Set(['chrome', 'copper']);
 
@@ -39,6 +53,8 @@ type VCardContact = {
     address: VCardAddress;
     phone: string;
     nameNote: string;
+    // レターパックの品名（宛先 vCard の X-HOUHI-ITEM）。空なら既定の「書類」
+    item: string;
 };
 
 type ParsedLine = {
@@ -267,6 +283,7 @@ function parseVCard(text: string): VCardContact {
         phone: first('TEL'),
         // 氏名の後ろに付ける添え書き（「親展」など）。赤字で表示する。
         nameNote: first('X-HOUHI-NAME-NOTE'),
+        item: first('X-HOUHI-ITEM'),
         address: {
             postalCode: adrParts[5] || '',
             region: adrParts[4] || '',
@@ -587,11 +604,13 @@ body {
   --address-gap: 2mm;
   --phone-gap: 2mm;
 }
+/* 外枠はレターパックの宛名欄（お届け先・ご依頼主・品名）全体の実測 125×156mm（2026-10-08）。
+   お届け先・ご依頼主の区画は従来の位置（参照SVG）のままで、その下を品名の区画にする */
 .letterpack .label-frame {
   left: 22.2395mm;
   top: 49.1537mm;
-  width: 124.7994mm;
-  height: 119.7994mm;
+  width: 125mm;
+  height: 156mm;
 }
 .letterpack .guide {
   display: none;
@@ -602,23 +621,23 @@ body {
 .letterpack .cut-top {
   left: 22.2395mm;
   top: 49.1537mm;
-  width: 124.7994mm;
+  width: 125mm;
   height: 0;
   opacity: 0.55;
   border-top: 0.16mm dotted #000;
 }
 .letterpack .cut-right {
-  left: 147.0389mm;
+  left: 147.2395mm;
   top: 49.1537mm;
   width: 0;
-  height: 119.7994mm;
+  height: 156mm;
   opacity: 0.55;
   border-right: 0.16mm dotted #000;
 }
 .letterpack .cut-bottom {
   left: 22.2395mm;
-  top: 168.9531mm;
-  width: 124.7994mm;
+  top: 205.1537mm;
+  width: 125mm;
   height: 0;
   opacity: 0.55;
   border-top: 0.16mm dotted #000;
@@ -627,12 +646,44 @@ body {
   left: 22.2395mm;
   top: 49.1537mm;
   width: 0;
-  height: 119.7994mm;
+  height: 156mm;
   opacity: 0.55;
   border-left: 0.16mm dotted #000;
 }
 .letterpack .separator {
   top: 66.2454mm;
+}
+/* 品名。お届け先・ご依頼主の区画（縦119.8mm）の下、外枠の下端（156mm）までの区画に置き、
+   ラベルを貼るとレターパックの品名欄にかかるようにする。「品名」の語は封筒に印字されているので書かない */
+.letterpack .separator-item {
+  top: 119.7994mm;
+}
+.letterpack .item {
+  left: 7.6965mm;
+  top: 125mm;
+  width: 112mm;
+  height: 28mm;
+}
+.letterpack .item-name {
+  font-size: 20pt;
+  line-height: 1.2;
+  font-weight: 500;
+}
+/* チェック欄は品名の区画の下端にそろえる（下づけ） */
+.letterpack .item-checks {
+  position: absolute;
+  left: 0;
+  bottom: 2mm;
+  font-size: 12pt;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.letterpack .item-check {
+  display: inline;
+  margin-right: 1.2em;
+}
+.letterpack .item-check::before {
+  content: "☑";
 }
 .letterpack .recipient {
   left: 7.6965mm;
@@ -644,7 +695,9 @@ body {
   left: 7.3503mm;
   top: 73.2mm;
   width: 110mm;
-  height: 43mm;
+  /* 文字の大きさは LABEL_BLOCK_METRICS の 43mm で決め、箱は区切り線（119.8mm）の手前まで取る。
+     43mm ちょうどの箱だと、最後の行（電話番号）の下端が切れることがあった */
+  height: 45.8mm;
 }
 .letterpack {
   --postal-size: 18pt;
@@ -668,7 +721,12 @@ body {
     </section>
     <section class="block sender">
       ${renderContactBlock(sender, 'from', layout)}
-    </section>
+    </section>${isLetterpack ? `
+    <div class="separator separator-item"></div>
+    <section class="block item">
+      <div class="item-name">${htmlEscape(compactSpaces(recipient.item) || DEFAULT_LETTERPACK_ITEM)}</div>
+      <div class="item-checks">${LETTERPACK_ITEM_CHECKS.map(c => `<span class="item-check">${htmlEscape(c)}</span>`).join('')}</div>
+    </section>` : ''}
   </section>
   <div class="cut-line cut-top"></div>
   <div class="cut-line cut-right"></div>

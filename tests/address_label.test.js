@@ -115,13 +115,13 @@ test('address_label: letterpack HTML follows reference SVG frame and uses strong
 
     assert.match(html, /\.letterpack \.label-frame \{[\s\S]*left:\s*22\.2395mm;/);
     assert.match(html, /\.letterpack \.label-frame \{[\s\S]*top:\s*49\.1537mm;/);
-    assert.match(html, /\.letterpack \.label-frame \{[\s\S]*width:\s*124\.7994mm;/);
-    assert.match(html, /\.letterpack \.label-frame \{[\s\S]*height:\s*119\.7994mm;/);
+    assert.match(html, /\.letterpack \.label-frame \{[\s\S]*width:\s*125mm;/);
+    assert.match(html, /\.letterpack \.label-frame \{[\s\S]*height:\s*156mm;/);
     assert.match(html, /\.letterpack \.guide \{[\s\S]*display:\s*none;/);
-    assert.match(html, /\.letterpack \.cut-top \{[\s\S]*left:\s*22\.2395mm;[\s\S]*top:\s*49\.1537mm;[\s\S]*width:\s*124\.7994mm;[\s\S]*border-top:\s*0\.16mm dotted #000;/);
-    assert.match(html, /\.letterpack \.cut-right \{[\s\S]*left:\s*147\.0389mm;[\s\S]*height:\s*119\.7994mm;[\s\S]*border-right:\s*0\.16mm dotted #000;/);
-    assert.match(html, /\.letterpack \.cut-bottom \{[\s\S]*top:\s*168\.9531mm;[\s\S]*width:\s*124\.7994mm;[\s\S]*border-top:\s*0\.16mm dotted #000;/);
-    assert.match(html, /\.letterpack \.cut-left \{[\s\S]*left:\s*22\.2395mm;[\s\S]*height:\s*119\.7994mm;[\s\S]*border-left:\s*0\.16mm dotted #000;/);
+    assert.match(html, /\.letterpack \.cut-top \{[\s\S]*left:\s*22\.2395mm;[\s\S]*top:\s*49\.1537mm;[\s\S]*width:\s*125mm;[\s\S]*border-top:\s*0\.16mm dotted #000;/);
+    assert.match(html, /\.letterpack \.cut-right \{[\s\S]*left:\s*147\.2395mm;[\s\S]*height:\s*156mm;[\s\S]*border-right:\s*0\.16mm dotted #000;/);
+    assert.match(html, /\.letterpack \.cut-bottom \{[\s\S]*top:\s*205\.1537mm;[\s\S]*width:\s*125mm;[\s\S]*border-top:\s*0\.16mm dotted #000;/);
+    assert.match(html, /\.letterpack \.cut-left \{[\s\S]*left:\s*22\.2395mm;[\s\S]*height:\s*156mm;[\s\S]*border-left:\s*0\.16mm dotted #000;/);
     assert.match(html, /\.letterpack \.separator \{[\s\S]*top:\s*66\.2454mm;/);
     assert.match(html, /\.letterpack \{[\s\S]*--address-size:\s*18pt;/);
     assert.match(html, /\.letterpack \{[\s\S]*--name-size:\s*18pt;/);
@@ -168,4 +168,28 @@ test('address_label: ordinary HTML uses 16pt text and compact envelope label fra
     assert.match(html, /\.ordinary \.label-frame \{[\s\S]*height:\s*95mm;/);
     assert.match(html, /--postal-size:\s*16pt;/);
     assert.match(html, /--name-size:\s*16pt;/);
+});
+
+test('address_label: letterpack label extends below the sender block with the item name', () => {
+    const base = {
+        name: '第15民事部 御中',
+        organization: '東京高等裁判所',
+        phone: '',
+        nameNote: '',
+        item: '',
+        address: { postalCode: '1008933', region: '', locality: '', street: '東京都千代田区霞が関1-1-4', extended: '東京高等裁判所', country: '日本', label: '' }
+    };
+    const sender = { ...base, name: '宮部 龍彦', organization: '', item: '' };
+    const html = buildLabelHtml(base, sender, 'letterpack');
+    assert.match(html, /<div class="item-name">書類<\/div>/);
+    assert.match(html, /<div class="item-checks"><span class="item-check">リチウム電池なし<\/span><span class="item-check">高圧ガスなし<\/span><span class="item-check">引火性液体なし<\/span><\/div>/);
+    assert.match(html, /\.letterpack \.item-check::before \{[\s\S]*content: "☑";/);
+    assert.doesNotMatch(html, /品名　/);
+    assert.match(html, /\.letterpack \.separator-item \{[\s\S]*top:\s*119\.7994mm;/);
+
+    const custom = buildLabelHtml({ ...base, item: '証拠書類' }, sender, 'letterpack');
+    assert.match(custom, /<div class="item-name">証拠書類<\/div>/);
+
+    const ordinary = buildLabelHtml(base, sender, 'ordinary');
+    assert.doesNotMatch(ordinary, /class="block item"/);
 });
