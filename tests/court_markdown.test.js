@@ -42,8 +42,8 @@ test('convertMarkdownToCourtHtml: escapes text inside underline inline syntax', 
 test('convertMarkdownToCourtHtml: converts underline syntax in table cells', () => {
     const md = '| 項目 | 内容 |\n|:---|:---|\n| 争点 | ++投稿者の同一性++ |';
     const result = convertMarkdownToCourtHtml(md);
-    assert.ok(result.includes('<td class="col-1">争点</td>'));
-    assert.ok(result.includes('<td class="col-2"><span class="underline">投稿者の同一性</span></td>'));
+    assert.ok(result.includes('<td>争点</td>'));
+    assert.ok(result.includes('<td><span class="underline">投稿者の同一性</span></td>'));
 });
 
 test('convertMarkdownToCourtHtml: keeps escaped underline delimiter literal', () => {
@@ -64,7 +64,7 @@ test('convertMarkdownToCourtHtml: escapes text inside ruby inline syntax', () =>
 test('convertMarkdownToCourtHtml: converts ruby syntax in table cells', () => {
     const md = '| 項目 | 内容 |\n|:---|:---|\n| 用語 | ｜売買契約《ばいばいけいやく》 |';
     const result = convertMarkdownToCourtHtml(md);
-    assert.ok(result.includes('<td class="col-2"><ruby>売買契約<rt>ばいばいけいやく</rt></ruby></td>'));
+    assert.ok(result.includes('<td><ruby>売買契約<rt>ばいばいけいやく</rt></ruby></td>'));
 });
 
 test('convertMarkdownToCourtHtml: keeps escaped ruby marker literal', () => {
@@ -307,4 +307,40 @@ test('convertMarkdownToCourtHtml: handles special markdown chars', () => {
     const md = '**太字テスト**と*斜体テスト*';
     const result = convertMarkdownToCourtHtml(md);
     assert.ok(typeof result === 'string');
+});
+
+// ─── 表と当事者欄の組み方 ──────────────────────────────────
+
+test('convertMarkdownToCourtHtml: header pipe table uses its own fixed layout, not the shared info widths', () => {
+    const md = [
+        '| 甲号証 | 題名（見出し） | 執筆者等 |',
+        '| :--- | :--- | :--- |',
+        '| 甲1 | 長い題名の記事がここに入ります。長い題名の記事がここに入ります。 | 取材班 |',
+        '| 甲2 | 短い題名 | 取材班 |',
+    ].join('\n');
+    const result = convertMarkdownToCourtHtml(md);
+    assert.match(result, /<table class="has-header fixed">/);
+    assert.match(result, /<colgroup>(<col style="width:[0-9.]+%">){3}<\/colgroup>/);
+    assert.doesNotMatch(result, /info default-info has-header/);
+    // 共有の info 表の列幅（em 固定）が見出し付きの表から計算されていないこと
+    assert.doesNotMatch(result, /table\.default-info td\.col-2/);
+    // 長い題名の列が最も広く配分されること
+    const widths = [...result.matchAll(/<col style="width:([0-9.]+)%">/g)].map(m => Number(m[1]));
+    assert.ok(widths[1] > widths[0] && widths[1] > widths[2], widths.join(','));
+});
+
+test('convertMarkdownToCourtHtml: name column in a right block has no trailing slack', () => {
+    const md = '### --右\n〒100-0001\n東京都千代田区千代田1丁目1番1号\n- 上告人:甲野　太郎\n### --';
+    const result = convertMarkdownToCourtHtml(md);
+    assert.match(result, /table\.right-info td\.col-2 \{ width: 5em; white-space: nowrap; \}/);
+});
+
+test('convertMarkdownToCourtHtml: phone and fax in a party block become separate lines', () => {
+    const md = '### --右\n〒100-0001\n- 上告人兼上告受理申立人:甲野　太郎\n- 電話:000-0000-0000\n- FAX:000-0000-0001\n### --';
+    const result = convertMarkdownToCourtHtml(md);
+    assert.match(result, /<p class="contact">電話 000-0000-0000<\/p>/);
+    assert.match(result, /<p class="contact">FAX 000-0000-0001<\/p>/);
+    assert.doesNotMatch(result, /<td class="col-1">電話<\/td>/);
+    // 氏名の列幅が電話番号に引きずられないこと
+    assert.match(result, /table\.right-info td\.col-2 \{ width: 5em; white-space: nowrap; \}/);
 });
