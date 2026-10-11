@@ -50,3 +50,49 @@ test('evidence table: short columns stay narrow and 立証趣旨 gets the most w
     assert.ok(title >= 15, `標目 keeps at least 6em: ${widths}`);
     assert.ok(author > 0);
 });
+
+// 2026-10-08 大阪事件の証拠説明書7: 空欄を一律に上と結合していたため、乙76の備考が乙77にも掛かり、
+// 1行目（乙74）の空の備考はセルごと消えて罫線が欠けていた。
+const BLANK_CELL_TABLE = [
+    '| 乙号証 | 標目 | 原本写 | 作成年月日 | 作成者 | 立証趣旨 | 備考 |',
+    '| :--- | :--- | :---: | :--- | :--- | :--- | :--- |',
+    '| 乙74 | 判決 | 写し | 2026/1/22 | 東京高等裁判所 | 判示したこと |  |',
+    '| 乙76 | 決定 | 写し | 2026/9/9 | 最高裁判所 | 確定したこと | 送達用の宛名頁を除く |',
+    '| 乙77 | 新聞記事 | 写し | 2026/8/26 | 毎日新聞社 | 報じたこと |  |',
+    '| 乙78の1 | 写真 | 写し | 2026/9/1 | 被告 | 現場の状況 | 抜粋 |',
+    '| 乙78の2 | 写真 | 写し |  |  |  |  |',
+].join('\n');
+
+function blankCellRows() {
+    const html = convertMarkdownToCourtHtml(BLANK_CELL_TABLE);
+    const tbody = html.match(/<tbody>([\s\S]*?)<\/tbody>/)[1];
+    return [...tbody.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(m => [...m[1].matchAll(/<td class="([^"]+)"([^>]*)>([\s\S]*?)<\/td>/g)]
+        .map(c => ({ cls: c[1], attrs: c[2], text: c[3] })));
+}
+
+test('evidence table: a blank cell in the first row is kept as an empty cell', () => {
+    const [first] = blankCellRows();
+    assert.equal(first.length, 7, 'the first row keeps all 7 cells so that its borders are drawn');
+    assert.deepEqual(first[6], { cls: 'col-note', attrs: '', text: '' });
+});
+
+test('evidence table: blank cells of a different exhibit are not merged with the row above', () => {
+    const rows = blankCellRows();
+    const otsu76Note = rows[1][6];
+    assert.equal(otsu76Note.text, '送達用の宛名頁を除く');
+    assert.equal(otsu76Note.attrs, '', '乙76の備考 must not span into 乙77');
+    assert.equal(rows[2].length, 7);
+    assert.deepEqual(rows[2][6], { cls: 'col-note', attrs: '', text: '' });
+});
+
+test('evidence table: blank cells of the same branch-numbered exhibit merge, except 備考', () => {
+    const rows = blankCellRows();
+    const first = rows[3];
+    assert.match(first[3].attrs, /rowspan="2"/, '作成年月日 of 乙78の1 spans 乙78の2');
+    assert.match(first[4].attrs, /rowspan="2"/);
+    assert.match(first[5].attrs, /rowspan="2"/);
+    assert.equal(first[6].attrs, '', '備考 never merges');
+    const second = rows[4];
+    assert.deepEqual(second.map(c => c.cls), ['col-no', 'col-title', 'col-orig', 'col-note']);
+    assert.equal(second[3].text, '');
+});

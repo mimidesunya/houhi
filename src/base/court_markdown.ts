@@ -451,91 +451,52 @@ export function convertMarkdownToCourtHtml(markdown) {
         // データ行を生成
         tableHtml += indent(lastLevel + 1) + '<tbody>' + nl;
         
-        // 各列で結合が必要な行を追跡
-        const rowspanMap = new Map(); // key: colIndex, value: { rowIndex, span, text }
-        
+        // 空のセルは、同じ主番号の枝番どうし（甲1の1→甲1の2、1-1→1-2）でだけ上のセルと結合する。
+        // 別の号証の空欄と備考の列の空欄は「記載なし」なので、罫線のある空のセルとして出す。
+        // 以前は空欄を一律に上と結合していたため、乙76の備考が乙77にも掛かって見え、
+        // 1行目の空欄はセルごと出力されずに罫線が欠けていた（2026-10-08、大阪事件の証拠説明書7）。
+        const noColIndex = colClasses.indexOf('col-no');
+        const evidenceGroupKey = (raw: string): string => {
+            const s = raw.normalize('NFKC').replace(/\s/g, '').replace(/第|号証/g, '');
+            const m = s.match(/^([甲乙丙]?[A-Za-z]?)(\d+)/);
+            return m ? `${m[1]}${Number(m[2])}` : s;
+        };
+        // 号証の欄が空の行は、上の行と同じ号証の続きとみなす
+        const groupKeys: (string | null)[] = [];
+        dataRows.forEach((row, r) => {
+            const raw = noColIndex >= 0 ? (row[noColIndex] || '').trim() : '';
+            groupKeys.push(raw === '' ? (r > 0 ? groupKeys[r - 1] : null) : evidenceGroupKey(raw));
+        });
+        const mergesUp = (r: number, c: number): boolean => {
+            if (r === 0 || colClasses[c] === 'col-note') return false;
+            if ((dataRows[r][c] || '').trim() !== '') return false;
+            if (c >= dataRows[r - 1].length) return false;
+            const key = groupKeys[r];
+            return key !== null && key === groupKeys[r - 1];
+        };
+
         dataRows.forEach((row, rowIndex) => {
             tableHtml += indent(lastLevel + 2) + '<tr>' + nl;
-            
+
             row.forEach((cell, colIndex) => {
-                const text = cell.trim();
-                
-                // この列が既に結合中かチェック
-                if (rowspanMap.has(colIndex)) {
-                    const info = rowspanMap.get(colIndex);
-                    if (rowIndex < info.rowIndex + info.span) {
-                        // まだ結合中なのでセルをスキップ
-                        return;
-                    }
-                }
-                
-                // 空のセルの場合、上のセルと結合
-                if (text === '') {
-                    // 上方向に遡って最初の非空セルを探す
-                    let spanCount = 1;
-                    let lookupRow = rowIndex - 1;
-                    let mergedText = '';
-                    
-                    while (lookupRow >= 0) {
-                        const prevText = dataRows[lookupRow][colIndex].trim();
-                        if (prevText !== '') {
-                            mergedText = prevText;
-                            // 既存のrowspanを更新
-                            if (rowspanMap.has(colIndex)) {
-                                const existingInfo = rowspanMap.get(colIndex);
-                                if (lookupRow >= existingInfo.rowIndex && lookupRow < existingInfo.rowIndex + existingInfo.span) {
-                                    // 既存の結合を拡張
-                                    existingInfo.span++;
-                                    return;
-                                }
-                            }
-                            
-                            // 新しいrowspanの開始位置まで遡る
-                            let startRow = lookupRow;
-                            while (startRow > 0 && dataRows[startRow - 1][colIndex].trim() === '') {
-                                startRow--;
-                                spanCount++;
-                            }
-                            
-                            // この空セルまでのスパンをカウント
-                            spanCount = rowIndex - startRow + 1;
-                            
-                            // 既存のマッピングを更新
-                            if (rowspanMap.has(colIndex)) {
-                                const info = rowspanMap.get(colIndex);
-                                if (info.rowIndex === startRow) {
-                                    info.span = spanCount + 1;
-                                }
-                            }
-                            break;
-                        }
-                        lookupRow--;
-                        spanCount++;
-                    }
-                    return; // 空のセルは出力しない
-                }
-                
-                // 下方向に空のセルがいくつ続くかカウント
+                // 上のセルの rowspan に含まれるので出力しない
+                if (mergesUp(rowIndex, colIndex)) return;
+
                 let rowspan = 1;
-                for (let nextRow = rowIndex + 1; nextRow < dataRows.length; nextRow++) {
-                    if (dataRows[nextRow][colIndex].trim() === '') {
-                        rowspan++;
-                    } else {
-                        break;
-                    }
+                while (rowIndex + rowspan < dataRows.length && mergesUp(rowIndex + rowspan, colIndex)) {
+                    rowspan++;
                 }
-                
-                if (rowspan > 1) {
-                    rowspanMap.set(colIndex, { rowIndex, span: rowspan, text });
-                }
-                
+
+                const text = cell.trim();
                 const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
-                const cellHtml = colClasses[colIndex] === 'col-date'
-                    ? dateChunks(text).map(chunk => `<span class="nw">${renderInlineMarkdown(chunk)}</span>`).join('')
-                    : renderInlineMarkdown(text);
+                const cellHtml = text === ''
+                    ? ''
+                    : colClasses[colIndex] === 'col-date'
+                        ? dateChunks(text).map(chunk => `<span class="nw">${renderInlineMarkdown(chunk)}</span>`).join('')
+                        : renderInlineMarkdown(text);
                 tableHtml += indent(lastLevel + 3) + `<td class="${colClasses[colIndex] || 'col-other'}"${rowspanAttr}>${cellHtml}</td>` + nl;
             });
-            
+
             tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
         });
         
