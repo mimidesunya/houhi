@@ -30,6 +30,23 @@ test('evidence table: dates break only after 年', () => {
     assert.match(table, /<td class="col-date"><span class="nw">令和8年<\/span><span class="nw">3月31日<\/span><\/td>/);
 });
 
+// 2026-10-09 東京の証拠説明書3: 複数の日付を1つの塊にしたため、作成年月日の列が広がり、
+// 立証趣旨の列が細って4頁が8頁になった。
+test('evidence table: a list of dates breaks after 、 and ～ and before 及び', () => {
+    const md = [
+        '| 乙A号証 | 標目 | 原本写 | 作成年月日 | 作成者 | 立証趣旨 |',
+        '| :--- | :--- | :---: | :--- | :--- | :--- |',
+        '| 47 | 対応について（抜粋） | 写し | 令和6年3月13日～同月18日 | 久喜市長等 | 方針を決定したこと。 |',
+        '| 48 | 申入れ及び回答（抜粋） | 写し | 令和5年11月15日、令和6年2月13日及び同年3月7日 | 久喜市長等 | 申し入れたこと。 |',
+    ].join('\n');
+    const table = convertMarkdownToCourtHtml(md).match(/<table class="evidence">[\s\S]*?<\/table>/)[0];
+    assert.match(table, /<span class="nw">3月13日～<\/span><span class="nw">同月18日<\/span>/);
+    assert.match(table, /<span class="nw">11月15日、<\/span><span class="nw">令和6年<\/span><span class="nw">2月13日<\/span><span class="nw">及び同年<\/span><span class="nw">3月7日<\/span>/);
+    // 最長の塊は「11月15日、」（約 5.5em＋余白＝本文 37.8em の約 17%）。分けないと「11月15日、令和6年」で約 27%
+    const date = colWidths(table)[3];
+    assert.ok(date < 20, `作成年月日 should stay as narrow as its longest date chunk: ${date}`);
+});
+
 test('evidence table: 号証 and 作成年月日 headers break at word boundaries', () => {
     const table = evidenceHtml();
     assert.match(table, /<th class="col-no"><span class="nw">乙A<\/span><span class="nw">号証<\/span><\/th>/);
