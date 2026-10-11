@@ -18,7 +18,19 @@
  * - `--all-pages`: 全ページにスタンプします（既定は1ページ目のみ）。
  * - `--font-size N`: A4印刷換算のフォントサイズを指定します。
  * - `--mints`: 民事裁判書類電子提出システム（mints）向け。表記を「甲001」「甲002-1」の形式（「号証」なし、主番号3桁）にし、
- *   出力先を `mints/`、ファイル名の先頭を同じ形式に改め、結合PDFは作らない（mints は1証拠1ファイル、A4/A3のみ）。
+ *   出力先を `mints/`、ファイル名の先頭を同じ形式に改め、結合PDFは作らない（mints は1証拠1ファイル、A4/A3のみ）。黒帯も付けない。
+ * - `--no-tab`: 境目の黒帯を付けない。
+ * - `--tab-steps N`: 黒帯を上下にずらす段数（既定は4）。
+ *
+ * 境目の黒帯:
+ * - 番号の右から用紙の右端まで、黒の斜めの縞の帯を付けます。まとめて印刷して重ねたとき、右端を見れば号証の境目が分かります。
+ *   縞にしてあるのは、スキャンの黒い縁や墨消しと見分けやすくするためです。
+ * - 番号と帯は、号証番号の順に帯の高さ1つ分ずつ下へずらし、4段（`--tab-steps`）で上に戻ります。隣り合う号証は必ず別の高さになります。
+ * - 段は、そのとき一緒に処理した号証の中での順番で決まります。一部の号証だけを処理し直すと段が変わるので、全部をまとめて処理し直してください。
+ * - 用紙の右端の数mmは、プリンタの印刷できない余白で白く残ります。
+ * - 横長の頁は、頁の上が左（綴じ側）に来るよう回して縦の頁にします（文書の全頁をそろえる）。番号と帯は縦長の頁と同じ場所に刷られます。
+ *   画面では横長の頁が横倒しに見えます。`--no-tab` のときは回しません。
+ * - 元の頁の回転（/Rotate）は保ち、番号は表示したときの右上に正立で刷ります。
  *
  * 補足:
  * - ファイルは証拠番号順に自然ソートして処理します。
@@ -32,11 +44,16 @@
  *   --all-pages   全ページにスタンプ（デフォルトは1ページ目のみ）
  *   --font-size N A4印刷換算のフォントサイズ指定（デフォルト: 20）
  *   --no-blank-pages 結合時に空白ページを挿入しない（FAX向け）
- *   --mints       mints 提出用（「甲001」形式・mints/ へ出力・結合なし）
+ *   --mints       mints 提出用（「甲001」形式・mints/ へ出力・結合なし・黒帯なし）
+ *   --no-tab      境目の黒帯を付けない
+ *   --tab-steps N 黒帯を上下にずらす段数（デフォルト: 4）
  */
 const fs = require('fs');
 const path = require('path');
-const { PDFDocument, rgb } = require('pdf-lib');
+const {
+    PDFDocument, rgb, degrees,
+    pushGraphicsState, popGraphicsState, rectangle, clip, endPath, moveTo, lineTo, closePath, fill, setFillingRgbColor,
+} = require('pdf-lib');
 const fontkit = require('@pdf-lib/fontkit');
 
 // ── 設定 ──────────────────────────────────────
@@ -45,6 +62,12 @@ const MARGIN_RIGHT = 15;   // 右余白 (pt)
 const MARGIN_TOP = 12;     // 上余白 (pt)
 const STAMP_OUTLINE = 1.5; // 白縁取り幅 (pt)
 const STAMP_SUFFIX = '号証';
+const TAB_LENGTH = 42;     // 境目の黒帯: 用紙の右端から帯の左端まで (pt)
+const TAB_GAP = 4;         // 番号と黒帯の間 (pt)
+const DEFAULT_TAB_STEPS = 4; // 黒帯を上下にずらす段数
+const TAB_DESCENT = 0.12;  // 黒帯の下端を番号の文字の下端に合わせる (フォントサイズ比)
+const TAB_STRIPE_PERIOD = 0.4; // 黒帯の斜めの縞の周期 (フォントサイズ比。黒はその半分)
+const LANDSCAPE_TURN = 270; // 横長の頁を縦にするときの回転（/Rotate に足す。頁の上が左＝綴じ側に来る）
 const A4_WIDTH = 595.28;   // A4 幅 (pt)
 const A4_HEIGHT = 841.89;  // A4 高さ (pt)
 const PAGE_SIZE_TOLERANCE = 0.5;
@@ -126,6 +149,50 @@ function getA4Placement(width, height) {
     };
 }
 
+/**
+ * 頁の /Rotate（時計回り）を 0・90・180・270 のどれかで返す
+ */
+function getPageRotation(page) {
+    const angle = page.getRotation().angle || 0;
+    return ((Math.round(angle / 90) * 90) % 360 + 360) % 360;
+}
+
+/**
+ * /Rotate を反映した、表示したときの幅と高さ
+ */
+function getDisplaySize(page) {
+    const { width, height } = page.getSize();
+    return getPageRotation(page) % 180 === 0 ? { width, height } : { width: height, height: width };
+}
+
+/**
+ * 表示したときの座標（左下が原点）を、/Rotate を持つ頁の描画座標に移す。
+ * width・height は /Rotate を反映する前の頁の大きさ。
+ */
+function toPageSpace(rotation, width, height, u, v) {
+    switch (rotation) {
+        case 90: return { x: width - v, y: u };
+        case 180: return { x: width - u, y: height - v };
+        case 270: return { x: v, y: height - u };
+        default: return { x: u, y: v };
+    }
+}
+
+/**
+ * 横長に表示される頁を、上が左に来るよう回して縦に表示させる。番号と黒帯を縦長の頁と同じ場所に刷るため。
+ */
+function turnLandscapePagesToPortrait(pages) {
+    let turned = 0;
+    for (const page of pages) {
+        const { width, height } = getDisplaySize(page);
+        if (width > height) {
+            page.setRotation(degrees((getPageRotation(page) + LANDSCAPE_TURN) % 360));
+            turned++;
+        }
+    }
+    return turned;
+}
+
 function pageHasContents(page) {
     return Boolean(page?.node && typeof page.node.Contents === 'function' && page.node.Contents());
 }
@@ -142,7 +209,63 @@ function getStampMetricsForA4Print(pageWidth, pageHeight, fontSize = DEFAULT_FON
         marginRight: MARGIN_RIGHT * metricScale,
         marginTop: MARGIN_TOP * metricScale,
         outline: STAMP_OUTLINE * metricScale,
+        tabLength: TAB_LENGTH * metricScale,
+        tabGap: TAB_GAP * metricScale,
     };
+}
+
+type TabOptions = {
+    tab?: boolean;
+    tabIndex?: number;
+    tabSteps?: number;
+};
+
+/**
+ * 番号の位置と境目の黒帯の矩形を返す。
+ * 黒帯は番号の右から用紙の右端まで、高さはフォントサイズと同じ。tabIndex を tabSteps で割った余りの段だけ、番号ごと帯の高さ分ずつ下げる。
+ */
+function getStampLayout(pageWidth, pageHeight, textWidth, metrics, options: TabOptions = {}) {
+    const { tab = false, tabIndex = 0, tabSteps = DEFAULT_TAB_STEPS } = options;
+    if (!tab) {
+        return {
+            textX: pageWidth - textWidth - metrics.marginRight,
+            textY: pageHeight - metrics.marginTop - metrics.fontSize,
+            tabRect: null,
+        };
+    }
+    const steps = Math.max(1, Math.floor(tabSteps));
+    const step = ((Math.floor(tabIndex) % steps) + steps) % steps;
+    const textY = pageHeight - metrics.marginTop - metrics.fontSize - step * metrics.fontSize;
+    const tabX = pageWidth - metrics.tabLength;
+    return {
+        textX: tabX - metrics.tabGap - textWidth,
+        textY,
+        tabRect: {
+            x: tabX,
+            y: textY - metrics.fontSize * TAB_DESCENT,
+            width: pageWidth - tabX,
+            height: metrics.fontSize,
+        },
+    };
+}
+
+/**
+ * 帯を塗る斜めの縞（右上がり）を、表示したときの座標の四角形の並びで返す。
+ * 縞は帯からはみ出すので、帯の矩形で切り抜いて塗る。period は縞の周期で、黒はその半分。
+ */
+function getTabStripes(rect, period) {
+    const black = period / 2;
+    const { x, y, width, height } = rect;
+    const stripes = [];
+    for (let left = x - height - period; left < x + width + period; left += period) {
+        stripes.push([
+            [left, y],
+            [left + black, y],
+            [left + black + height, y + height],
+            [left + height, y + height],
+        ]);
+    }
+    return stripes;
 }
 
 /**
@@ -170,6 +293,8 @@ async function ensureA4Pages(pdfBytes) {
                 const embedded = await newDoc.embedPage(srcPage);
                 newPage.drawPage(embedded, placement);
             }
+            // embedPage は /Rotate を持ち込まないので、元の頁の表示の向きを付け直す
+            newPage.setRotation(degrees(getPageRotation(srcPage)));
         } else {
             const [copiedPage] = await newDoc.copyPages(srcDoc, [i]);
             newDoc.addPage(copiedPage);
@@ -284,14 +409,14 @@ function naturalSortKey(filepath) {
 /**
  * PDFに証拠番号スタンプを追加し、スタンプ済みPDFDocumentを返す
  */
-type StampOptions = {
+type StampOptions = TabOptions & {
     allPages?: boolean;
     fontSize?: number;
     mints?: boolean;
 };
 
 async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: StampOptions = {}) {
-    const { allPages = false, fontSize = DEFAULT_FONT_SIZE, mints = false } = options;
+    const { allPages = false, fontSize = DEFAULT_FONT_SIZE, mints = false, tab = false, tabIndex = 0, tabSteps = DEFAULT_TAB_STEPS } = options;
     const stampText = buildStampText(evidenceNumber, mints);
 
     const rawPdfBytes = fs.readFileSync(inputPath);
@@ -306,14 +431,45 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
 
     const pages = pdfDoc.getPages();
     const pagesToStamp = allPages ? pages : [pages[0]];
+    const withTab = tab && !mints;
+    if (withTab) {
+        // 横長の頁は文書の全頁をそろえて縦にする（1頁目だけ回すと、2頁目以降をプリンタが逆向きに回すことがある）
+        turnLandscapePagesToPortrait(pages);
+    }
 
     for (const page of pagesToStamp) {
-        const { width, height } = page.getSize();
+        // 位置は表示したときの向きで決め、/Rotate に合わせて頁の座標へ移す
+        const rotation = getPageRotation(page);
+        const { width: pageW, height: pageH } = page.getSize();
+        const { width, height } = getDisplaySize(page);
         const stampMetrics = getStampMetricsForA4Print(width, height, fontSize);
         const textWidth = embeddedFont.widthOfTextAtSize(stampText, stampMetrics.fontSize);
 
-        const x = width - textWidth - stampMetrics.marginRight;
-        const y = height - stampMetrics.marginTop - stampMetrics.fontSize;
+        const { textX, textY, tabRect } = getStampLayout(width, height, textWidth, stampMetrics, { tab: withTab, tabIndex, tabSteps });
+        if (tabRect) {
+            // 帯の矩形で切り抜き、白で下塗りして（灰色のスキャンの上でも縞が見えるように）、斜めの黒い縞を塗る
+            const a = toPageSpace(rotation, pageW, pageH, tabRect.x, tabRect.y);
+            const b = toPageSpace(rotation, pageW, pageH, tabRect.x + tabRect.width, tabRect.y + tabRect.height);
+            const box = [Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y)];
+            const ops = [
+                pushGraphicsState(),
+                rectangle(box[0], box[1], box[2], box[3]),
+                clip(),
+                endPath(),
+                setFillingRgbColor(1, 1, 1),
+                rectangle(box[0], box[1], box[2], box[3]),
+                fill(),
+                setFillingRgbColor(0, 0, 0),
+            ];
+            for (const stripe of getTabStripes(tabRect, stampMetrics.fontSize * TAB_STRIPE_PERIOD)) {
+                const [first, ...rest] = stripe.map(([u, v]) => toPageSpace(rotation, pageW, pageH, u, v));
+                ops.push(moveTo(first.x, first.y), ...rest.map(point => lineTo(point.x, point.y)), closePath(), fill());
+            }
+            ops.push(popGraphicsState());
+            page.pushOperators(...ops);
+        }
+        const { x, y } = toPageSpace(rotation, pageW, pageH, textX, textY);
+        const rotate = degrees(rotation);
 
         // 白縁取り（上下左右・斜めの8方向にオフセット描画）
         const outline = stampMetrics.outline;
@@ -328,6 +484,7 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
                 size: stampMetrics.fontSize,
                 font: embeddedFont,
                 color: rgb(1, 1, 1),
+                rotate,
             });
         }
 
@@ -338,6 +495,7 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
             size: stampMetrics.fontSize,
             font: embeddedFont,
             color: rgb(1, 0, 0),
+            rotate,
         });
     }
 
@@ -370,7 +528,7 @@ async function mergeStampedPdfs(stampedPdfBytesList, outputPath, { insertBlankPa
             // 最後のページと同じサイズの空白ページを追加
             const lastPage = copiedPages[copiedPages.length - 1];
             const { width, height } = lastPage.getSize();
-            mergedDoc.addPage([width, height]);
+            mergedDoc.addPage([width, height]).setRotation(degrees(getPageRotation(lastPage)));
             totalPages++;
             blankPages++;
         }
@@ -391,14 +549,21 @@ async function main() {
     const allPages = args.includes('--all-pages');
     const noBlankPages = args.includes('--no-blank-pages');
     const mints = args.includes('--mints');
+    const tab = !mints && !args.includes('--no-tab');
     let fontSize = DEFAULT_FONT_SIZE;
     const fontSizeIdx = args.indexOf('--font-size');
     if (fontSizeIdx !== -1 && args[fontSizeIdx + 1]) {
         fontSize = parseInt(args[fontSizeIdx + 1], 10);
     }
+    let tabSteps = DEFAULT_TAB_STEPS;
+    const tabStepsIdx = args.indexOf('--tab-steps');
+    if (tabStepsIdx !== -1 && args[tabStepsIdx + 1]) {
+        tabSteps = Math.max(1, parseInt(args[tabStepsIdx + 1], 10) || DEFAULT_TAB_STEPS);
+    }
 
-    // ファイルパスのみ抽出
-    const filePaths = args.filter(a => !a.startsWith('--') && !(args[args.indexOf(a) - 1] === '--font-size'));
+    // ファイルパスのみ抽出（値を取るオプションの次の引数は除く）
+    const valueOptions = ['--font-size', '--tab-steps'];
+    const filePaths = args.filter((a, i) => !a.startsWith('--') && !valueOptions.includes(args[i - 1]));
 
     if (filePaths.length === 0) {
         console.error('使い方: node stamp_evidence_number.js <PDF/画像ファイル...>');
@@ -434,9 +599,16 @@ async function main() {
 
     const stampMode = allPages ? '全ページ' : '1ページ目のみ';
     const blankMode = mints ? 'mints提出用（結合なし）' : (noBlankPages ? '空白ページなし' : '両面印刷対応');
+    const tabMode = tab ? `境目の黒帯 ${tabSteps}段` : '黒帯なし';
     console.log(`対象: ${sortedPaths.length} ファイル`);
     console.log(`出力: ${outputDir}`);
-    console.log(`モード: ${stampMode} / フォントサイズ: ${fontSize}pt / ${blankMode}`);
+    console.log(`モード: ${stampMode} / フォントサイズ: ${fontSize}pt / ${blankMode} / ${tabMode}`);
+
+    // 黒帯の段は、番号のあるファイルの中での順番で決める（隣り合う号証は必ず別の段になる）
+    const tabIndexOf = new Map<string, number>();
+    sortedPaths
+        .filter(filePath => extractEvidenceNumber(path.basename(filePath)))
+        .forEach((filePath, index) => tabIndexOf.set(filePath, index));
     console.log('─'.repeat(50));
 
     let okCount = 0;
@@ -476,7 +648,9 @@ async function main() {
         }
         const outputPath = path.join(outputDir, outputFilename);
         try {
-            const pdfBytes = await stampPdf(inputForStamp, outputPath, evidenceNum, fontBytes, { allPages, fontSize, mints });
+            const pdfBytes = await stampPdf(inputForStamp, outputPath, evidenceNum, fontBytes, {
+                allPages, fontSize, mints, tab, tabIndex: tabIndexOf.get(filePath) ?? 0, tabSteps,
+            });
             // 画像→PDF変換の中間ファイルが出力先と異なる場合は削除
             if (tempPdfPath && tempPdfPath !== outputPath) {
                 try { fs.unlinkSync(tempPdfPath); } catch (_) {}
@@ -544,6 +718,12 @@ module.exports = {
     findJapaneseFont,
     getA4PrintScaleForPage,
     getStampMetricsForA4Print,
+    getStampLayout,
+    getTabStripes,
+    getPageRotation,
+    getDisplaySize,
+    toPageSpace,
+    turnLandscapePagesToPortrait,
     ensureA4Pages,
     stampPdf,
     mergeStampedPdfs,

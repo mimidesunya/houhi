@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const pdfEngineOption = document.getElementById('pdfEngineOption') as HTMLElement;
     const optPdfEngine = document.getElementById('optPdfEngine') as HTMLSelectElement;
     const optNoBlankPages = document.getElementById('optNoBlankPages') as HTMLInputElement;
+    const optNoTab = document.getElementById('optNoTab') as HTMLInputElement;
     const optNoDither = document.getElementById('optNoDither') as HTMLInputElement;
     const audioTargetOption = document.getElementById('audioTargetOption') as HTMLElement;
     const audioModelOption = document.getElementById('audioModelOption') as HTMLElement;
@@ -27,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentScript?: ScriptKey;
         pdfEngine?: string;
         noBlankPages?: boolean;
+        noTab?: boolean;
         noDither?: boolean;
         audioTarget?: string;
         audioModel?: string;
@@ -83,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentScript,
             pdfEngine: optPdfEngine.value || DEFAULT_PDF_ENGINE,
             noBlankPages: optNoBlankPages.checked,
+            noTab: optNoTab.checked,
             noDither: optNoDither.checked,
             audioTarget: optAudioTarget.value || 'houhi',
             audioModel: optAudioModel.value || 'openai:gpt-4o-transcribe-diarize',
@@ -97,6 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
         optionsBar.style.display = (scriptKey === 'pdf' || scriptKey === 'stamp' || scriptKey === 'fax_send' || scriptKey === 'transcribe_audio' || scriptKey === 'address_label') ? '' : 'none';
         pdfEngineOption.style.display = (scriptKey === 'pdf' || scriptKey === 'address_label') ? '' : 'none';
         optNoBlankPages.parentElement!.style.display = scriptKey === 'stamp' ? '' : 'none';
+        optNoTab.parentElement!.style.display = scriptKey === 'stamp' ? '' : 'none';
         optNoDither.parentElement!.style.display = scriptKey === 'fax_send' ? '' : 'none';
         audioTargetOption.style.display = scriptKey === 'transcribe_audio' ? '' : 'none';
         audioModelOption.style.display = scriptKey === 'transcribe_audio' ? '' : 'none';
@@ -114,6 +118,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (currentScript === 'stamp' && optNoBlankPages.checked) {
             opts.push('--no-blank-pages');
+        }
+        if (currentScript === 'stamp' && optNoTab.checked) {
+            opts.push('--no-tab');
         }
         if (currentScript === 'fax_send' && optNoDither.checked) {
             opts.push('--no-dither');
@@ -437,6 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
         optPdfEngine.value = DEFAULT_PDF_ENGINE;
     }
     optNoBlankPages.checked = Boolean(savedState.noBlankPages);
+    optNoTab.checked = Boolean(savedState.noTab);
     optNoDither.checked = Boolean(savedState.noDither);
     optAudioTarget.value = isAudioTarget(savedState.audioTarget) ? savedState.audioTarget : 'houhi';
     optAudioModel.value = isAudioModel(savedState.audioModel) ? savedState.audioModel : 'openai:gpt-4o-transcribe-diarize';
@@ -454,6 +462,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     optPdfEngine.addEventListener('change', saveGuiState);
     optNoBlankPages.addEventListener('change', saveGuiState);
+    optNoTab.addEventListener('change', saveGuiState);
     optNoDither.addEventListener('change', saveGuiState);
     optAudioTarget.addEventListener('change', saveGuiState);
     optAudioModel.addEventListener('change', saveGuiState);
