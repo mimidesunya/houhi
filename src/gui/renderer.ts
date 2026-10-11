@@ -108,6 +108,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentScript === 'pdf' || currentScript === 'address_label') {
             opts.push(`--pdf-engine=${optPdfEngine.value || DEFAULT_PDF_ENGINE}`);
         }
+        if (currentScript === 'pdf') {
+            // コマンドラインの既定は「開かない」。GUI では従来どおり作成後に開く
+            opts.push('--open');
+        }
         if (currentScript === 'stamp' && optNoBlankPages.checked) {
             opts.push('--no-blank-pages');
         }

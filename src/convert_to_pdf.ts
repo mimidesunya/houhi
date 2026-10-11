@@ -15,12 +15,12 @@
  * - Markdown から変換する際は一時的に `.html` を生成し、変換後に削除します。
  *
  * 補足:
- * - 変換後は生成した PDF を既定アプリまたはブラウザで開こうとします。
+ * - 既定では、変換後に PDF を開きません。`--open` を付けると、生成した PDF を既定アプリまたはブラウザで開きます（GUI は `--open` を付けて呼び出します）。
  * - CSS やテンプレートは `src/base/` を基準に参照します。
  * - PDF 生成エンジンは Copper PDF または Chrome を選択できます（既定は Chrome）。
  *
  * 使い方:
- *   node src/convert_to_pdf.js [--pdf-engine=copper|chrome] <入力ファイルパス(.html または .md)>
+ *   node src/convert_to_pdf.js [--pdf-engine=copper|chrome] [--open] <入力ファイルパス(.html または .md)>
  *   node src/convert_to_pdf.js --chrome <入力ファイルパス>
  *   node src/convert_to_pdf.js --copper <入力ファイルパス>
  */
@@ -132,7 +132,7 @@ ${markdownContent}
 }
 
 function printUsage() {
-    console.log('使い方: node src/convert_to_pdf.js [--pdf-engine=copper|chrome] <入力ファイルパス(.html または .md)>');
+    console.log('使い方: node src/convert_to_pdf.js [--pdf-engine=copper|chrome] [--open] <入力ファイルパス(.html または .md)>');
     console.log('       node src/convert_to_pdf.js --chrome <入力ファイルパス>');
     console.log('       node src/convert_to_pdf.js --copper <入力ファイルパス>');
 }
@@ -140,11 +140,20 @@ function printUsage() {
 function parseArgs(args) {
     const files = [];
     const pdfOptions: Record<string, string> = {};
+    let openOutput = false;
 
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (arg === '--help' || arg === '-h') {
-            return { files, pdfOptions, help: true };
+            return { files, pdfOptions, openOutput, help: true };
+        }
+        if (arg === '--open') {
+            openOutput = true;
+            continue;
+        }
+        if (arg === '--no-open') {
+            openOutput = false;
+            continue;
         }
         if (arg === '--chrome') {
             pdfOptions.engine = 'chrome';
@@ -185,10 +194,10 @@ function parseArgs(args) {
         files.push(arg);
     }
 
-    return { files, pdfOptions, help: false };
+    return { files, pdfOptions, openOutput, help: false };
 }
 
-async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput, pdfOptions = {}) {
+async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput, pdfOptions = {}, openOutput = false) {
     // 出力ディレクトリの準備
     if (!fs.existsSync(DEFAULT_OUTPUT_DIR)) {
         fs.mkdirSync(DEFAULT_OUTPUT_DIR, { recursive: true });
@@ -266,9 +275,12 @@ async function processFile(inputPath, inputText, isHtmlInput, isMarkdownInput, p
         }
     }
 
-    // PDFを開く
+    // PDFを開く（--open のときだけ）
     if (fs.existsSync(outputPdfPath)) {
         console.log(`PDFを作成しました: ${outputPdfPath}`);
+        if (!openOutput) {
+            return;
+        }
         const platform = process.platform;
         let command = platform === 'win32' ? `start msedge "${outputPdfPath}"` : (platform === 'darwin' ? `open "${outputPdfPath}"` : `xdg-open "${outputPdfPath}"`);
         exec(command, (err) => {
@@ -295,6 +307,7 @@ async function main() {
 
     const args = parsed.files;
     const pdfOptions = parsed.pdfOptions;
+    const openOutput = parsed.openOutput;
 
     if (args.length > 0) {
         for (const arg of args) {
@@ -311,10 +324,10 @@ async function main() {
             
             const ext = path.extname(inputPath).toLowerCase();
             if (ext === '.html') {
-                await processFile(inputPath, "", true, false, pdfOptions);
+                await processFile(inputPath, "", true, false, pdfOptions, openOutput);
             } else if (ext === '.md') {
                 const inputText = fs.readFileSync(inputPath, 'utf-8');
-                await processFile(inputPath, inputText, false, true, pdfOptions);
+                await processFile(inputPath, inputText, false, true, pdfOptions, openOutput);
             } else {
                 console.error(`エラー: .html または .md ファイルを指定してください: ${inputPath}`);
             }
@@ -337,20 +350,20 @@ async function main() {
                     }
                     const tempHtmlPath = path.join(DEFAULT_OUTPUT_DIR, "temp_clipboard_input.html");
                     fs.writeFileSync(tempHtmlPath, clipboardContent, 'utf-8');
-                    await processFile(tempHtmlPath, "", true, false, pdfOptions);
+                    await processFile(tempHtmlPath, "", true, false, pdfOptions, openOutput);
                 } else {
                     console.log("クリップボードの内容をMarkdownとして処理します。");
-                    await processFile("", clipboardContent, false, true, pdfOptions);
+                    await processFile("", clipboardContent, false, true, pdfOptions, openOutput);
                 }
             } else {
                 const defaultHtmlPath = path.join(DEFAULT_TEMPLATE_DIR, DEFAULT_MAIN_HTML);
                 console.log("クリップボードが空です。デフォルトテンプレートを使用します。");
-                await processFile(defaultHtmlPath, "", true, false, pdfOptions);
+                await processFile(defaultHtmlPath, "", true, false, pdfOptions, openOutput);
             }
         } catch (err) {
             console.error(`クリップボード取得エラー: ${err}`);
             const defaultHtmlPath = path.join(DEFAULT_TEMPLATE_DIR, DEFAULT_MAIN_HTML);
-            await processFile(defaultHtmlPath, "", true, false, pdfOptions);
+            await processFile(defaultHtmlPath, "", true, false, pdfOptions, openOutput);
         }
     }
     console.log("\nすべての処理が完了しました。");

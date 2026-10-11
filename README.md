@@ -273,7 +273,7 @@ OCR 用の AI / `ndlocr-lite` 設定は `houhi` ではなく [`mimi-ocr`](https:
 音声反訳を使う場合は、`transcription.openaiApiKey` または環境変数 `OPENAI_API_KEY`、Geminiの場合は `transcription.geminiApiKey` または `GEMINI_API_KEY` を設定してください。
 FAX送信を使う場合は、`mail` と `mfax` の設定が必要です。`mfax.fromAddress` が空の場合は `mail.user` を送信元として使います。
 
-PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine=copper` または GUI の「PDFエンジン」から Copper PDF に切り替えられます。Chrome を自動検出できない場合は `pdf.chromePath` に実行ファイルのパスを設定してください。
+PDF作成ツールの既定エンジンは Chrome です。CLI の `--pdf-engine=copper` または GUI の「PDFエンジン」から Copper PDF に切り替えられます。Chrome を自動検出できない場合は `pdf.chromePath` に実行ファイルのパスを設定してください。CLI は既定では作成した PDF を開きません。開くときは `--open` を付けます。GUI の `PDF作成` は作成後に PDF を開きます。
 
 Word作成はGUIの `Word作成` へ `.md` をドロップするか、ビルド後に `node dist/src/convert_to_word.js --no-open <書面.md>` で実行できます。WordやLibreOfficeがインストールされていないPCでも `.docx` 自体は生成できます。
 
