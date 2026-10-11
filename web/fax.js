@@ -241,6 +241,10 @@ function computeLuminanceData(imageData, width, height) {
     }
     return { isRedInk, histogram, luminance, totalPixels };
 }
+// 大津の方法で閾値を求める。返す値は「輝度 >= 閾値 を白」にそのまま使える。
+// 暗い組の最後の値をそのまま返すと、その値の画素が白になる。0 と 255 だけの頁では
+// 閾値が 0 になり、頁全体が白紙になった（TECH-20260925-002。src/fax_prepare_pdf.ts と同じ直し）。
+// いまは、暗い組の最後の値と明るい組の最初の値のあいだの中ほどを返す。
 function otsuThreshold(histogram, totalPixels) {
     let sum = 0;
     for (let index = 0; index < 256; index++) {
@@ -249,7 +253,8 @@ function otsuThreshold(histogram, totalPixels) {
     let sumB = 0;
     let wB = 0;
     let maxVariance = 0;
-    let bestThreshold = 128;
+    let darkEnd = -1;
+    let gapEnd = -1;
     for (let threshold = 0; threshold < 256; threshold++) {
         wB += histogram[threshold];
         if (wB === 0)
@@ -257,16 +262,25 @@ function otsuThreshold(histogram, totalPixels) {
         const wF = totalPixels - wB;
         if (wF === 0)
             break;
+        if (histogram[threshold] === 0) {
+            // 画素のない値では分散は変わらない。最大の直後なら区間を延ばす
+            if (gapEnd === threshold - 1)
+                gapEnd = threshold;
+            continue;
+        }
         sumB += threshold * histogram[threshold];
         const mB = sumB / wB;
         const mF = (sum - sumB) / wF;
         const variance = wB * wF * (mB - mF) * (mB - mF);
         if (variance > maxVariance) {
             maxVariance = variance;
-            bestThreshold = threshold;
+            darkEnd = threshold;
+            gapEnd = threshold;
         }
     }
-    return bestThreshold;
+    if (darkEnd < 0)
+        return 128;
+    return Math.floor((darkEnd + gapEnd) / 2) + 1;
 }
 function detectPhotoContent(histogram, totalPixels) {
     let midTonePixels = 0;

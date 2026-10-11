@@ -342,13 +342,20 @@ ipcMain.handle('execute-script', async (event, { scriptKey, filePaths, options }
                     const previewData = JSON.parse(raw);
                     const previewDir = path.dirname(previewData.images[0]);
                     const ditherStatus = previewData.ditherStatus || [];
+                    // 黒い画素のない頁（1始まり）。二値化で白紙になった頁に気づけるよう注意を出す
+                    const blankPages: number[] = (Array.isArray(previewData.blankPages) ? previewData.blankPages : [])
+                        .map(Number).filter(Number.isInteger);
+                    const blankWarningHtml = blankPages.length > 0
+                        ? `<div class="blank-warning">白紙の頁があります: ${blankPages.map(n => `${n}頁目`).join('、')}（黒い画素がありません）。送る前に元のPDFを確かめてください。</div>`
+                        : '';
 
                     const faxJsonEsc = JSON.stringify(previewData.faxNumbers).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
                     const imgHtml = previewData.images.map((imgPath, i) => {
                         const dithered = ditherStatus[i] ? 'true' : 'false';
                         const btnLabel = ditherStatus[i] ? 'ディザリング: ON' : 'ディザリング: OFF';
-                        return `<div class="page"><div class="page-header"><span>ページ ${i+1}</span><button class="btn-dither${ditherStatus[i] ? ' active' : ''}" id="dither-${i+1}" data-dithered="${dithered}" onclick="toggleDither(${i+1})">${btnLabel}</button></div><img id="img-${i+1}" src="${path.basename(imgPath)}" /></div>`;
+                        const blankTag = blankPages.includes(i + 1) ? ' <span class="blank-tag">白紙</span>' : '';
+                        return `<div class="page"><div class="page-header"><span>ページ ${i+1}${blankTag}</span><button class="btn-dither${ditherStatus[i] ? ' active' : ''}" id="dither-${i+1}" data-dithered="${dithered}" onclick="toggleDither(${i+1})">${btnLabel}</button></div><img id="img-${i+1}" src="${path.basename(imgPath)}" /></div>`;
                     }).join('');
 
                     const previewHtmlContent = `<!DOCTYPE html>
@@ -366,6 +373,8 @@ h2{margin:0 0 12px 0;font-size:18px;color:#64b5f6}
 .fax-add{background:#1565c0;color:white;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;margin-top:4px}
 .fax-add:hover{background:#1976d2}
 .fax-error{color:#ef5350;font-size:12px;margin-top:4px;display:none}
+.blank-warning{background:#4a1c1c;border:1px solid #c62828;border-radius:4px;color:#ffcdd2;font-size:13px;padding:6px 10px;margin-bottom:8px}
+.blank-tag{color:#ef5350;font-weight:bold}
 .pages{padding:16px;padding-bottom:80px}
 .page{margin-bottom:16px;background:#222;border-radius:8px;overflow:hidden}
 .page-header{padding:8px 12px;background:#2a2a3e;font-size:13px;color:#888;display:flex;justify-content:space-between;align-items:center}
@@ -382,6 +391,7 @@ button{padding:8px 24px;border:none;border-radius:6px;font-size:14px;cursor:poin
 </style></head><body>
 <div class="header">
 <h2>FAX送信プレビュー</h2>
+${blankWarningHtml}
 <div class="fax-section">
 <div id="fax-list"></div>
 <button class="fax-add" onclick="addFaxRow('','','')">＋ 宛先を追加</button>

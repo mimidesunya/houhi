@@ -500,6 +500,17 @@ async function findBlankFaxPages(previewPaths) {
 }
 
 /**
+ * 白紙の頁（黒い画素のない頁）の注意文。プレビューの前に出す（TECH-20260925-002）。
+ * 白紙の頁がなければ空文字を返す。
+ */
+function formatBlankPagesWarning(blankPages) {
+    if (!blankPages || blankPages.length === 0) return '';
+    const pagesText = blankPages.map(n => `${n}頁目`).join('、');
+    return `[注意] ${pagesText}が白紙です（黒い画素がありません）。プレビューで確かめてください。`
+        + 'フォントが埋め込まれていないPDFは文字が描けず白紙になります。';
+}
+
+/**
  * 二値化済みの頁を、1通あたりの頁数・容量の上限に収まる束のPDFに分ける（秒速FAX用）。
  * 頁ごとのPNGの大きさで束を見積もり、実際に作ったPDFが上限を超えた束はさらに半分に分ける。
  */
@@ -697,7 +708,20 @@ function askPrompt(question): Promise<string> {
 
 // ─── プレビュー確認 ──────────────────────────────────────────
 
-function askPreviewConfirm(faxNumbers, previewPaths, rawPaths, ditherStatus): Promise<{ confirmed: boolean; faxNumbers: any[] }> {
+/**
+ * GUI のプレビュー画面へ渡す [PREVIEW] マーカの中身（JSON 文字列）。
+ * blankPages は黒い画素のない頁（1始まり）。プレビュー画面で注意を出す。
+ */
+function buildPreviewPayload(faxNumbers, previewPaths, ditherStatus, blankPages = []) {
+    return JSON.stringify({
+        faxNumbers: faxNumbers.map(f => ({ label: f.label, name: f.name, number: f.number })),
+        images: previewPaths,
+        ditherStatus: ditherStatus,
+        blankPages,
+    });
+}
+
+function askPreviewConfirm(faxNumbers, previewPaths, rawPaths, ditherStatus, blankPages = []): Promise<{ confirmed: boolean; faxNumbers: any[] }> {
     const faxList = faxNumbers
         .map((e, i) => `  ${i + 1}. ${formatFaxDestination(e)}  (${e.number})`)
         .join('\n');
@@ -711,11 +735,7 @@ function askPreviewConfirm(faxNumbers, previewPaths, rawPaths, ditherStatus): Pr
             faxNumbers: ok ? faxNumbers : []
         }));
     } else {
-        const payload = JSON.stringify({
-            faxNumbers: faxNumbers.map(f => ({ label: f.label, name: f.name, number: f.number })),
-            images: previewPaths,
-            ditherStatus: ditherStatus,
-        });
+        const payload = buildPreviewPayload(faxNumbers, previewPaths, ditherStatus, blankPages);
         process.stdout.write(`[PREVIEW] ${payload}\n`);
         return new Promise((resolve) => {
             let buf = '';
@@ -957,8 +977,13 @@ async function main(runtime: any = {}) {
         console.log(`[FAX] FAX用に二値化中 (${FAX_DPI}dpi, mode=${modeMsg})...`);
         const { previewPaths, rawPaths, ditherStatus, pageDims } = await binarizePdfForFax(mergedPdfPath, tmpDir, noDither);
 
+        // ─ 白紙の頁をプレビューの前に知らせる ─
+        const blankPagesBeforePreview = await findBlankFaxPages(previewPaths);
+        const blankWarning = formatBlankPagesWarning(blankPagesBeforePreview);
+        if (blankWarning) console.log(blankWarning);
+
         // ─ プレビュー＋送信確認 ─
-        const result: { confirmed: boolean; faxNumbers: any[] } = await askPreviewConfirm(faxNumbers, previewPaths, rawPaths, ditherStatus);
+        const result: { confirmed: boolean; faxNumbers: any[] } = await askPreviewConfirm(faxNumbers, previewPaths, rawPaths, ditherStatus, blankPagesBeforePreview);
         if (!result.confirmed || result.faxNumbers.length === 0) {
             if (result.confirmed && result.faxNumbers.length === 0) {
                 console.log('[エラー] FAX番号が指定されていません。');
@@ -1106,6 +1131,8 @@ module.exports = {
     buildFaxPdf,
     isBlankFaxPage,
     findBlankFaxPages,
+    formatBlankPagesWarning,
+    buildPreviewPayload,
     describeMailServerError,
     main,
 };

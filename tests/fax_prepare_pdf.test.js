@@ -161,6 +161,25 @@ test('otsuThreshold: handles document-like histogram (bright background, dark te
     assert.ok(result >= 20 && result <= 240, `threshold ${result}`);
 });
 
+// TECH-20260925-002: 白黒だけの頁で閾値が 0 になり、頁全体が白紙になった
+test('otsuThreshold: 0 と 255 だけの頁では、二つの値の中ほどの閾値を返す', () => {
+    const histogram = new Uint32Array(256);
+    histogram[0] = 100;
+    histogram[255] = 900;
+    const result = otsuThreshold(histogram, 1000);
+    // 呼び出し側は「輝度 >= 閾値」を白にする。0 だと黒も白になる
+    assert.equal(result, 128);
+});
+
+test('otsuThreshold: 暗い側の値の画素は閾値より下になる（輝度 >= 閾値 が白）', () => {
+    const histogram = new Uint32Array(256);
+    histogram[20] = 100;
+    histogram[21] = 50;
+    histogram[240] = 850;
+    const result = otsuThreshold(histogram, 1000);
+    assert.ok(result > 21 && result <= 240, `threshold ${result}`);
+});
+
 // ─── detectPhotoContent ─────────────────────────────────────
 
 test('detectPhotoContent: detects photo content with spread histogram', () => {
@@ -255,6 +274,30 @@ test('toFaxBinaryAuto: uses neutral threshold for dithered photo content', () =>
     const result = toFaxBinaryAuto(img, 20, 10);
     assert.equal(result.hasPhoto, true);
     assert.equal(result.threshold, 128);
+});
+
+function countBlack(img) {
+    let black = 0;
+    for (let i = 0; i < img.data.length; i += 4) {
+        if (img.data[i] === 0) black++;
+    }
+    return black;
+}
+
+test('toFaxBinaryAuto: 二値化済み（0 と 255 だけ）の頁を白紙にしない', () => {
+    // 白地に黒い帯。fax_prepare_pdf の出力をもう一度二値化する場面
+    const img = makeImageData(40, 40, (x, y) => (y >= 10 && y < 14 && x >= 5 && x < 35) ? [0, 0, 0, 255] : [255, 255, 255, 255]);
+    const before = countBlack(img);
+    const result = toFaxBinaryAuto(img, 40, 40);
+    assert.ok(result.threshold > 0, `threshold ${result.threshold}`);
+    assert.equal(countBlack(img), before);
+});
+
+test('toFaxBinaryAuto: 暗い値が一つだけの頁でも、その画素を黒に残す', () => {
+    // 灰色 50 の帯と白地。閾値が 50 だと帯が白になる
+    const img = makeImageData(40, 40, (x, y) => (y >= 10 && y < 14) ? [50, 50, 50, 255] : [255, 255, 255, 255]);
+    toFaxBinaryAuto(img, 40, 40);
+    assert.equal(countBlack(img), 40 * 4);
 });
 
 // ─── parseArgs ──────────────────────────────────────────────

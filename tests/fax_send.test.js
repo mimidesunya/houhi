@@ -21,6 +21,9 @@ const {
     buildFaxPdfParts,
     isBlankFaxPage,
     findBlankFaxPages,
+    binarizePdfForFax,
+    buildPreviewPayload,
+    formatBlankPagesWarning,
     describeMailServerError,
     main,
 } = require('../dist/src/fax_send.js');
@@ -277,6 +280,56 @@ test('findBlankFaxPages: reports all-white pages by page number', async (t) => {
     assert.equal(await isBlankFaxPage(marked), false);
     assert.equal(await isBlankFaxPage(blank), true);
     assert.deepEqual(await findBlankFaxPages([marked, blank, marked]), [2]);
+});
+
+// TECH-20260925-002: 二値化済みの PDF（fax_prepare_pdf の _fax.pdf）を渡すと白紙になった
+test('binarizePdfForFax: 二値化済み（0 と 255 だけ）の頁を白紙にしない', async (t) => {
+    const { createCanvas } = require('@napi-rs/canvas');
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-fax-rebin-'));
+    t.after(() => fs.rmSync(tempRoot, { recursive: true, force: true }));
+
+    // 200dpi で画素がずれずに描かれる大きさにする（720×1000 画素 = 259.2×360pt）
+    const canvas = createCanvas(720, 1000);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, 720, 1000);
+    ctx.fillStyle = '#000';
+    for (let y = 100; y < 900; y += 40) {
+        ctx.fillRect(60, y, 600, 12);
+    }
+    const doc = await PDFDocument.create();
+    const png = await doc.embedPng(canvas.toBuffer('image/png'));
+    const page = doc.addPage([259.2, 360]);
+    page.drawImage(png, { x: 0, y: 0, width: 259.2, height: 360 });
+    const pdfPath = path.join(tempRoot, 'input_fax.pdf');
+    fs.writeFileSync(pdfPath, await doc.save());
+
+    for (const noDither of [false, true]) {
+        const previewDir = fs.mkdtempSync(path.join(tempRoot, 'preview-'));
+        const { previewPaths } = await binarizePdfForFax(pdfPath, previewDir, noDither);
+        assert.equal(previewPaths.length, 1);
+        assert.deepEqual(await findBlankFaxPages(previewPaths), [], `noDither=${noDither}`);
+    }
+});
+
+test('buildPreviewPayload: 白紙の頁をプレビューへ渡す', () => {
+    const payload = JSON.parse(buildPreviewPayload(
+        [{ label: '相手方', name: '甲', number: '0312345678', extra: 'x' }],
+        ['a.png', 'b.png', 'c.png'],
+        [false, true, false],
+        [2],
+    ));
+    assert.deepEqual(payload, {
+        faxNumbers: [{ label: '相手方', name: '甲', number: '0312345678' }],
+        images: ['a.png', 'b.png', 'c.png'],
+        ditherStatus: [false, true, false],
+        blankPages: [2],
+    });
+});
+
+test('formatBlankPagesWarning: 白紙の頁を頁番号で示す', () => {
+    assert.equal(formatBlankPagesWarning([]), '');
+    assert.match(formatBlankPagesWarning([3, 5]), /3頁目、5頁目が白紙です/);
 });
 
 test('main: stops before reading an invalid PDF when FAX settings are missing', async (t) => {
