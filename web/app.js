@@ -33,11 +33,13 @@ function getVisualWidth(text) {
     return Math.max(maxWidth, lineWidth);
 }
 /**
- * 証拠説明書の作成年月日を、折り返してよい位置（「年」の後ろ）で塊に分けます。
- * 「令和8年3月31日」は「令和8年」「3月31日」になり、各塊は折り返さずに組みます。
+ * 証拠説明書の作成年月日を、折り返してよい位置で塊に分けます。各塊は折り返さずに組みます。
+ * 「令和8年3月31日」は「令和8年」「3月31日」になります。
+ * 複数の日付は「、」「～」の後ろと「及び」「ないし」の前でも分けます
+ * （「令和6年3月13日～同月18日」が1つの塊になると、作成年月日の列が広がって立証趣旨の列が細る）。
  */
 function dateChunks(text) {
-    return String(text).split(/(?<=年)/).filter(chunk => chunk !== '');
+    return String(text).split(/(?<=[年、，～〜])|(?=及び|ないし)/).filter(chunk => chunk !== '');
 }
 /**
  * 証拠説明書の見出しを、折り返してよい位置で塊に分けます。
@@ -120,7 +122,26 @@ function convertMarkdownToCourtHtml(markdown) {
     let isSoufusho = false;
     let scanInRight = false;
     let scanInLeft = false;
-    for (let line of lines) {
+    // 区切り行（|:---|...）を持つ見出し付きのパイプ表の行。これらは表ごとに列幅を決めるので、
+    // 文書全体で共有する info 表の列幅（defaultColWidths 等）の計算に入れない。
+    const headerTableLines = new Set();
+    {
+        let run = [];
+        const flushRun = () => {
+            if (run.some(idx => /^\|[\s|:-]+\|$/.test(lines[idx].trim())))
+                run.forEach(idx => headerTableLines.add(idx));
+            run = [];
+        };
+        lines.forEach((l, idx) => {
+            if (/^\|(.*)\|$/.test(l.trim()))
+                run.push(idx);
+            else
+                flushRun();
+        });
+        flushRun();
+    }
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        const line = lines[lineIdx];
         const trimmed = line.trim();
         // ブロック検出
         if (trimmed === '### --右') {
@@ -151,9 +172,14 @@ function convertMarkdownToCourtHtml(markdown) {
             }
         }
         const tableMatch = trimmed.match(/^\|(.*)\|$/);
+        if (tableMatch && headerTableLines.has(lineIdx))
+            continue;
         let listTableMatch = trimmed.match(/^[-*] (.*?)[：:](.*)$/);
         if (isProseColonLine(listTableMatch, 1))
             listTableMatch = null;
+        // 当事者欄の連絡先は表に入れないので、列幅の計算からも外す
+        if (listTableMatch && (scanInRight || scanInLeft) && isContactLabel(listTableMatch[1]))
+            continue;
         let numberedListTableMatch = trimmed.match(/^([0-9０-９]+)[　\s]+(.+?)[：:](.*)$/);
         if (isProseColonLine(numberedListTableMatch, 2))
             numberedListTableMatch = null;
@@ -210,23 +236,96 @@ function convertMarkdownToCourtHtml(markdown) {
         if (tableBuffer.length === 0)
             return '';
         let tableHtml = '';
-        // ヘッダー付きの一般パイプ表は、列内容の実測幅から比例配分した固定レイアウトにする。
-        // 自動レイアウトに任せると、Copper PDF が短い列へ過大な幅を割り当てて崩れるため。
-        const useFixedLayout = tableHasHeader && !tableClass.includes('info') && !tableClass.includes('att');
+        // ヘッダー付きの一般パイプ表は、列内容の実測幅から配分した固定レイアウトにする。
+        // 自動レイアウトに任せると、Copper PDF が列をほぼ均等に割って長い列が細くなるため。
+        // 以前は表の開始時に付く info クラスのせいでこの分岐に入らず、文書全体で共有する
+        // info 表の列幅（em 固定）と均等割付・1列目の折り返し禁止まで掛かって崩れていた。
+        // 見出し付きの表は info / 当事者欄の扱いから外し、has-header の表として組む。
+        const isGeneralHeaderTable = tableHasHeader && !tableClass.includes('att');
+        if (isGeneralHeaderTable)
+            tableClass = '';
+        const useFixedLayout = isGeneralHeaderTable;
         let colgroupHtml = '';
         if (useFixedLayout) {
-            const colW = [];
-            tableBuffer.forEach(row => row.forEach((cell, i) => {
-                const w = getVisualWidth(stripInlineMarkdown(cell.trim()));
-                if (!colW[i] || w > colW[i])
-                    colW[i] = w;
+            // 全角=1em、半角=0.5em で測る。Copper PDF は和文と欧文の間に四分アキ（0.25em）を入れ、
+            // 半角の英大文字は 0.5em より広いので、その分を足す（証拠説明書の表の nowrapWidth と同じ考え方）。
+            // <br> は改行として扱い、最も長い行の幅を列の最大幅とする
+            const typesetWidth = (text) => {
+                let w = getVisualWidth(text);
+                for (let k = 0; k < text.length; k++) {
+                    const half = /[\x20-\x7e]/.test(text[k]);
+                    if (/[A-Z]/.test(text[k]))
+                        w += 0.2;
+                    if (k > 0 && half !== /[\x20-\x7e]/.test(text[k - 1]))
+                        w += 0.25;
+                }
+                return w;
+            };
+            const lineWidth = (cell) => Math.max(0, ...stripInlineMarkdown(String(cell || '').trim().replace(/<br\s*\/?>/gi, '\n')).split('\n').map(typesetWidth));
+            const flatWidth = (cell) => getVisualWidth(stripInlineMarkdown(String(cell || '').trim().replace(/<br\s*\/?>/gi, '')));
+            const nCols = Math.max(...tableBuffer.map(r => r.length));
+            const colMax = Array(nCols).fill(0);
+            const colArea = Array(nCols).fill(0);
+            tableBuffer.forEach((row, r) => row.forEach((cell, i) => {
+                const w = lineWidth(cell);
+                if (w > colMax[i])
+                    colMax[i] = w;
+                if (r > 0)
+                    colArea[i] += flatWidth(cell);
             }));
-            // 最低3文字分を確保しつつ、内容の最大幅に比例して100%を配分する
-            const eff = colW.map(w => Math.max(w || 0, 3));
-            const total = eff.reduce((a, b) => a + b, 0);
+            // 本文幅（12pt）: A4縦 160mm＝37.8em、A4横（### --横）252mm＝59.5em
+            const bodyEm = inLandscapeBlock ? 59.5 : 37.8;
+            const PAD = 1.0; // セルの左右の余白（0.5em ずつ）
+            const SHORT_EM = 8; // これ以下の列は折り返さずに収まる幅を与える
+            const FLEX_MIN = 6; // 長い列に残す最小の幅
+            const SLACK = 0.3; // 短い列の測り誤差の余裕（これがないと「100万円」が「100万／円」と折り返す）
+            const fixed = colMax.map(w => (w <= SHORT_EM ? Math.max(w, 2) + PAD + SLACK : 0));
+            const flexIdx = [];
+            fixed.forEach((w, i) => { if (!w)
+                flexIdx.push(i); });
+            const fixedTotal = fixed.reduce((a, b) => a + b, 0);
+            const remain = bodyEm - fixedTotal;
+            let widths;
+            if (flexIdx.length === 0 || remain < flexIdx.length * FLEX_MIN) {
+                // 収まらないときは、各列の最大幅に比例して配分する
+                widths = colMax.map(w => Math.max(w, 3) + PAD);
+            }
+            else {
+                // 長い列は残りの幅を中身の量（全行の文字幅の和）に比例して分ける——行の高さがそろう配分。
+                // 下限 FLEX_MIN、上限は列の最大幅＋余白（それ以上与えても空白になるだけ）
+                widths = fixed.slice();
+                const pinned = new Set();
+                for (let pass = 0; pass <= nCols; pass++) {
+                    const free = remain - [...pinned].reduce((a, i) => a + widths[i], 0);
+                    const pool = flexIdx.filter(i => !pinned.has(i));
+                    if (pool.length === 0)
+                        break;
+                    const areaTotal = pool.reduce((a, i) => a + Math.max(colArea[i], 1), 0);
+                    let changed = false;
+                    pool.forEach(i => {
+                        const share = free * Math.max(colArea[i], 1) / areaTotal;
+                        const cap = colMax[i] + PAD;
+                        if (share < FLEX_MIN) {
+                            widths[i] = FLEX_MIN;
+                            pinned.add(i);
+                            changed = true;
+                        }
+                        else if (share > cap) {
+                            widths[i] = cap;
+                            pinned.add(i);
+                            changed = true;
+                        }
+                        else
+                            widths[i] = share;
+                    });
+                    if (!changed)
+                        break;
+                }
+            }
+            const total = widths.reduce((a, b) => a + b, 0);
             if (total > 0) {
                 colgroupHtml = indent(lastLevel + 1) + '<colgroup>'
-                    + eff.map(w => `<col style="width:${(100 * w / total).toFixed(1)}%">`).join('')
+                    + widths.map(w => `<col style="width:${(100 * w / total).toFixed(1)}%">`).join('')
                     + '</colgroup>' + nl;
             }
         }
@@ -394,78 +493,49 @@ function convertMarkdownToCourtHtml(markdown) {
         tableHtml += indent(lastLevel + 1) + '</thead>' + nl;
         // データ行を生成
         tableHtml += indent(lastLevel + 1) + '<tbody>' + nl;
-        // 各列で結合が必要な行を追跡
-        const rowspanMap = new Map(); // key: colIndex, value: { rowIndex, span, text }
+        // 空のセルは、同じ主番号の枝番どうし（甲1の1→甲1の2、1-1→1-2）でだけ上のセルと結合する。
+        // 別の号証の空欄と備考の列の空欄は「記載なし」なので、罫線のある空のセルとして出す。
+        // 以前は空欄を一律に上と結合していたため、乙76の備考が乙77にも掛かって見え、
+        // 1行目の空欄はセルごと出力されずに罫線が欠けていた（2026-10-08、大阪事件の証拠説明書7）。
+        const noColIndex = colClasses.indexOf('col-no');
+        const evidenceGroupKey = (raw) => {
+            const s = raw.normalize('NFKC').replace(/\s/g, '').replace(/第|号証/g, '');
+            const m = s.match(/^([甲乙丙]?[A-Za-z]?)(\d+)/);
+            return m ? `${m[1]}${Number(m[2])}` : s;
+        };
+        // 号証の欄が空の行は、上の行と同じ号証の続きとみなす
+        const groupKeys = [];
+        dataRows.forEach((row, r) => {
+            const raw = noColIndex >= 0 ? (row[noColIndex] || '').trim() : '';
+            groupKeys.push(raw === '' ? (r > 0 ? groupKeys[r - 1] : null) : evidenceGroupKey(raw));
+        });
+        const mergesUp = (r, c) => {
+            if (r === 0 || colClasses[c] === 'col-note')
+                return false;
+            if ((dataRows[r][c] || '').trim() !== '')
+                return false;
+            if (c >= dataRows[r - 1].length)
+                return false;
+            const key = groupKeys[r];
+            return key !== null && key === groupKeys[r - 1];
+        };
         dataRows.forEach((row, rowIndex) => {
             tableHtml += indent(lastLevel + 2) + '<tr>' + nl;
             row.forEach((cell, colIndex) => {
-                const text = cell.trim();
-                // この列が既に結合中かチェック
-                if (rowspanMap.has(colIndex)) {
-                    const info = rowspanMap.get(colIndex);
-                    if (rowIndex < info.rowIndex + info.span) {
-                        // まだ結合中なのでセルをスキップ
-                        return;
-                    }
-                }
-                // 空のセルの場合、上のセルと結合
-                if (text === '') {
-                    // 上方向に遡って最初の非空セルを探す
-                    let spanCount = 1;
-                    let lookupRow = rowIndex - 1;
-                    let mergedText = '';
-                    while (lookupRow >= 0) {
-                        const prevText = dataRows[lookupRow][colIndex].trim();
-                        if (prevText !== '') {
-                            mergedText = prevText;
-                            // 既存のrowspanを更新
-                            if (rowspanMap.has(colIndex)) {
-                                const existingInfo = rowspanMap.get(colIndex);
-                                if (lookupRow >= existingInfo.rowIndex && lookupRow < existingInfo.rowIndex + existingInfo.span) {
-                                    // 既存の結合を拡張
-                                    existingInfo.span++;
-                                    return;
-                                }
-                            }
-                            // 新しいrowspanの開始位置まで遡る
-                            let startRow = lookupRow;
-                            while (startRow > 0 && dataRows[startRow - 1][colIndex].trim() === '') {
-                                startRow--;
-                                spanCount++;
-                            }
-                            // この空セルまでのスパンをカウント
-                            spanCount = rowIndex - startRow + 1;
-                            // 既存のマッピングを更新
-                            if (rowspanMap.has(colIndex)) {
-                                const info = rowspanMap.get(colIndex);
-                                if (info.rowIndex === startRow) {
-                                    info.span = spanCount + 1;
-                                }
-                            }
-                            break;
-                        }
-                        lookupRow--;
-                        spanCount++;
-                    }
-                    return; // 空のセルは出力しない
-                }
-                // 下方向に空のセルがいくつ続くかカウント
+                // 上のセルの rowspan に含まれるので出力しない
+                if (mergesUp(rowIndex, colIndex))
+                    return;
                 let rowspan = 1;
-                for (let nextRow = rowIndex + 1; nextRow < dataRows.length; nextRow++) {
-                    if (dataRows[nextRow][colIndex].trim() === '') {
-                        rowspan++;
-                    }
-                    else {
-                        break;
-                    }
+                while (rowIndex + rowspan < dataRows.length && mergesUp(rowIndex + rowspan, colIndex)) {
+                    rowspan++;
                 }
-                if (rowspan > 1) {
-                    rowspanMap.set(colIndex, { rowIndex, span: rowspan, text });
-                }
+                const text = cell.trim();
                 const rowspanAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
-                const cellHtml = colClasses[colIndex] === 'col-date'
-                    ? dateChunks(text).map(chunk => `<span class="nw">${renderInlineMarkdown(chunk)}</span>`).join('')
-                    : renderInlineMarkdown(text);
+                const cellHtml = text === ''
+                    ? ''
+                    : colClasses[colIndex] === 'col-date'
+                        ? dateChunks(text).map(chunk => `<span class="nw">${renderInlineMarkdown(chunk)}</span>`).join('')
+                        : renderInlineMarkdown(text);
                 tableHtml += indent(lastLevel + 3) + `<td class="${colClasses[colIndex] || 'col-other'}"${rowspanAttr}>${cellHtml}</td>` + nl;
             });
             tableHtml += indent(lastLevel + 2) + '</tr>' + nl;
@@ -487,6 +557,13 @@ function convertMarkdownToCourtHtml(markdown) {
     // 「ラベル：値」型の行だけを表として扱う。読点・句点を含む行は地の文とみなす。
     function isProseColonLine(m, labelIdx) {
         return !!(m && /[、。]/.test(m[labelIdx] + (m[labelIdx + 1] || '')));
+    }
+    // 当事者欄の連絡先（電話・FAX・メール）の項目名か。
+    // 当事者欄の項目表に入れると、項目名が「上告人兼上告受理申立人」などの幅まで均等割付され
+    // 「電　　　　話」と間延びし、氏名の列も電話番号の幅に引きずられて右端がそろわなくなる。
+    // そのため右寄せ・左寄せの欄では、表に入れず独立した行（p.contact）として出す。
+    function isContactLabel(label) {
+        return /^(電話|電話番号|携帯|携帯電話|TEL|Tel|ＴＥＬ|FAX|Fax|ＦＡＸ|ファクシミリ|ファックス|メール|E-?mail|Ｅメール)$/.test(String(label || '').trim());
     }
     function getLevelInfo(line) {
         for (const m of markers) {
@@ -581,6 +658,15 @@ function convertMarkdownToCourtHtml(markdown) {
         let listTableMatch = trimmedLine.match(/^[-*] (.*?)[：:](.*)$/);
         if (isProseColonLine(listTableMatch, 1))
             listTableMatch = null;
+        // 当事者欄（右寄せ・左寄せ）の電話・FAX等は、項目表に入れず独立した行にする（isContactLabel の注記参照）
+        if (listTableMatch && (inRightBlock || inLeftBlock) && isContactLabel(listTableMatch[1])) {
+            if (inTable) {
+                html += flushTable();
+                inTable = false;
+            }
+            html += `<p class="contact">${renderInlineMarkdown(listTableMatch[1].trim() + ' ' + listTableMatch[2].trim())}</p>` + nl;
+            continue;
+        }
         let numberedListTableMatch = trimmedLine.match(/^([0-9０-９]+)[　\s]+(.+?)[：:](.*)$/);
         if (isProseColonLine(numberedListTableMatch, 2))
             numberedListTableMatch = null;
@@ -877,6 +963,12 @@ function convertMarkdownToCourtHtml(markdown) {
             let css = '';
             widths.forEach((w, i) => {
                 if (w) {
+                    // 右寄せの当事者欄の最後の列（氏名）は余裕を足さず、折り返しも止める。
+                    // 足すと氏名の右に1字分の空きが出て、住所の行と右端がそろわない。
+                    if (className === 'right-info' && i === widths.length - 1 && w <= MAX_COL_WIDTH_EM) {
+                        css += `table.${className} td.col-${i + 1} { width: ${w}em; white-space: nowrap; }` + nl;
+                        return;
+                    }
                     w += 1; // 余裕を持たせる
                     // 附属書類・証拠書類（attクラス）の1列目はカウンター（2em）があるため幅を広げる
                     if (className === 'att' && i === 0) {

@@ -231,6 +231,17 @@ hr.separator {
     margin-top: 1.618em;
 }
 
+/* 当事者欄の連絡先（電話・FAX等）。氏名の表に続けて、間を空けずに置く */
+.right p.contact,
+.left p.contact {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.right table + p.contact {
+    margin-top: 0;
+}
+
 /* =========================================
    階層リスト (Automatic Numbering)
    ========================================= */
