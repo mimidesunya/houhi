@@ -15,8 +15,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const audioModelOption = document.getElementById('audioModelOption') as HTMLElement;
     const optAudioTarget = document.getElementById('optAudioTarget') as HTMLSelectElement;
     const optAudioModel = document.getElementById('optAudioModel') as HTMLSelectElement;
-    const addressLabelLayoutOption = document.getElementById('addressLabelLayoutOption') as HTMLElement;
-    const optAddressLabelLayout = document.getElementById('optAddressLabelLayout') as HTMLSelectElement;
     const faxOrderModal = document.getElementById('faxOrderModal') as HTMLElement;
     const faxOrderList = document.getElementById('faxOrderList') as HTMLOListElement;
     const faxOrderCancel = document.getElementById('faxOrderCancel') as HTMLButtonElement;
@@ -32,6 +30,8 @@ document.addEventListener('DOMContentLoaded', () => {
         noDither?: boolean;
         audioTarget?: string;
         audioModel?: string;
+        // 以前は宛名ラベルの種別（ordinary／letterpack）を保存していた。普通郵便の配置を廃止して
+        // レターパックだけにしたので、残っていても読まない（ordinary もレターパックで作る）
         addressLabelLayout?: string;
     };
 
@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         stamp: 'PDFに号証番号を赤字でスタンプ',
         fax_send: 'メールFAX（mfax／秒速FAX）で送信',
         transcribe_audio: '音声をMarkdownへ変換',
-        address_label: 'vCardから宛名ラベルPDFを作成',
+        address_label: 'vCardから宛名ラベルPDFを作成（レターパック・定形封筒兼用）',
         drafting: 'ChatGPT用の起案キットを開く',
         settings: 'config.jsonを編集'
     };
@@ -67,7 +67,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const isPdfEngine = (value: any) => value === 'chrome' || value === 'copper';
     const isAudioTarget = (value: any) => value === 'houhi' || value === 'general';
     const isAudioModel = (value: any) => value === 'openai:gpt-4o-transcribe-diarize' || value === 'gemini:gemini-3.5-flash';
-    const isAddressLabelLayout = (value: any) => value === 'ordinary' || value === 'letterpack';
 
     const loadGuiState = (): GuiState => {
         try {
@@ -89,7 +88,6 @@ document.addEventListener('DOMContentLoaded', () => {
             noDither: optNoDither.checked,
             audioTarget: optAudioTarget.value || 'houhi',
             audioModel: optAudioModel.value || 'openai:gpt-4o-transcribe-diarize',
-            addressLabelLayout: optAddressLabelLayout.value || 'ordinary',
         };
         localStorage.setItem(GUI_STATE_KEY, JSON.stringify(state));
     };
@@ -97,19 +95,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const savedState = loadGuiState();
 
     const updateOptionsVisibility = (scriptKey: ScriptKey) => {
-        optionsBar.style.display = (scriptKey === 'pdf' || scriptKey === 'stamp' || scriptKey === 'fax_send' || scriptKey === 'transcribe_audio' || scriptKey === 'address_label') ? '' : 'none';
-        pdfEngineOption.style.display = (scriptKey === 'pdf' || scriptKey === 'address_label') ? '' : 'none';
+        // 宛名ラベルは選ぶものがない（配置はレターパックだけ、PDF はラベル側の既定の Copper で組む）
+        optionsBar.style.display = (scriptKey === 'pdf' || scriptKey === 'stamp' || scriptKey === 'fax_send' || scriptKey === 'transcribe_audio') ? '' : 'none';
+        pdfEngineOption.style.display = scriptKey === 'pdf' ? '' : 'none';
         optNoBlankPages.parentElement!.style.display = scriptKey === 'stamp' ? '' : 'none';
         optNoTab.parentElement!.style.display = scriptKey === 'stamp' ? '' : 'none';
         optNoDither.parentElement!.style.display = scriptKey === 'fax_send' ? '' : 'none';
         audioTargetOption.style.display = scriptKey === 'transcribe_audio' ? '' : 'none';
         audioModelOption.style.display = scriptKey === 'transcribe_audio' ? '' : 'none';
-        addressLabelLayoutOption.style.display = scriptKey === 'address_label' ? '' : 'none';
     };
 
     const getScriptOptions = (): string[] => {
         const opts: string[] = [];
-        if (currentScript === 'pdf' || currentScript === 'address_label') {
+        // 宛名ラベルには PDF エンジンを渡さない。ラベルは文字の大きさの見積もりを Copper に合わせているので、
+        // ラベル側の既定（Copper）で組む。PDF 変換と共用のエンジン欄（既定 Chrome）には従わない
+        if (currentScript === 'pdf') {
             opts.push(`--pdf-engine=${optPdfEngine.value || DEFAULT_PDF_ENGINE}`);
         }
         if (currentScript === 'pdf') {
@@ -130,9 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const [provider, model] = String(optAudioModel.value || 'openai:gpt-4o-transcribe-diarize').split(':');
             opts.push(`--provider=${provider || 'openai'}`);
             opts.push(`--model=${model || 'gpt-4o-transcribe-diarize'}`);
-        }
-        if (currentScript === 'address_label') {
-            opts.push(`--label-layout=${optAddressLabelLayout.value || 'ordinary'}`);
         }
         return opts;
     };
@@ -448,7 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
     optNoDither.checked = Boolean(savedState.noDither);
     optAudioTarget.value = isAudioTarget(savedState.audioTarget) ? savedState.audioTarget : 'houhi';
     optAudioModel.value = isAudioModel(savedState.audioModel) ? savedState.audioModel : 'openai:gpt-4o-transcribe-diarize';
-    optAddressLabelLayout.value = isAddressLabelLayout(savedState.addressLabelLayout) ? savedState.addressLabelLayout : 'ordinary';
+    // savedState.addressLabelLayout（以前の ordinary／letterpack）は読まない。次に保存するときに消える
 
     const restoredScript = isScriptKey(savedState.currentScript) ? savedState.currentScript : currentScript;
     const restoredCard = Array.from(toolCards).find(card => getScriptKey(card) === restoredScript);
@@ -466,7 +463,6 @@ document.addEventListener('DOMContentLoaded', () => {
     optNoDither.addEventListener('change', saveGuiState);
     optAudioTarget.addEventListener('change', saveGuiState);
     optAudioModel.addEventListener('change', saveGuiState);
-    optAddressLabelLayout.addEventListener('change', saveGuiState);
     window.addEventListener('beforeunload', saveGuiState);
 
     dropZone.addEventListener('dragover', (e) => {

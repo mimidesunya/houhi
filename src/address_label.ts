@@ -1,33 +1,38 @@
 /**
  * vCardから宛名ラベルPDFを作成するツール。
  *
+ * ラベルはレターパックの宛名欄の大きさ（実測125×156mm）で作ります。お届け先・ご依頼主は外枠の左端から
+ * 100mm 以内（幅 92mm）に収め、100mm の所に切り取り用の破線を入れます。破線と品名の区切り線で切れば、
+ * 定形郵便の封筒にも同じラベルを貼れます（普通郵便用の配置は廃止しました）。
+ *
  * 入力:
  * - 宛先の .vcf / .vcard ファイル
  * - 宛先ファイルと同じディレクトリの 差出人.vcf
  *
  * 出力:
- * - 宛先ファイルと同じディレクトリに PDF を作成します。
- * - 宛先を複数指定すると、全員のラベルを1つの PDF（`宛名ラベル_<様式>_<件数>件.pdf`）にまとめ、
+ * - 宛先ファイルと同じディレクトリに PDF（`<宛先>_宛名ラベル_レターパック.pdf`、A4 縦1頁）を作成します。
+ * - 宛先を複数指定すると、全員のラベルを1つの PDF（`宛名ラベル_レターパック_<件数>件.pdf`）にまとめ、
  *   最初の宛先と同じディレクトリに作成します。差出人は宛先ごとに、その宛先と同じディレクトリの 差出人.vcf です。
- *   レターパックは A4 横向き1頁に2枚ずつ並べます（ラベルは 125×156mm なので正立のまま2枚入る）。
- *   このときは Copper で組みます（Chrome の変換は用紙を A4 縦に固定するため）。
- *   普通郵便は宛先ごとに A4 縦1頁です。`--separate` を付けると、従来どおり宛先ごとに別の PDF を作ります。
+ *   A4 横向き1頁に2枚ずつ並べます（ラベルは 125×156mm なので正立のまま2枚入る）。
+ *   `--separate` を付けると、従来どおり宛先ごとに別の PDF を作ります。
+ *
+ * PDF は既定で Copper で組みます（`--copper` を付けても同じ）。文字の大きさの見積もりは Copper の実測に
+ * 合わせています。`--chrome` で Chrome でも組めますが、2枚並べるとき（A4 横）は Chrome の変換が用紙を
+ * A4 縦に固定するので、Copper で組みます。
  *
  * 宛先 vCard の拡張項目:
  * - X-HOUHI-NAME-NOTE: 宛名の後ろに赤字で添える文言（「上告状在中（令和8年（ネ）第920号）」など）
- * - X-HOUHI-ITEM: レターパックの品名。ラベルの外枠をレターパックの宛名欄全体（実測125×156mm）にし、
- *   ご依頼主の区画の下に品名を入れ、
+ * - X-HOUHI-ITEM: レターパックの品名。ご依頼主の区画の下（外枠の下端まで）に品名を入れ、
  *   区画の下端に「☑リチウム電池なし」「☑高圧ガスなし」「☑引火性液体なし」をチェックした状態で横一列に並べる
  *   （2025年版のレターパックの品名欄にあるチェック欄。ラベルで隠れるため）。貼るとレターパックの品名欄に
  *   かかる。「品名」の語は封筒に印字されているので書かない。省略時の品名は「書類」
  *
- * レターパックのラベルのお届け先・ご依頼主は、外枠の左端から 100mm 以内（幅 92mm）に収め、100mm の所に
- * 切り取り用の破線を入れる。破線と品名の区切り線で切れば、定形郵便の封筒にも同じラベルを貼れる。
- *
  * 使い方:
- *   node src/address_label.js [--label-layout=ordinary|letterpack] [--pdf-engine=copper|chrome] [--separate] <宛先.vcf...>
+ *   node src/address_label.js [--pdf-engine=copper|chrome] [--separate] <宛先.vcf...>
  *   node src/address_label.js --chrome <宛先.vcf>
- *   node src/address_label.js --copper <宛先.vcf>
+ *
+ * 以前の `--label-layout=letterpack` はそのまま受け付けます（付けなくても同じ）。`--label-layout=ordinary`
+ * （普通郵便）を指定すると、廃止した旨を標準エラーに出し、レターパックの配置で作ります。
  */
 const fs = require('fs');
 const path = require('path');
@@ -35,15 +40,23 @@ const { exec } = require('child_process');
 const { convertHtmlToPdf } = require('./lib/pdf_converter');
 
 const SENDER_VCARD_FILE_NAME = '差出人.vcf';
-const DEFAULT_LABEL_LAYOUT = 'ordinary';
+// 宛名ラベルの配置はレターパックだけ。普通郵便の配置は 2026-10-20 に廃止した（TECH-20261020-005）。
+// レターパックのラベルは破線で切れば定形郵便の封筒にも貼れるので、普通郵便にも同じものを使う
+const LABEL_LAYOUT = 'letterpack';
+const LABEL_LAYOUT_NAME = 'レターパック';
+// 廃止した配置。記録や手順書に指定が残っていても止めず、案内を出してレターパックの配置で作る
+const RETIRED_LABEL_LAYOUTS = new Set(['ordinary']);
+const RETIRED_LABEL_LAYOUT_NOTICE = '普通郵便の配置は廃止しました。レターパックの配置で作ります（破線で切れば定形封筒にも貼れます）。';
 // レターパックの品名の既定。裁判所・相手方への書面の送付が主な用途のため
 const DEFAULT_LETTERPACK_ITEM = '書類';
 // 2025年版のレターパックは、品名欄の中に「□リチウム電池なし」「□高圧ガスなし」「□引火性液体なし」の
 // チェック欄が縦に並ぶ。ラベルを貼るとこの欄が隠れるので、チェックした状態でラベルに書く。
 // 「品名」の語は封筒に印字されているので書かない
 const LETTERPACK_ITEM_CHECKS = ['リチウム電池なし', '高圧ガスなし', '引火性液体なし'];
-const LABEL_LAYOUTS = new Set(['ordinary', 'letterpack']);
 const PDF_ENGINES = new Set(['chrome', 'copper']);
+// ラベルは Copper で組む。文字の大きさの見積もり（和欧間の空き・行の広がり）を Copper の実測に合わせている。
+// 設定ファイルの pdf.engine には従わない（--copper を付けても付けなくても同じ PDF になるように）
+const DEFAULT_PDF_ENGINE = 'copper';
 
 type VCardAddress = {
     postalCode: string;
@@ -83,69 +96,47 @@ type LabelBlockMetrics = {
 };
 
 const MM_TO_PT = 72 / 25.4;
-const LABEL_BLOCK_METRICS: Record<string, Record<'to' | 'from', LabelBlockMetrics>> = {
-    ordinary: {
-        to: {
-            widthMm: 88,
-            heightMm: 46,
-            maxFontPt: 16,
-            minFontPt: 10,
-            addressLineHeight: 1.2,
-            postalGapMm: 2,
-            addressGapMm: 2,
-            phoneGapMm: 2
-        },
-        from: {
-            widthMm: 88,
-            heightMm: 27,
-            maxFontPt: 16,
-            minFontPt: 9,
-            addressLineHeight: 1.2,
-            postalGapMm: 2,
-            addressGapMm: 2,
-            phoneGapMm: 2
-        }
+// お届け先・ご依頼主の区画は、外枠の左端から 100mm 以内に収める（幅 92mm）。
+// 100mm の点線で切れば、定形郵便の封筒にも同じラベルを貼れる
+const LABEL_BLOCK_METRICS: Record<'to' | 'from', LabelBlockMetrics> = {
+    to: {
+        widthMm: 92,
+        heightMm: 58,
+        maxFontPt: 22,
+        minFontPt: 11,
+        addressLineHeight: 1.04,
+        postalGapMm: 3,
+        addressGapMm: 3,
+        phoneGapMm: 2
     },
-    // お届け先・ご依頼主の区画は、外枠の左端から 100mm 以内に収める（幅 92mm）。
-    // 100mm の点線で切れば、定形郵便の封筒にも同じラベルを貼れる
-    letterpack: {
-        to: {
-            widthMm: 92,
-            heightMm: 58,
-            maxFontPt: 22,
-            minFontPt: 11,
-            addressLineHeight: 1.04,
-            postalGapMm: 3,
-            addressGapMm: 3,
-            phoneGapMm: 2
-        },
-        from: {
-            widthMm: 92,
-            // 箱（.letterpack .sender）の高さと同じ。以前は 43mm で見積もり、行の広がりの見落としを
-            // 箱の余り（2.8mm）で吸収していた。いまは行の広がりを見積もりに入れている
-            heightMm: 45.8,
-            maxFontPt: 22,
-            minFontPt: 11,
-            addressLineHeight: 1.04,
-            postalGapMm: 3,
-            addressGapMm: 3,
-            phoneGapMm: 2
-        }
+    from: {
+        widthMm: 92,
+        // 箱（.letterpack .sender）の高さと同じ。以前は 43mm で見積もり、行の広がりの見落としを
+        // 箱の余り（2.8mm）で吸収していた。いまは行の広がりを見積もりに入れている
+        heightMm: 45.8,
+        maxFontPt: 22,
+        minFontPt: 11,
+        addressLineHeight: 1.04,
+        postalGapMm: 3,
+        addressGapMm: 3,
+        phoneGapMm: 2
     }
 };
 
 function printUsage() {
-    console.log('使い方: node src/address_label.js [--label-layout=ordinary|letterpack] [--pdf-engine=copper|chrome] [--separate] <宛先.vcf...>');
+    console.log('使い方: node src/address_label.js [--pdf-engine=copper|chrome] [--separate] <宛先.vcf...>');
     console.log('       node src/address_label.js --chrome <宛先.vcf>');
-    console.log('       node src/address_label.js --copper <宛先.vcf>');
+    console.log('ラベルはレターパックの配置で作ります。破線で切れば定形郵便の封筒にも貼れます。');
+    console.log('PDF は既定で Copper で組みます（--copper を付けても同じ）。');
     console.log(`差出人は宛先ファイルと同じディレクトリの ${SENDER_VCARD_FILE_NAME} を読み込みます。`);
-    console.log('宛先を複数指定すると、宛先ごとに1頁ずつ並べた1つのPDFを作ります（--separate で1件ずつ）。');
+    console.log('宛先を複数指定すると、A4 横1頁に2枚ずつ並べた1つのPDFを作ります（--separate で1件ずつ）。');
 }
 
 function parseArgs(args) {
     const files: string[] = [];
     const pdfOptions: Record<string, string> = {};
-    let layout = DEFAULT_LABEL_LAYOUT;
+    // 標準エラーに出す案内（廃止した配置を指定されたときなど）
+    const notices: string[] = [];
     let separate = false;
 
     const setPdfEngine = (value: string, optionName: string) => {
@@ -155,10 +146,21 @@ function parseArgs(args) {
         pdfOptions.engine = value;
     };
 
+    // 配置はレターパックだけ。以前の --label-layout=letterpack はそのまま通し、
+    // 廃止した ordinary（普通郵便）は案内を出してレターパックで作る
+    const checkLayout = (value: string | undefined, optionName: string) => {
+        if (value === LABEL_LAYOUT) return;
+        if (value && RETIRED_LABEL_LAYOUTS.has(value)) {
+            if (!notices.includes(RETIRED_LABEL_LAYOUT_NOTICE)) notices.push(RETIRED_LABEL_LAYOUT_NOTICE);
+            return;
+        }
+        throw new Error(`${optionName} には letterpack を指定してください（省略してもレターパックの配置で作ります）。`);
+    };
+
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         if (arg === '--help' || arg === '-h') {
-            return { files, layout, pdfOptions, separate, help: true };
+            return { files, pdfOptions, separate, notices, help: true };
         }
         if (arg === '--separate') {
             separate = true;
@@ -189,33 +191,21 @@ function parseArgs(args) {
             continue;
         }
         if (arg === '--label-layout' || arg === '--layout') {
-            const value = args[++i];
-            if (!LABEL_LAYOUTS.has(value)) {
-                throw new Error(`${arg} には ordinary または letterpack を指定してください。`);
-            }
-            layout = value;
+            checkLayout(args[++i], arg);
             continue;
         }
         if (arg.startsWith('--label-layout=')) {
-            const value = arg.slice('--label-layout='.length);
-            if (!LABEL_LAYOUTS.has(value)) {
-                throw new Error('--label-layout には ordinary または letterpack を指定してください。');
-            }
-            layout = value;
+            checkLayout(arg.slice('--label-layout='.length), '--label-layout');
             continue;
         }
         if (arg.startsWith('--layout=')) {
-            const value = arg.slice('--layout='.length);
-            if (!LABEL_LAYOUTS.has(value)) {
-                throw new Error('--layout には ordinary または letterpack を指定してください。');
-            }
-            layout = value;
+            checkLayout(arg.slice('--layout='.length), '--layout');
             continue;
         }
         files.push(arg);
     }
 
-    return { files, layout, pdfOptions, separate, help: false };
+    return { files, pdfOptions, separate, notices, help: false };
 }
 
 function unfoldVCardLines(text: string) {
@@ -463,8 +453,8 @@ function roundFontSize(value: number) {
     return Math.floor(value * 10) / 10;
 }
 
-function calculateAutoFontSize(contact: VCardContact, role: 'to' | 'from', layout: string) {
-    const metrics = (LABEL_BLOCK_METRICS[layout] || LABEL_BLOCK_METRICS.ordinary)[role];
+function calculateAutoFontSize(contact: VCardContact, role: 'to' | 'from') {
+    const metrics = LABEL_BLOCK_METRICS[role];
     const postalCode = cleanPostalCode(contact.address.postalCode);
     const addressLines = formatAddressLines(contact);
     const nameSuffix = role === 'to' && !hasHonorificSuffix(displayName(contact)) ? ' 御中' : '';
@@ -513,14 +503,14 @@ function renderAutoFontStyle(fontSizePt: number) {
     ].join(';');
 }
 
-function renderContactBlock(contact: VCardContact, role: 'to' | 'from', layout: string) {
+function renderContactBlock(contact: VCardContact, role: 'to' | 'from') {
     const postalCode = cleanPostalCode(contact.address.postalCode);
     const addressLines = formatAddressLines(contact);
     const nameSuffix = role === 'to' && !hasHonorificSuffix(displayName(contact)) ? ' 御中' : '';
     const phone = compactSpaces(contact.phone);
     const nameNote = role === 'to' ? compactSpaces(contact.nameNote) : '';
     const nameNoteHtml = nameNote ? `　<span class="name-note">${htmlEscape(nameNote)}</span>` : '';
-    const fontSizePt = calculateAutoFontSize(contact, role, layout);
+    const fontSizePt = calculateAutoFontSize(contact, role);
     const style = renderAutoFontStyle(fontSizePt);
 
     return [
@@ -544,28 +534,26 @@ function chunk<T>(items: T[], size: number): T[][] {
     return out;
 }
 
-function buildLabelHtml(recipient: VCardContact, sender: VCardContact, layout = DEFAULT_LABEL_LAYOUT) {
-    return buildLabelsHtml([{ recipient, sender }], layout);
+function buildLabelHtml(recipient: VCardContact, sender: VCardContact) {
+    return buildLabelsHtml([{ recipient, sender }]);
 }
 
 /**
- * ラベルを並べた HTML を作る。
- * 既定では宛先ごとに A4 縦 1頁。レターパックで宛先が複数なら、A4 横 1頁に2枚ずつ並べる
+ * レターパックのラベルを並べた HTML を作る。
+ * 宛先が1件なら A4 縦 1頁。複数なら A4 横 1頁に2枚ずつ並べる
  * （ラベルは 125×156mm なので、横向きの A4（297×210mm）に正立のまま2枚入る）。
  */
-function buildLabelsHtml(entries: LabelEntry[], layout = DEFAULT_LABEL_LAYOUT, options: { twoUp?: boolean } = {}) {
-    const isLetterpack = layout === 'letterpack';
-    const title = isLetterpack ? 'レターパック宛名ラベル' : '普通郵便宛名ラベル';
-    const twoUp = isLetterpack && (options.twoUp ?? entries.length > 1);
+function buildLabelsHtml(entries: LabelEntry[], options: { twoUp?: boolean } = {}) {
+    const twoUp = options.twoUp ?? entries.length > 1;
     const pages = twoUp
-        ? chunk(entries, 2).map(pair => `<div class="sheet">\n${pair.map(entry => buildLabelPage(entry.recipient, entry.sender, layout)).join('\n')}\n</div>`)
-        : entries.map(entry => buildLabelPage(entry.recipient, entry.sender, layout));
+        ? chunk(entries, 2).map(pair => `<div class="sheet">\n${pair.map(entry => buildLabelPage(entry.recipient, entry.sender)).join('\n')}\n</div>`)
+        : entries.map(entry => buildLabelPage(entry.recipient, entry.sender));
 
     return `<!doctype html>
-<html lang="ja" data-houhi-address-label="${htmlEscape(layout)}">
+<html lang="ja" data-houhi-address-label="${LABEL_LAYOUT}">
 <head>
 <meta charset="utf-8">
-<title>${title}</title>
+<title>${LABEL_LAYOUT_NAME}宛名ラベル</title>
 <!-- 用紙はラベル側で決める。data-houhi-a4-page-size があると、PDF 変換（Chrome・Copper とも）が
      「@page { size: A4; }」を差し込まないので、2枚並べるときの A4 横が通る -->
 <style data-houhi-a4-page-size>
@@ -593,11 +581,11 @@ body {
   height: 297mm;
   break-after: avoid;
 }
-/* 宛先を複数まとめたPDFでは、宛先ごとに改頁する */
+/* 2枚並べずに宛先ごとの頁にするときは、宛先ごとに改頁する */
 body > .label-page + .label-page {
   break-before: page;
 }
-/* レターパックを2枚ずつ並べるとき: A4 横を左右に分け、各半分（148.5×210mm）の中央にラベルを置く */
+/* 2枚ずつ並べるとき: A4 横を左右に分け、各半分（148.5×210mm）の中央にラベルを置く */
 body.two-up {
   width: 297mm;
   min-height: 210mm;
@@ -680,38 +668,6 @@ body.two-up {
 .phone {
   font-size: var(--phone-size);
   line-height: 1.2;
-}
-.ordinary .label-frame {
-  left: 24mm;
-  top: 32mm;
-  width: 100mm;
-  height: 95mm;
-  border: 0.2mm dotted #000;
-}
-.ordinary .separator {
-  top: 58mm;
-}
-.ordinary .recipient {
-  left: 6mm;
-  top: 8mm;
-  width: 88mm;
-  height: 46mm;
-}
-.ordinary .sender {
-  left: 6mm;
-  top: 64mm;
-  width: 88mm;
-  height: 27mm;
-}
-.ordinary {
-  --postal-size: 16pt;
-  --address-size: 16pt;
-  --name-size: 16pt;
-  --phone-size: 16pt;
-  --address-line-height: 1.2;
-  --postal-gap: 2mm;
-  --address-gap: 2mm;
-  --phone-gap: 2mm;
 }
 /* 外枠はレターパックの宛名欄（お届け先・ご依頼主・品名）全体の実測 125×156mm（2026-10-08）。
    お届け先・ご依頼主の区画は従来の位置（参照SVG）のままで、その下を品名の区画にする */
@@ -856,29 +812,28 @@ ${pages.join('\n')}
 </html>`;
 }
 
-function buildLabelPage(recipient: VCardContact, sender: VCardContact, layout = DEFAULT_LABEL_LAYOUT) {
-    const isLetterpack = layout === 'letterpack';
-    return `<main class="label-page ${isLetterpack ? 'letterpack' : 'ordinary'}">
+function buildLabelPage(recipient: VCardContact, sender: VCardContact) {
+    return `<main class="label-page ${LABEL_LAYOUT}">
   <section class="label-frame">
     <div class="guide"></div>
     <div class="separator"></div>
     <section class="block recipient">
-      ${renderContactBlock(recipient, 'to', layout)}
+      ${renderContactBlock(recipient, 'to')}
     </section>
     <section class="block sender">
-      ${renderContactBlock(sender, 'from', layout)}
-    </section>${isLetterpack ? `
+      ${renderContactBlock(sender, 'from')}
+    </section>
     <div class="separator separator-item"></div>
     <section class="block item">
       <div class="item-name">${htmlEscape(compactSpaces(recipient.item) || DEFAULT_LETTERPACK_ITEM)}</div>
       <div class="item-checks">${LETTERPACK_ITEM_CHECKS.map(c => `<span class="item-check">${htmlEscape(c)}</span>`).join('')}</div>
-    </section>` : ''}
+    </section>
   </section>
   <div class="cut-line cut-top"></div>
   <div class="cut-line cut-right"></div>
   <div class="cut-line cut-bottom"></div>
-  <div class="cut-line cut-left"></div>${isLetterpack ? `
-  <div class="cut-line cut-teikei"></div>` : ''}
+  <div class="cut-line cut-left"></div>
+  <div class="cut-line cut-teikei"></div>
 </main>`;
 }
 
@@ -908,47 +863,44 @@ function loadLabelEntry(recipientPath: string) {
     return { inputPath, inputDir, senderPath, entry };
 }
 
-function layoutDisplayName(layout: string) {
-    return layout === 'letterpack' ? 'レターパック' : '普通郵便';
-}
-
-async function createAddressLabel(recipientPath: string, layout = DEFAULT_LABEL_LAYOUT, pdfOptions: Record<string, any> = {}) {
+async function createAddressLabel(recipientPath: string, pdfOptions: Record<string, any> = {}) {
     const { inputPath, inputDir, senderPath, entry } = loadLabelEntry(recipientPath);
     const baseName = path.basename(inputPath, path.extname(inputPath));
-    const layoutName = layoutDisplayName(layout);
-    const htmlPath = path.join(inputDir, `${baseName}_宛名ラベル_${layoutName}.html`);
-    const outputPdfPath = path.join(inputDir, `${baseName}_宛名ラベル_${layoutName}.pdf`);
+    const htmlPath = path.join(inputDir, `${baseName}_宛名ラベル_${LABEL_LAYOUT_NAME}.html`);
+    const outputPdfPath = path.join(inputDir, `${baseName}_宛名ラベル_${LABEL_LAYOUT_NAME}.pdf`);
 
-    await writeLabelPdf(buildLabelsHtml([entry], layout), htmlPath, outputPdfPath, inputDir, pdfOptions);
+    await writeLabelPdf(buildLabelsHtml([entry]), htmlPath, outputPdfPath, inputDir, labelPdfOptions(1, pdfOptions));
     return { htmlPath, outputPdfPath, senderPath };
 }
 
 /**
- * 複数の宛先のラベルを、宛先ごとに1頁ずつ並べた1つの PDF にする。
+ * 複数の宛先のラベルを1つの PDF にする（A4 横1頁に2枚ずつ）。
  * 出力先は最初の宛先と同じディレクトリ。差出人は宛先ごとに、その宛先と同じディレクトリの 差出人.vcf を使う。
  */
-async function createCombinedAddressLabel(recipientPaths: string[], layout = DEFAULT_LABEL_LAYOUT, pdfOptions: Record<string, any> = {}) {
+async function createCombinedAddressLabel(recipientPaths: string[], pdfOptions: Record<string, any> = {}) {
     const loaded = recipientPaths.map(loadLabelEntry);
     const outputDir = loaded[0].inputDir;
-    const baseName = `宛名ラベル_${layoutDisplayName(layout)}_${loaded.length}件`;
+    const baseName = `宛名ラベル_${LABEL_LAYOUT_NAME}_${loaded.length}件`;
     const htmlPath = path.join(outputDir, `${baseName}.html`);
     const outputPdfPath = path.join(outputDir, `${baseName}.pdf`);
 
-    const options = combinedPdfOptions(layout, loaded.length, pdfOptions);
-    await writeLabelPdf(buildLabelsHtml(loaded.map(item => item.entry), layout), htmlPath, outputPdfPath, outputDir, options);
+    const options = labelPdfOptions(loaded.length, pdfOptions);
+    await writeLabelPdf(buildLabelsHtml(loaded.map(item => item.entry)), htmlPath, outputPdfPath, outputDir, options);
     return { htmlPath, outputPdfPath, count: loaded.length };
 }
 
 /**
- * レターパックを2枚並べるとき（A4 横）は Copper で組む。Chrome の変換は頁番号の処理と印刷設定で用紙を
- * A4 縦に固定するので、横の頁が縦に縮めて出る（2026-10-09 確認）。
+ * ラベルの PDF を組むエンジンを決める。既定は Copper（設定ファイルの pdf.engine には従わない）。
+ * 2枚並べるとき（A4 横）は --chrome を指定されても Copper で組む。Chrome の変換は頁番号の処理と印刷設定で
+ * 用紙を A4 縦に固定するので、横の頁が縦に縮めて出る（2026-10-09 確認）。
  */
-function combinedPdfOptions(layout: string, count: number, pdfOptions: Record<string, any> = {}) {
-    if (layout !== 'letterpack' || count < 2) return pdfOptions;
-    if (pdfOptions.engine === 'chrome') {
-        console.warn('Chrome の変換は用紙を A4 縦に固定するので、2枚並べるレターパックのラベルは Copper で作ります。');
+function labelPdfOptions(count: number, pdfOptions: Record<string, any> = {}) {
+    const engine = pdfOptions.engine || DEFAULT_PDF_ENGINE;
+    if (engine === 'chrome' && count >= 2) {
+        console.warn('Chrome の変換は用紙を A4 縦に固定するので、2枚並べるラベルは Copper で作ります。');
+        return { ...pdfOptions, engine: 'copper' };
     }
-    return { ...pdfOptions, engine: 'copper' };
+    return { ...pdfOptions, engine };
 }
 
 async function writeLabelPdf(html: string, htmlPath: string, outputPdfPath: string, workDir: string, pdfOptions: Record<string, any> = {}) {
@@ -958,7 +910,7 @@ async function writeLabelPdf(html: string, htmlPath: string, outputPdfPath: stri
     try {
         await convertHtmlToPdf(htmlPath, outputPdfPath, inputDir, null, {
             ...pdfOptions,
-            engine: pdfOptions.engine || 'chrome'
+            engine: pdfOptions.engine || DEFAULT_PDF_ENGINE
         });
     } finally {
         try {
@@ -993,6 +945,11 @@ async function main() {
         return;
     }
 
+    // 廃止した配置（--label-layout=ordinary）を指定されたときなどの案内
+    for (const notice of parsed.notices) {
+        console.error(notice);
+    }
+
     if (parsed.help) {
         printUsage();
         return;
@@ -1004,10 +961,10 @@ async function main() {
         return;
     }
 
-    // 宛先が複数なら、宛先ごとに1頁ずつ並べた1つの PDF にする（--separate で従来どおり1件ずつ）
+    // 宛先が複数なら、A4 横1頁に2枚ずつ並べた1つの PDF にする（--separate で従来どおり1件ずつ）
     if (parsed.files.length > 1 && !parsed.separate) {
         try {
-            await createCombinedAddressLabel(parsed.files, parsed.layout, parsed.pdfOptions);
+            await createCombinedAddressLabel(parsed.files, parsed.pdfOptions);
         } catch (err) {
             console.error(`エラー: ${err instanceof Error ? err.message : err}`);
             process.exitCode = 1;
@@ -1017,7 +974,7 @@ async function main() {
 
     for (const file of parsed.files) {
         try {
-            await createAddressLabel(file, parsed.layout, parsed.pdfOptions);
+            await createAddressLabel(file, parsed.pdfOptions);
         } catch (err) {
             console.error(`エラー: ${err instanceof Error ? err.message : err}`);
             process.exitCode = 1;
@@ -1033,8 +990,10 @@ module.exports = {
     SENDER_VCARD_FILE_NAME,
     buildLabelHtml,
     buildLabelsHtml,
+    DEFAULT_PDF_ENGINE,
+    RETIRED_LABEL_LAYOUT_NOTICE,
     cleanPostalCode,
-    combinedPdfOptions,
+    labelPdfOptions,
     createAddressLabel,
     createCombinedAddressLabel,
     formatAddressLines,
