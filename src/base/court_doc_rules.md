@@ -102,6 +102,7 @@ Rules for alignment blocks:
 - Evidence tables are pipe tables whose header contains `甲号証` or `乙号証` and `標目`.
 - In evidence tables, the `甲号証` or `乙号証` column may contain only the number part, such as `1` or `2-1`.
 - In evidence tables, empty cells merge with the cell above.
+- In evidence tables, write 作成年月日 in the Japanese era (和暦): `令和6年3月1日`, or `R6.3.1` for mints filings. Convert Western-calendar dates taken from the source (`2024年3月1日`, `2026-09-22`) to 和暦; do not copy them as they are. The PDF converter warns about Western-calendar dates in this column.
 - If a table follows `## 附属書類` or `## 証拠書類`, it is rendered as an attachment list.
 - Use standard image syntax: `![description](relative-path.png)`. Prefer relative paths.
 

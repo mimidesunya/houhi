@@ -87,6 +87,36 @@ function stripHtmlComments(value) {
 }
 
 /**
+ * 証拠説明書の表の作成年月日から、西暦で書かれたものを拾います（証拠説明書の日付は和暦で書く）。
+ * 見出しに「号証」と「標目」又は「立証趣旨」がある表の「年月日」の列を見て、
+ * 「2024年3月1日」「2026-09-22」「2026/9/22」のように4桁の年で書いた行を返します。
+ * 原資料が西暦で書いていても和暦に直して書くので、注記の中の西暦も拾います。
+ * mints の記載要領の「R7.9.12」は和暦なので拾いません。
+ */
+export function findWesternDatesInEvidenceTables(markdown) {
+    const found = [];
+    let dateCol = -1;
+    let numberCol = -1;
+    for (const line of stripHtmlComments(markdown).split(/\r?\n/)) {
+        const m = line.trim().match(/^\|(.*)\|$/);
+        if (!m) { dateCol = -1; continue; }
+        const cells = m[1].split('|').map(c => c.trim());
+        if (cells.some(c => c.includes('号証')) && cells.some(c => c.includes('標目') || c.includes('立証趣旨'))) {
+            dateCol = cells.findIndex(c => c.includes('年月日'));
+            numberCol = cells.findIndex(c => c.includes('号証'));
+            continue;
+        }
+        if (dateCol < 0 || /^[\s|:-]+$/.test(m[1])) continue;
+        const date = cells[dateCol] || '';
+        const digits = date.replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xfee0));
+        if (/(?<!\d)(?:18|19|20)\d{2}(?:\s*年|[-/.]\d{1,2})/.test(digits)) {
+            found.push({ exhibit: cells[numberCol] || '', date });
+        }
+    }
+    return found;
+}
+
+/**
  * Markdownテキストを裁判文書用のHTMLに変換します。
  */
 export function convertMarkdownToCourtHtml(markdown) {
@@ -992,7 +1022,7 @@ async function renderMarkdown() {
 
 // Node.js環境用のエクスポート
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { convertMarkdownToCourtHtml };
+    module.exports = { convertMarkdownToCourtHtml, findWesternDatesInEvidenceTables };
 } else {
     (window as any).convertMarkdownToCourtHtml = convertMarkdownToCourtHtml;
     // ブラウザ環境では自動実行

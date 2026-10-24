@@ -113,3 +113,31 @@ test('evidence table: blank cells of the same branch-numbered exhibit merge, exc
     assert.deepEqual(second.map(c => c.cls), ['col-no', 'col-title', 'col-orig', 'col-note']);
     assert.equal(second[3].text, '');
 });
+
+// 2026-10-24 ユーザー「証拠説明書の日付は和暦で　houhiもその方針にしておきましょう」。
+// 9/11 の証拠説明書（乙22ないし36）は、原資料の「2024年3月1日」をそのまま作成年月日に書いていた。
+test('evidence table: dates written in the Western calendar are reported', () => {
+    const { findWesternDatesInEvidenceTables } = require('../dist/src/base/court_markdown.js');
+    const md = [
+        '| 乙号証 | 標目 | 原本写 | 作成年月日 | 作成者 | 立証趣旨 |',
+        '| :--- | :--- | :---: | :--- | :--- | :--- |',
+        '| 35の2 | 新聞記事 | 写し | 2024年3月1日 | 東京新聞社 | 不明金が報じられたこと |',
+        '| 35の3 | 新聞記事 | 写し | ２０２４年３月２日（掲載日は乙34の1による） | 埼玉新聞社 | 同上 |',
+        '| 36 | ウェブ記事 | 写し | 令和8年9月22日（2026-09-22掲載） | 日本テレビ放送網 | 報道 |',
+        '| 37 | 判決 | 写し | 令和8年10月7日 | 東京高等裁判所 | 控訴審判決の内容 |',
+        '',
+        '| 号証 | 標目 | 作成年月日 | 作成者 | 立証趣旨 | 備考 |',
+        '| :--- | :--- | :--- | :--- | :--- | :--- |',
+        '| 甲001 | 決定通知書 | R7.9.12 | 市長 | 決定の事実と理由 | 紙を電子化 |',
+        '| 甲002 | 規程 | H16.4.1 | 法務省 | 訓令の内容 | 2026年取得 |',
+        '',
+        '| 年 | 出来事 |',
+        '| :--- | :--- |',
+        '| 2024年 | 一般の表は見ない |',
+    ].join('\n');
+    assert.deepEqual(findWesternDatesInEvidenceTables(md), [
+        { exhibit: '35の2', date: '2024年3月1日' },
+        { exhibit: '35の3', date: '２０２４年３月２日（掲載日は乙34の1による）' },
+        { exhibit: '36', date: '令和8年9月22日（2026-09-22掲載）' },
+    ]);
+});

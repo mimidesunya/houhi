@@ -1,10 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const { convertMarkdownToCourtHtml } = require('../base/court_markdown');
+const { convertMarkdownToCourtHtml, findWesternDatesInEvidenceTables } = require('../base/court_markdown');
 
 /**
  * HTML内の全 <pre> タグを裁判文書用HTMLに変換して置換します。
  * data-src属性がある場合は、そのファイルを読み込みます。
+ * 証拠説明書の作成年月日が西暦なら、和暦に直すよう標準エラーに警告を出します（変換は続ける）。
  */
 function renderPreTags(htmlContent, baseDir = null) {
     const preRegex = /(<pre[^>]*>)([\s\S]*?)(<\/pre>)/g;
@@ -28,6 +29,10 @@ function renderPreTags(htmlContent, baseDir = null) {
         
         if (!markdownText.trim()) {
             return match; // 何もなければそのまま
+        }
+
+        for (const { exhibit, date } of findWesternDatesInEvidenceTables(markdownText)) {
+            console.warn(`警告: 証拠説明書の作成年月日が西暦です（${exhibit}: ${date}）。和暦で書いてください。`);
         }
 
         const renderedHtml = convertMarkdownToCourtHtml(markdownText);

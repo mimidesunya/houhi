@@ -339,3 +339,17 @@ test('drafting templates: use ## for regular section headings', () => {
 
     assert.deepEqual(failures, []);
 });
+
+test('renderPreTags: warns when an evidence table has a Western-calendar date', (t) => {
+    const warnings = [];
+    t.mock.method(console, 'warn', (msg) => warnings.push(msg));
+    const md = [
+        '| 乙号証 | 標目 | 原本写 | 作成年月日 | 作成者 | 立証趣旨 |',
+        '| :--- | :--- | :---: | :--- | :--- | :--- |',
+        '| 1 | 記事 | 写し | 2024年2月6日 | 団体 | 申入れ |',
+        '| 2 | 判決 | 写し | 令和8年1月22日 | 東京高等裁判所 | 判断 |',
+    ].join('\n');
+    const result = renderPreTags(`<pre>${md}</pre>`);
+    assert.ok(result.includes('<table class="evidence">'), 'conversion continues');
+    assert.deepEqual(warnings, ['警告: 証拠説明書の作成年月日が西暦です（1: 2024年2月6日）。和暦で書いてください。']);
+});
