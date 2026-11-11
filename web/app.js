@@ -7,6 +7,7 @@
  * 裁判文書用 Markdown -> HTML 変換スクリプト
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.findWesternDatesInEvidenceTables = findWesternDatesInEvidenceTables;
 exports.convertMarkdownToCourtHtml = convertMarkdownToCourtHtml;
 /**
  * 文字列の視覚的な幅（em単位）を計算します。
@@ -86,8 +87,44 @@ function stripHtmlComments(value) {
     return String(value || '').replace(/<!--[\s\S]*?-->/g, '');
 }
 /**
+ * 証拠説明書の表の作成年月日から、西暦で書かれたものを拾います（証拠説明書の日付は和暦で書く）。
+ * 見出しに「号証」と「標目」又は「立証趣旨」がある表の「年月日」の列を見て、
+ * 「2024年3月1日」「2026-09-22」「2026/9/22」のように4桁の年で書いた行を返します。
+ * 原資料が西暦で書いていても和暦に直して書くので、注記の中の西暦も拾います。
+ * mints の記載要領の「R7.9.12」は和暦なので拾いません。
+ */
+function findWesternDatesInEvidenceTables(markdown) {
+    const found = [];
+    let dateCol = -1;
+    let numberCol = -1;
+    for (const line of stripHtmlComments(markdown).split(/\r?\n/)) {
+        const m = line.trim().match(/^\|(.*)\|$/);
+        if (!m) {
+            dateCol = -1;
+            continue;
+        }
+        const cells = m[1].split('|').map(c => c.trim());
+        if (cells.some(c => c.includes('号証')) && cells.some(c => c.includes('標目') || c.includes('立証趣旨'))) {
+            dateCol = cells.findIndex(c => c.includes('年月日'));
+            numberCol = cells.findIndex(c => c.includes('号証'));
+            continue;
+        }
+        if (dateCol < 0 || /^[\s|:-]+$/.test(m[1]))
+            continue;
+        const date = cells[dateCol] || '';
+        const digits = date.replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xfee0));
+        if (/(?<!\d)(?:18|19|20)\d{2}(?:\s*年|[-/.]\d{1,2})/.test(digits)) {
+            found.push({ exhibit: cells[numberCol] || '', date });
+        }
+    }
+    return found;
+}
+/**
  * Markdownテキストを裁判文書用のHTMLに変換します。
  */
+// 小さい字のブロック（### --小）の字の大きさは 10.5pt（style.css の .small）。
+// 本文 12pt に対して、同じ幅に入る字数は 12/10.5 倍になる
+const SMALL_BLOCK_SCALE = 12 / 10.5;
 function convertMarkdownToCourtHtml(markdown) {
     const lines = stripHtmlComments(markdown).split(/\r?\n/);
     let html = '';
@@ -99,6 +136,7 @@ function convertMarkdownToCourtHtml(markdown) {
     let inRightBlock = false;
     let inLeftBlock = false;
     let inLandscapeBlock = false;
+    let inSmallBlock = false;
     let lastHeader = '';
     let inEvidenceTable = false;
     let evidenceTableBuffer = [];
@@ -154,7 +192,7 @@ function convertMarkdownToCourtHtml(markdown) {
             scanInRight = false;
             continue;
         }
-        if (trimmed === '### --横' || trimmed === '### --縦') {
+        if (trimmed === '### --横' || trimmed === '### --縦' || trimmed === '### --小') {
             continue;
         }
         if (trimmed === '### --') {
@@ -273,8 +311,9 @@ function convertMarkdownToCourtHtml(markdown) {
                 if (r > 0)
                     colArea[i] += flatWidth(cell);
             }));
-            // 本文幅（12pt）: A4縦 160mm＝37.8em、A4横（### --横）252mm＝59.5em
-            const bodyEm = inLandscapeBlock ? 59.5 : 37.8;
+            // 本文幅（12pt）: A4縦 160mm＝37.8em、A4横（### --横）250mm＝59.0em。
+            // 小さい字のブロック（### --小、10.5pt）の中では、同じ幅に入る字数がその分増える
+            const bodyEm = (inLandscapeBlock ? 59.0 : 37.8) * (inSmallBlock ? SMALL_BLOCK_SCALE : 1);
             const PAD = 1.0; // セルの左右の余白（0.5em ずつ）
             const SHORT_EM = 8; // これ以下の列は折り返さずに収まる幅を与える
             const FLEX_MIN = 6; // 長い列に残す最小の幅
@@ -574,6 +613,25 @@ function convertMarkdownToCourtHtml(markdown) {
         }
         return null;
     }
+    // 小さい字のブロック（### --小）を閉じる。開いている表と番号付きの階層を先に閉じる
+    const closeSmallBlock = () => {
+        let out = '';
+        if (inTable) {
+            out += flushTable();
+            inTable = false;
+        }
+        if (inSimpleList) {
+            out += '</ul>' + nl;
+            inSimpleList = false;
+        }
+        while (lastLevel > 0) {
+            out += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+            lastLevel--;
+        }
+        out += '</div>' + nl;
+        inSmallBlock = false;
+        return out;
+    };
     for (let line of lines) {
         const trimmedLine = line.trim();
         if (!trimmedLine)
@@ -620,6 +678,32 @@ function convertMarkdownToCourtHtml(markdown) {
                 inLeftBlock = false;
                 continue;
             }
+            if (inSmallBlock) {
+                html += closeSmallBlock();
+                continue;
+            }
+        }
+        // 小さい字のブロックの開始: ### --小（終了は ### --）
+        // 別紙の表や注など、本文（12pt）より小さい字（10.5pt）で組みたい範囲を囲む。
+        // 表の列幅は、小さい字で入る字数に合わせて計算する。
+        if (trimmedLine === '### --小') {
+            if (inTable) {
+                html += flushTable();
+                inTable = false;
+            }
+            while (lastLevel > 0) {
+                html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
+                lastLevel--;
+            }
+            if (inSimpleList) {
+                html += '</ul>' + nl;
+                inSimpleList = false;
+            }
+            if (!inSmallBlock) {
+                html += '<div class="small">' + nl;
+                inSmallBlock = true;
+            }
+            continue;
         }
         // 横置きセクションの開始・終了: ### --横 / ### --縦
         // 以降の内容をA4横置きのページ（別紙など）として組む。頁番号は本体からの通し。
@@ -632,6 +716,9 @@ function convertMarkdownToCourtHtml(markdown) {
                 html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
                 lastLevel--;
             }
+            // 小さい字のブロックは向きの切り替えをまたがない（閉じ忘れていたらここで閉じる）
+            if (inSmallBlock)
+                html += closeSmallBlock();
             if (!inLandscapeBlock) {
                 html += '<div class="landscape">' + nl;
                 inLandscapeBlock = true;
@@ -639,6 +726,8 @@ function convertMarkdownToCourtHtml(markdown) {
             continue;
         }
         if (trimmedLine === '### --縦') {
+            if (inSmallBlock)
+                html += closeSmallBlock();
             if (inLandscapeBlock) {
                 if (inTable) {
                     html += flushTable();
@@ -945,6 +1034,10 @@ function convertMarkdownToCourtHtml(markdown) {
         html += indent(lastLevel - 1) + '</li>' + nl + indent(lastLevel - 1) + '</ol>' + nl;
         lastLevel--;
     }
+    if (inSmallBlock) {
+        html += '</div>' + nl;
+        inSmallBlock = false;
+    }
     if (inLandscapeBlock) {
         html += '</div>' + nl;
         inLandscapeBlock = false;
@@ -1028,7 +1121,7 @@ async function renderMarkdown() {
 }
 // Node.js環境用のエクスポート
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { convertMarkdownToCourtHtml };
+    module.exports = { convertMarkdownToCourtHtml, findWesternDatesInEvidenceTables };
 }
 else {
     window.convertMarkdownToCourtHtml = convertMarkdownToCourtHtml;

@@ -590,14 +590,38 @@ ol > li.filler:before {
    ========================================= */
 @page yoko {
     size: A4 landscape;
-    margin: 25mm 20mm 22mm 25mm;
+    /* 縦置きの頁と重ねて左で綴じると、横置きの頁は上辺が綴じ側（左）に来て、
+       左の短辺が縦置きの頁の下辺に重なる。余白を縦置きの頁（上35・右20・下27・左30mm）に合わせる:
+       上＝綴じ側 30mm、左＝ノンブルの側 27mm、下＝縦置きの右 20mm。右（縦置きの上）は 20mm に詰める */
+    margin: 30mm 20mm 20mm 27mm;
 
+    /* ノンブルは、縦置きの頁と同じ位置（綴じたときの下辺の中央）に、同じ向きで出す。
+       横置きの頁として見ると、左の短辺に、上から下へ読む向きになる */
     @bottom-center {
+        content: none;
+    }
+
+    @left-middle {
         content: '- ' counter(page) ' -';
-        vertical-align: middle;
+        writing-mode: vertical-rl;
+        text-align: center;
     }
 }
 
 .landscape {
     page: yoko;
+}
+
+/* =========================================
+   小さい字のブロック（別紙の表・注など）
+   Markdownの「### --小」〜「### --」で囲んだ範囲を、
+   本文の 12pt より小さい 10.5pt で組む。行送りは字の大きさに比例する。
+   ========================================= */
+.small,
+.small * {
+    font-size: 10.5pt;
+}
+
+.small rt {
+    font-size: 50%;
 }

@@ -344,3 +344,84 @@ test('convertMarkdownToCourtHtml: phone and fax in a party block become separate
     // 氏名の列幅が電話番号に引きずられないこと
     assert.match(result, /table\.right-info td\.col-2 \{ width: 5em; white-space: nowrap; \}/);
 });
+
+// ─── 小さい字のブロック（### --小） ─────────────────────────
+
+test('convertMarkdownToCourtHtml: ### --小 wraps the range in div.small and closes it at ### --', () => {
+    const md = [
+        '本文の段落です。',
+        '',
+        '### --小',
+        '',
+        '- 注の1つ目',
+        '- 注の2つ目',
+        '',
+        '| 号証 | 表示 |',
+        '| :--- | :--- |',
+        '| 甲1 | 長い表示の文言がここに入ります。長い表示の文言がここに入ります。 |',
+        '',
+        '### --',
+        '',
+        '後ろの段落です。',
+    ].join('\n');
+    const result = convertMarkdownToCourtHtml(md);
+    const open = result.indexOf('<div class="small">');
+    const close = result.indexOf('</div>', open);
+    assert.ok(open >= 0 && close > open, result);
+    const inside = result.slice(open, close);
+    // 注の箇条書きと表はブロックの中、前後の段落は外
+    assert.match(inside, /<ul>[\s\S]*注の2つ目[\s\S]*<\/ul>/);
+    assert.match(inside, /<table class="has-header fixed">[\s\S]*<\/table>/);
+    assert.ok(result.indexOf('本文の段落です。') < open);
+    assert.ok(result.indexOf('後ろの段落です。') > close);
+    // マーカーが見出しや本文として残らないこと
+    assert.doesNotMatch(result, /--小/);
+});
+
+test('convertMarkdownToCourtHtml: a table inside ### --小 gets more room for the long column', () => {
+    const table = [
+        '| 号証 | 掲載日 | 表示 | 法益 |',
+        '| :--- | :--- | :--- | :--- |',
+        '| 甲1 | 10月11日 | ' + '長い表示の文言がここに入ります。'.repeat(6) + ' | ①②③④ |',
+    ];
+    const widthsOf = (html) => [...html.matchAll(/<col style="width:([0-9.]+)%">/g)].map(m => Number(m[1]));
+    const normal = widthsOf(convertMarkdownToCourtHtml(table.join('\n')));
+    const small = widthsOf(convertMarkdownToCourtHtml(['### --小', '', ...table, '', '### --'].join('\n')));
+    assert.equal(normal.length, 4);
+    assert.equal(small.length, 4);
+    // 短い列は字数で決まる幅のままなので、小さい字では割合が下がり、長い列の割合が上がる
+    assert.ok(small[0] < normal[0], `${small[0]} < ${normal[0]}`);
+    assert.ok(small[2] > normal[2], `${small[2]} > ${normal[2]}`);
+});
+
+test('convertMarkdownToCourtHtml: ### --小 left open is closed before ### --縦 and at the end', () => {
+    const md = [
+        '### --横',
+        '',
+        '# 別紙1　目録',
+        '',
+        '### --小',
+        '',
+        '| 号証 | 表示 |',
+        '| :--- | :--- |',
+        '| 甲1 | 表示の文言 |',
+        '',
+        '### --縦',
+        '',
+        '# 別紙2',
+    ].join('\n');
+    const result = convertMarkdownToCourtHtml(md);
+    const land = result.indexOf('<div class="landscape">');
+    const small = result.indexOf('<div class="small">');
+    const tableEnd = result.indexOf('</table>');
+    const firstClose = result.indexOf('</div>', tableEnd);
+    const secondClose = result.indexOf('</div>', firstClose + 1);
+    assert.ok(land >= 0 && small > land && tableEnd > small, result);
+    // 小さい字のブロック、横置きの順に閉じ、別紙2はその後
+    assert.ok(firstClose > tableEnd && secondClose > firstClose, result);
+    assert.ok(result.indexOf('別紙2') > secondClose, result);
+
+    const open = convertMarkdownToCourtHtml(['### --小', '', '注だけの段落です。'].join('\n'));
+    assert.equal((open.match(/<div class="small">/g) || []).length, 1);
+    assert.equal((open.match(/<\/div>/g) || []).length, 1);
+});
