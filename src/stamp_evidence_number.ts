@@ -1,6 +1,6 @@
 /**
  * 証拠番号スタンプツール
- * PDF／画像ファイル名から証拠番号・資料番号（例: 甲1_契約書.pdf、乙A1_写真.pdf、資料1_ウェブサイト.pdf）を抽出し、各ページの右上に赤文字でスタンプする。
+ * PDF／画像ファイル名から証拠番号・資料番号（例: 甲1_契約書.pdf、乙A1_写真.pdf、資料1_ウェブサイト.pdf、参考資料1_通知書.pdf）を抽出し、各ページの右上に赤文字でスタンプする。
  * 出力先: 入力ディレクトリ内の stamped/ フォルダ
  *
  * 入力:
@@ -9,10 +9,13 @@
  * - ファイル名先頭の `甲1_契約書.pdf`, `乙2_メール.pdf`, `甲3-1_領収書.pdf`, `乙A1の2_写真.pdf` などから証拠番号を抽出します。
  * - 苦情申出の意見書などに付ける資料は `資料1_〇〇.pdf`, `資料2-1_〇〇.pdf` の形式に対応します。
  *   資料には「号証」を付けず、`資料1` とだけスタンプします。
+ * - 行政不服審査の審査会（情報公開・個人情報保護審査会など）へ意見書と出す参考資料は
+ *   `参考資料1_〇〇.pdf`, `参考資料2-1_〇〇.pdf` の形式に対応します。資料と同じく「号証」を付けず、`参考資料1` とスタンプします。
  *
  * 出力:
  * - 最初の入力ファイルの親フォルダに `stamped/` を作成し、その中へ個別PDFを出力します。
- * - 成功ファイルが 2 件以上ある場合は `_結合_号証一式.pdf`（資料のみなら `_結合_資料一式.pdf`）も作成します。
+ * - 成功ファイルが 2 件以上ある場合は `_結合_号証一式.pdf`（資料のみなら `_結合_資料一式.pdf`、参考資料のみなら
+ *   `_結合_参考資料一式.pdf`、種別が混ざれば `_結合_一式.pdf`）も作成します。名前は `--combined-name` で変えられます。
  *
  * オプション:
  * - `--all-pages`: 全ページにスタンプします（既定は1ページ目のみ）。
@@ -21,6 +24,15 @@
  *   出力先を `mints/`、ファイル名の先頭を同じ形式に改め、結合PDFは作らない（mints は1証拠1ファイル、A4/A3のみ）。黒帯も付けない。
  * - `--no-tab`: 境目の黒帯を付けない。
  * - `--tab-steps N`: 黒帯を上下にずらす段数（既定は4）。
+ * - `--prefix 文字列`: 番号のすぐ左に、番号の半分の大きさの字で前置きを続けて刷ります（下端をそろえて1行に）。
+ *   審査会は参考資料に「令和○年(○○) 諮問第○号に対する参考資料」などと明記するよう求めているので、
+ *   `--prefix "令和8年（行情）諮問第1373号に対する"` とすると、頁の右上に
+ *   「令和8年（行情）諮問第1373号に対する参考資料1」と1行で入ります（前置きだけ小さい字）。
+ *   番号の位置は変わらず、前置きの分だけ左へ延びます（既定の大きさで A4 の幅の右半分ほど）。
+ *   前置きと番号を合わせて頁の幅の6割を超えるときは、前置きの字を小さくして収めます。
+ *   付けなければ今までと同じく番号だけを刷ります。
+ * - `--combined-name 名前`: 結合PDFのファイル名（`stamped/` の中）。`.pdf` がなければ付けます。
+ *   例: `--combined-name "令和8年（行情）諮問第1373号に対する参考資料.pdf"`。
  *
  * 境目の黒帯:
  * - 番号の右から用紙の右端まで、黒の斜めの縞の帯を付けます。まとめて印刷して重ねたとき、右端を見れば号証の境目が分かります。
@@ -47,6 +59,14 @@
  *   --mints       mints 提出用（「甲001」形式・mints/ へ出力・結合なし・黒帯なし）
  *   --no-tab      境目の黒帯を付けない
  *   --tab-steps N 黒帯を上下にずらす段数（デフォルト: 4）
+ *   --prefix 文字列        番号の左に小さい字で前置きを続けて刷る
+ *   --combined-name 名前   結合PDFのファイル名
+ *
+ * 審査会へ出す参考資料の例:
+ *   node dist/src/stamp_evidence_number.js --no-tab --no-blank-pages \
+ *     --prefix "令和8年（行情）諮問第1373号に対する" \
+ *     --combined-name "令和8年（行情）諮問第1373号に対する参考資料.pdf" \
+ *     参考資料1_〇〇.pdf 参考資料2_〇〇.pdf 参考資料3_〇〇.pdf
  */
 const fs = require('fs');
 const path = require('path');
@@ -68,6 +88,9 @@ const DEFAULT_TAB_STEPS = 4; // 黒帯を上下にずらす段数
 const TAB_DESCENT = 0.12;  // 黒帯の下端を番号の文字の下端に合わせる (フォントサイズ比)
 const TAB_STRIPE_PERIOD = 0.4; // 黒帯の斜めの縞の周期 (フォントサイズ比。黒はその半分)
 const LANDSCAPE_TURN = 270; // 横長の頁を縦にするときの回転（/Rotate に足す。頁の上が左＝綴じ側に来る）
+const PREFIX_SIZE_RATIO = 0.5; // 前置き（--prefix）の字の大きさ (番号のフォントサイズ比)
+const PREFIX_MAX_WIDTH_RATIO = 0.6; // 前置きと番号を合わせた幅の上限 (頁の幅比。超えるときは前置きの字を小さくする)
+const PREFIX_MIN_WIDTH_RATIO = 0.2; // 番号が長くても前置きに残す幅 (頁の幅比)
 const A4_WIDTH = 595.28;   // A4 幅 (pt)
 const A4_HEIGHT = 841.89;  // A4 高さ (pt)
 const PAGE_SIZE_TOLERANCE = 0.5;
@@ -211,6 +234,7 @@ function getStampMetricsForA4Print(pageWidth, pageHeight, fontSize = DEFAULT_FON
         outline: STAMP_OUTLINE * metricScale,
         tabLength: TAB_LENGTH * metricScale,
         tabGap: TAB_GAP * metricScale,
+        prefixFontSize: fontSize * PREFIX_SIZE_RATIO * metricScale,
     };
 }
 
@@ -220,24 +244,46 @@ type TabOptions = {
     tabSteps?: number;
 };
 
+type LayoutOptions = TabOptions & {
+    /** 前置きの幅（metrics.prefixFontSize で測った値）。0 なら前置きなし */
+    prefixWidth?: number;
+};
+
 /**
  * 番号の位置と境目の黒帯の矩形を返す。
  * 黒帯は番号の右から用紙の右端まで、高さはフォントサイズと同じ。tabIndex を tabSteps で割った余りの段だけ、番号ごと帯の高さ分ずつ下げる。
+ * 前置き（prefixWidth > 0）があれば、番号のすぐ左に、下端（ベースライン）をそろえて1行に置く。番号と帯の位置は変えない。
+ * 前置きと番号を合わせた幅が頁の幅の PREFIX_MAX_WIDTH_RATIO を超えるときは、収まるまで前置きの字を小さくする。
  */
-function getStampLayout(pageWidth, pageHeight, textWidth, metrics, options: TabOptions = {}) {
-    const { tab = false, tabIndex = 0, tabSteps = DEFAULT_TAB_STEPS } = options;
-    if (!tab) {
+function getStampLayout(pageWidth, pageHeight, textWidth, metrics, options: LayoutOptions = {}) {
+    const { tab = false, tabIndex = 0, tabSteps = DEFAULT_TAB_STEPS, prefixWidth = 0 } = options;
+    const withPrefix = (layout) => {
+        if (!(prefixWidth > 0)) return { ...layout, prefix: null };
+        const maxWidth = Math.max(pageWidth * PREFIX_MAX_WIDTH_RATIO - textWidth, pageWidth * PREFIX_MIN_WIDTH_RATIO);
+        const shrink = prefixWidth > maxWidth ? maxWidth / prefixWidth : 1;
+        const width = prefixWidth * shrink;
         return {
+            ...layout,
+            prefix: {
+                x: layout.textX - width,
+                y: layout.textY,
+                fontSize: metrics.prefixFontSize * shrink,
+                width,
+            },
+        };
+    };
+    if (!tab) {
+        return withPrefix({
             textX: pageWidth - textWidth - metrics.marginRight,
             textY: pageHeight - metrics.marginTop - metrics.fontSize,
             tabRect: null,
-        };
+        });
     }
     const steps = Math.max(1, Math.floor(tabSteps));
     const step = ((Math.floor(tabIndex) % steps) + steps) % steps;
     const textY = pageHeight - metrics.marginTop - metrics.fontSize - step * metrics.fontSize;
     const tabX = pageWidth - metrics.tabLength;
-    return {
+    return withPrefix({
         textX: tabX - metrics.tabGap - textWidth,
         textY,
         tabRect: {
@@ -246,7 +292,7 @@ function getStampLayout(pageWidth, pageHeight, textWidth, metrics, options: TabO
             width: pageWidth - tabX,
             height: metrics.fontSize,
         },
-    };
+    });
 }
 
 /**
@@ -351,28 +397,39 @@ async function convertImageToPdf(imagePath) {
 
 /**
  * ファイル名から証拠番号・資料番号を抽出
- * （枝番・英字分類対応: 甲4-1, 乙A1の2, 資料1, 資料2-1 など）
+ * （枝番・英字分類対応: 甲4-1, 乙A1の2, 資料1, 資料2-1, 参考資料1, 参考資料2-1 など）
  */
 function extractEvidenceNumber(filename) {
     const normalizedName = path.basename(filename)
         .replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
         .replace(/[Ａ-Ｚａ-ｚ]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
         .replace(/[a-z]/g, char => char.toUpperCase());
-    const shiryoMatch = normalizedName.match(/^(資料\d+(?:[\-ー－の]\d+)?)/);
+    const shiryoMatch = normalizedName.match(/^((?:参考)?資料\d+(?:[\-ー－の]\d+)?)/);
     if (shiryoMatch) return shiryoMatch[1].replace(/[ー－]/g, '-');
     const match = normalizedName.match(/^([甲乙丙丁戊証疎][A-Z]?\d+(?:[\-ー－の]\d+)?)/);
     return match ? match[1].replace(/[ー－]/g, '-') : null;
 }
 
 /**
- * 号証か資料かを判定する
+ * 番号の種別を返す。「参考資料1」は '参考資料'、「資料1」は '資料'、それ以外（甲1 など）は '号証'。
+ * 結合PDFの名前（`_結合_参考資料一式.pdf` など）と並べ替えの順（号証・資料・参考資料）に使う。
  */
-function isShiryo(evidenceNumber) {
-    return /^資料/.test(String(evidenceNumber || ''));
+function getMaterialKind(evidenceNumber) {
+    const text = String(evidenceNumber || '');
+    if (/^参考資料/.test(text)) return '参考資料';
+    if (/^資料/.test(text)) return '資料';
+    return '号証';
 }
 
 /**
- * スタンプに刷る文字列。号証には「号証」を付け、資料はそのまま用いる。
+ * 号証か資料（参考資料を含む）かを判定する
+ */
+function isShiryo(evidenceNumber) {
+    return getMaterialKind(evidenceNumber) !== '号証';
+}
+
+/**
+ * スタンプに刷る文字列。号証には「号証」を付け、資料・参考資料はそのまま用いる。
  */
 function buildStampText(evidenceNumber, mints = false) {
     if (mints) return toMintsNumber(evidenceNumber);
@@ -390,20 +447,73 @@ function toMintsNumber(evidenceNumber) {
 }
 
 /**
- * 自然順ソート用キー（枝番・英字分類・資料対応）
- * @returns {[number, number, number, number]} [種別（号証0・資料1）, 英字分類, 主番号, 枝番号]
+ * 自然順ソート用キー（枝番・英字分類・資料・参考資料対応）
+ * @returns {[number, number, number, number]} [種別（号証0・資料1・参考資料2）, 英字分類, 主番号, 枝番号]
  */
 function naturalSortKey(filepath) {
     const evidenceNumber = extractEvidenceNumber(filepath);
-    if (isShiryo(evidenceNumber)) {
+    const kind = getMaterialKind(evidenceNumber);
+    if (kind !== '号証') {
+        const kindRank = kind === '資料' ? 1 : 2;
         const shiryo = evidenceNumber.match(/資料(\d+)(?:[\-の](\d+))?/);
-        if (!shiryo) return [1, 0, 0, 0];
-        return [1, 0, parseInt(shiryo[1], 10), shiryo[2] ? parseInt(shiryo[2], 10) : 0];
+        if (!shiryo) return [kindRank, 0, 0, 0];
+        return [kindRank, 0, parseInt(shiryo[1], 10), shiryo[2] ? parseInt(shiryo[2], 10) : 0];
     }
     const match = evidenceNumber && evidenceNumber.match(/[甲乙丙丁戊証疎]([A-Z]?)(\d+)(?:[\-の](\d+))?/);
     if (!match) return [0, 0, 0, 0];
     const letterRank = match[1] ? match[1].charCodeAt(0) - 64 : 0;
     return [0, letterRank, parseInt(match[2], 10), match[3] ? parseInt(match[3], 10) : 0];
+}
+
+/**
+ * 個別に出力するPDFのファイル名。拡張子を .pdf にし、mints ではファイル名の先頭の号証を mints 表記に置き換える。
+ */
+function buildOutputFilename(filename, evidenceNumber, mints = false) {
+    const baseName = path.basename(filename, path.extname(filename)) + '.pdf';
+    if (!mints) return baseName;
+    // ファイル名の先頭の号証を mints 表記に置き換える（「甲01_…」「甲1_…」→「甲001_…」）
+    return baseName.replace(/^[甲乙丙丁戊証疎][A-Za-zＡ-Ｚａ-ｚ]?[0-9０-９]+(?:[\-ー－の][0-9０-９]+)?/, toMintsNumber(evidenceNumber));
+}
+
+/**
+ * `--combined-name` の値を、出力フォルダの中のファイル名として整える。空なら null。
+ * フォルダを含む名前や Windows で使えない文字はエラーにする。`.pdf` がなければ付ける。
+ */
+function normalizeCombinedName(name) {
+    const trimmed = String(name ?? '').trim();
+    if (!trimmed) return null;
+    if (/[\\/]/.test(trimmed)) {
+        throw new Error(`--combined-name にはフォルダを含めず、ファイル名だけを指定してください: ${trimmed}`);
+    }
+    if (/[<>:"|?*\u0000-\u001f]/.test(trimmed) || /^\.+$/.test(trimmed)) {
+        throw new Error(`--combined-name に使えない文字があります: ${trimmed}`);
+    }
+    return /\.pdf$/i.test(trimmed) ? trimmed : `${trimmed}.pdf`;
+}
+
+/**
+ * 結合PDFのファイル名。指定（--combined-name）があればそれを、なければ番号の種別から決める
+ * （号証だけなら `_結合_号証一式.pdf`、資料だけなら `_結合_資料一式.pdf`、参考資料だけなら `_結合_参考資料一式.pdf`、混在は `_結合_一式.pdf`）。
+ */
+function buildCombinedName(evidenceNumbers, combinedName = null) {
+    const specified = normalizeCombinedName(combinedName);
+    if (specified) return specified;
+    const kinds = new Set(evidenceNumbers.map(getMaterialKind));
+    return kinds.size === 1 ? `_結合_${[...kinds][0]}一式.pdf` : '_結合_一式.pdf';
+}
+
+/**
+ * 白で縁取った赤い文字を刷る（上下左右・斜めの8方向に白をずらして描いてから、赤を重ねる）
+ */
+function drawOutlinedText(page, text, { x, y, size, outline, font, rotate }) {
+    const offsets = [
+        [-outline, 0], [outline, 0], [0, -outline], [0, outline],
+        [-outline, -outline], [outline, -outline], [-outline, outline], [outline, outline],
+    ];
+    for (const [dx, dy] of offsets) {
+        page.drawText(text, { x: x + dx, y: y + dy, size, font, color: rgb(1, 1, 1), rotate });
+    }
+    page.drawText(text, { x, y, size, font, color: rgb(1, 0, 0), rotate });
 }
 
 /**
@@ -413,10 +523,13 @@ type StampOptions = TabOptions & {
     allPages?: boolean;
     fontSize?: number;
     mints?: boolean;
+    /** 番号の左に小さい字で続けて刷る前置き（例: 「令和8年（行情）諮問第1373号に対する」）。空なら刷らない */
+    prefix?: string;
 };
 
 async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: StampOptions = {}) {
     const { allPages = false, fontSize = DEFAULT_FONT_SIZE, mints = false, tab = false, tabIndex = 0, tabSteps = DEFAULT_TAB_STEPS } = options;
+    const prefixText = String(options.prefix ?? '').trim();
     const stampText = buildStampText(evidenceNumber, mints);
 
     const rawPdfBytes = fs.readFileSync(inputPath);
@@ -444,8 +557,9 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
         const { width, height } = getDisplaySize(page);
         const stampMetrics = getStampMetricsForA4Print(width, height, fontSize);
         const textWidth = embeddedFont.widthOfTextAtSize(stampText, stampMetrics.fontSize);
+        const prefixWidth = prefixText ? embeddedFont.widthOfTextAtSize(prefixText, stampMetrics.prefixFontSize) : 0;
 
-        const { textX, textY, tabRect } = getStampLayout(width, height, textWidth, stampMetrics, { tab: withTab, tabIndex, tabSteps });
+        const { textX, textY, tabRect, prefix } = getStampLayout(width, height, textWidth, stampMetrics, { tab: withTab, tabIndex, tabSteps, prefixWidth });
         if (tabRect) {
             // 帯の矩形で切り抜き、白で下塗りして（灰色のスキャンの上でも縞が見えるように）、斜めの黒い縞を塗る
             const a = toPageSpace(rotation, pageW, pageH, tabRect.x, tabRect.y);
@@ -471,30 +585,26 @@ async function stampPdf(inputPath, outputPath, evidenceNumber, font, options: St
         const { x, y } = toPageSpace(rotation, pageW, pageH, textX, textY);
         const rotate = degrees(rotation);
 
-        // 白縁取り（上下左右・斜めの8方向にオフセット描画）
-        const outline = stampMetrics.outline;
-        const offsets = [
-            [-outline, 0], [outline, 0], [0, -outline], [0, outline],
-            [-outline, -outline], [outline, -outline], [-outline, outline], [outline, outline],
-        ];
-        for (const [dx, dy] of offsets) {
-            page.drawText(stampText, {
-                x: x + dx,
-                y: y + dy,
-                size: stampMetrics.fontSize,
+        if (prefix) {
+            // 前置きは番号の左に、字の大きさに比例した細い縁取りで刷る
+            const at = toPageSpace(rotation, pageW, pageH, prefix.x, prefix.y);
+            drawOutlinedText(page, prefixText, {
+                x: at.x,
+                y: at.y,
+                size: prefix.fontSize,
+                outline: stampMetrics.outline * prefix.fontSize / stampMetrics.fontSize,
                 font: embeddedFont,
-                color: rgb(1, 1, 1),
                 rotate,
             });
         }
 
-        // 赤文字本体
-        page.drawText(stampText, {
+        // 白縁取りの赤文字
+        drawOutlinedText(page, stampText, {
             x,
             y,
             size: stampMetrics.fontSize,
+            outline: stampMetrics.outline,
             font: embeddedFont,
-            color: rgb(1, 0, 0),
             rotate,
         });
     }
@@ -560,14 +670,38 @@ async function main() {
     if (tabStepsIdx !== -1 && args[tabStepsIdx + 1]) {
         tabSteps = Math.max(1, parseInt(args[tabStepsIdx + 1], 10) || DEFAULT_TAB_STEPS);
     }
+    const optionValue = (name) => {
+        const idx = args.indexOf(name);
+        return idx !== -1 ? (args[idx + 1] ?? '') : '';
+    };
+    const prefix = optionValue('--prefix').trim();
+    let combinedName = null;
+    try {
+        combinedName = normalizeCombinedName(optionValue('--combined-name'));
+    } catch (err) {
+        console.error(`エラー: ${err.message}`);
+        process.exit(1);
+    }
 
     // ファイルパスのみ抽出（値を取るオプションの次の引数は除く）
-    const valueOptions = ['--font-size', '--tab-steps'];
+    const valueOptions = ['--font-size', '--tab-steps', '--prefix', '--combined-name'];
     const filePaths = args.filter((a, i) => !a.startsWith('--') && !valueOptions.includes(args[i - 1]));
 
     if (filePaths.length === 0) {
         console.error('使い方: node stamp_evidence_number.js <PDF/画像ファイル...>');
         process.exit(1);
+    }
+
+    // 結合PDFの名前が個別のPDFの名前と同じだと、個別のPDFを上書きしてしまう
+    if (combinedName && !mints) {
+        const clash = filePaths.find(filePath => {
+            const evidenceNum = extractEvidenceNumber(path.basename(filePath));
+            return evidenceNum && buildOutputFilename(path.basename(filePath), evidenceNum).toLowerCase() === combinedName.toLowerCase();
+        });
+        if (clash) {
+            console.error(`エラー: --combined-name の「${combinedName}」が、個別に出力するPDFの名前と同じです（${path.basename(clash)}）。`);
+            process.exit(1);
+        }
     }
 
     // フォント準備
@@ -603,6 +737,12 @@ async function main() {
     console.log(`対象: ${sortedPaths.length} ファイル`);
     console.log(`出力: ${outputDir}`);
     console.log(`モード: ${stampMode} / フォントサイズ: ${fontSize}pt / ${blankMode} / ${tabMode}`);
+    if (prefix) {
+        console.log(`前置き: 「${prefix}」（番号の左に小さい字で）`);
+    }
+    if (combinedName) {
+        console.log(mints ? '注意: --mints では結合PDFを作らないので、--combined-name は使いません。' : `結合PDFの名前: ${combinedName}`);
+    }
 
     // 黒帯の段は、番号のあるファイルの中での順番で決める（隣り合う号証は必ず別の段になる）
     const tabIndexOf = new Map<string, number>();
@@ -641,21 +781,17 @@ async function main() {
             }
         }
 
-        let outputFilename = path.basename(filename, path.extname(filename)) + '.pdf';
-        if (mints) {
-            // ファイル名の先頭の号証を mints 表記に置き換える（「甲01_…」「甲1_…」→「甲001_…」）
-            outputFilename = outputFilename.replace(/^[甲乙丙丁戊証疎][A-Za-zＡ-Ｚａ-ｚ]?[0-9０-９]+(?:[\-ー－の][0-9０-９]+)?/, toMintsNumber(evidenceNum));
-        }
+        const outputFilename = buildOutputFilename(filename, evidenceNum, mints);
         const outputPath = path.join(outputDir, outputFilename);
         try {
             const pdfBytes = await stampPdf(inputForStamp, outputPath, evidenceNum, fontBytes, {
-                allPages, fontSize, mints, tab, tabIndex: tabIndexOf.get(filePath) ?? 0, tabSteps,
+                allPages, fontSize, mints, tab, tabIndex: tabIndexOf.get(filePath) ?? 0, tabSteps, prefix,
             });
             // 画像→PDF変換の中間ファイルが出力先と異なる場合は削除
             if (tempPdfPath && tempPdfPath !== outputPath) {
                 try { fs.unlinkSync(tempPdfPath); } catch (_) {}
             }
-            console.log(`  完了  ${buildStampText(evidenceNum, mints)} ← ${filename}`);
+            console.log(`  完了  ${prefix}${buildStampText(evidenceNum, mints)} ← ${filename}`);
             return { success: true, bytes: pdfBytes, evidenceNum };
         } catch (err) {
             console.error(`  エラー ${filename}: ${err.message}`);
@@ -681,13 +817,15 @@ async function main() {
     console.log(`処理完了: ${okCount} 成功 / ${errCount} エラー`);
 
     // 結合PDF生成（2ファイル以上の場合）
+    if (!mints && combinedName && stampedList.length < 2) {
+        console.log(`注意: 結合PDFは2件以上のときだけ作るので、「${combinedName}」は作りませんでした。`);
+    }
     if (!mints && stampedList.length >= 2) {
         console.log('─'.repeat(50));
         const mergeMode = noBlankPages ? '結合PDF作成中（空白ページなし）...' : '結合PDF作成中（両面印刷対応）...';
         console.log(mergeMode);
         try {
-            const kinds = new Set(stampedList.map(item => isShiryo(item.evidenceNum) ? '資料' : '号証'));
-            const mergedName = kinds.size === 1 ? `_結合_${[...kinds][0]}一式.pdf` : '_結合_一式.pdf';
+            const mergedName = buildCombinedName(stampedList.map(item => item.evidenceNum), combinedName);
             const mergedPath = path.join(outputDir, mergedName);
             const { totalPages, blankPages } = await mergeStampedPdfs(stampedList, mergedPath, { insertBlankPages: !noBlankPages });
             console.log(`  完了  ${stampedList.length} 文書 → ${totalPages} ページ（空白ページ: ${blankPages}）`);
@@ -711,9 +849,13 @@ if (require.main === module) {
 
 module.exports = {
     extractEvidenceNumber,
+    getMaterialKind,
     isShiryo,
     buildStampText,
     naturalSortKey,
+    buildOutputFilename,
+    normalizeCombinedName,
+    buildCombinedName,
     isImageFile,
     findJapaneseFont,
     getA4PrintScaleForPage,

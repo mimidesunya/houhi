@@ -7,8 +7,12 @@ const { PDFDocument, degrees } = require('pdf-lib');
 
 const {
     extractEvidenceNumber,
+    getMaterialKind,
     buildStampText,
     naturalSortKey,
+    buildOutputFilename,
+    normalizeCombinedName,
+    buildCombinedName,
     isImageFile,
     findJapaneseFont,
     getA4PrintScaleForPage,
@@ -164,6 +168,100 @@ test('naturalSortKey: sorts 資料 numerically including branches', () => {
         return ak - bk || al - bl || am - bm || ab - bb;
     });
     assert.deepEqual(sorted, ['資料1.pdf', '資料2.pdf', '資料2-1.pdf', '資料10.pdf']);
+});
+
+// ─── 参考資料（審査会へ意見書と出す参考資料） ──────────────
+
+const sortByKey = (files) => files.sort((a, b) => {
+    const [ak, al, am, ab] = naturalSortKey(a);
+    const [bk, bl, bm, bb] = naturalSortKey(b);
+    return ak - bk || al - bl || am - bm || ab - bb;
+});
+
+test('extractEvidenceNumber: extracts 参考資料1', () => {
+    assert.equal(extractEvidenceNumber('参考資料1_通知書.pdf'), '参考資料1');
+});
+
+test('extractEvidenceNumber: extracts 参考資料2-1 and 参考資料3の2 (branch numbers)', () => {
+    assert.equal(extractEvidenceNumber('参考資料2-1_決定書.pdf'), '参考資料2-1');
+    assert.equal(extractEvidenceNumber('参考資料2ー1_決定書.pdf'), '参考資料2-1');
+    assert.equal(extractEvidenceNumber('参考資料3の2_写し.pdf'), '参考資料3の2');
+});
+
+test('extractEvidenceNumber: normalizes full-width digits in 参考資料', () => {
+    assert.equal(extractEvidenceNumber('参考資料１２_答申.pdf'), '参考資料12');
+});
+
+test('extractEvidenceNumber: works with a full path to 参考資料', () => {
+    assert.equal(extractEvidenceNumber(path.join('C:', '審査請求', '参考資料1_通知書.pdf')), '参考資料1');
+});
+
+test('extractEvidenceNumber: does not take 参考資料 in the middle of a name', () => {
+    assert.equal(extractEvidenceNumber('意見書_参考資料1.pdf'), null);
+    assert.equal(extractEvidenceNumber('甲2_参考資料.pdf'), '甲2');
+});
+
+test('getMaterialKind: tells 号証, 資料 and 参考資料 apart', () => {
+    assert.equal(getMaterialKind('甲1'), '号証');
+    assert.equal(getMaterialKind('乙A1の2'), '号証');
+    assert.equal(getMaterialKind('資料1'), '資料');
+    assert.equal(getMaterialKind('参考資料2-1'), '参考資料');
+    assert.equal(getMaterialKind(null), '号証');
+});
+
+test('buildStampText: leaves 参考資料 numbers as they are (no 号証)', () => {
+    assert.equal(buildStampText('参考資料1'), '参考資料1');
+    assert.equal(buildStampText('参考資料2-1'), '参考資料2-1');
+    assert.equal(buildStampText('参考資料1', true), '参考資料1');
+});
+
+test('naturalSortKey: gives 参考資料 its own kind after 資料', () => {
+    assert.deepEqual(naturalSortKey('参考資料3_答申.pdf'), [2, 0, 3, 0]);
+    assert.deepEqual(naturalSortKey('参考資料2の1_写し.pdf'), [2, 0, 2, 1]);
+    assert.deepEqual(naturalSortKey('資料3_写し.pdf'), [1, 0, 3, 0]);
+});
+
+test('naturalSortKey: sorts 参考資料 numerically including branches', () => {
+    const files = ['参考資料10_c.pdf', '参考資料2-1_b.pdf', '参考資料1_a.pdf', '参考資料2_b.pdf', '参考資料3_d.pdf'];
+    assert.deepEqual(sortByKey(files), ['参考資料1_a.pdf', '参考資料2_b.pdf', '参考資料2-1_b.pdf', '参考資料3_d.pdf', '参考資料10_c.pdf']);
+});
+
+test('naturalSortKey: keeps 号証, 資料 and 参考資料 in separate runs', () => {
+    const files = ['参考資料1.pdf', '資料2.pdf', '甲1.pdf', '参考資料2.pdf', '資料1.pdf'];
+    assert.deepEqual(sortByKey(files), ['甲1.pdf', '資料1.pdf', '資料2.pdf', '参考資料1.pdf', '参考資料2.pdf']);
+});
+
+// ─── 個別PDFと結合PDFの名前 ─────────────────────────────────
+
+test('buildOutputFilename: keeps the name and makes it .pdf', () => {
+    assert.equal(buildOutputFilename('参考資料1_通知書.pdf', '参考資料1'), '参考資料1_通知書.pdf');
+    assert.equal(buildOutputFilename('資料2_写真.jpg', '資料2'), '資料2_写真.pdf');
+    assert.equal(buildOutputFilename('甲1_契約書.pdf', '甲1', true), '甲001_契約書.pdf');
+});
+
+test('buildCombinedName: names the merged PDF after the kind by default', () => {
+    assert.equal(buildCombinedName(['甲1', '甲2']), '_結合_号証一式.pdf');
+    assert.equal(buildCombinedName(['資料1', '資料2-1']), '_結合_資料一式.pdf');
+    assert.equal(buildCombinedName(['参考資料1', '参考資料2']), '_結合_参考資料一式.pdf');
+    assert.equal(buildCombinedName(['資料1', '参考資料1']), '_結合_一式.pdf');
+    assert.equal(buildCombinedName(['甲1', '資料1']), '_結合_一式.pdf');
+});
+
+test('buildCombinedName: uses --combined-name when given', () => {
+    const name = '令和8年（行情）諮問第1373号に対する参考資料.pdf';
+    assert.equal(buildCombinedName(['参考資料1', '参考資料2'], name), name);
+    assert.equal(buildCombinedName(['甲1', '甲2'], '  甲号証一式  '), '甲号証一式.pdf');
+    assert.equal(buildCombinedName(['甲1', '甲2'], ''), '_結合_号証一式.pdf');
+});
+
+test('normalizeCombinedName: adds .pdf, keeps .PDF and rejects folders or bad characters', () => {
+    assert.equal(normalizeCombinedName('参考資料一式'), '参考資料一式.pdf');
+    assert.equal(normalizeCombinedName('参考資料一式.PDF'), '参考資料一式.PDF');
+    assert.equal(normalizeCombinedName(''), null);
+    assert.equal(normalizeCombinedName(undefined), null);
+    assert.throws(() => normalizeCombinedName('sub/一式.pdf'), /フォルダ/);
+    assert.throws(() => normalizeCombinedName('..\\一式.pdf'), /フォルダ/);
+    assert.throws(() => normalizeCombinedName('一式:2.pdf'), /使えない文字/);
 });
 
 // ─── isImageFile ────────────────────────────────────────────
@@ -398,4 +496,144 @@ test('stampPdf: keeps /Rotate when a non-A4 page is placed on A4', async (t) => 
 
     const stamped = await PDFDocument.load(await stampPdf(inputPath, path.join(tempDir, 'out.pdf'), '乙1', fs.readFileSync(fontPath), {}));
     assert.equal(getPageRotation(stamped.getPage(0)), 90);
+});
+
+// ─── 前置き（--prefix） ─────────────────────────────────────
+
+test('getStampLayout: puts the prefix right before the number on the same baseline', () => {
+    const metrics = getStampMetricsForA4Print(595.28, 841.89, 20);
+    const plain = getStampLayout(595.28, 841.89, 90, metrics);
+    const layout = getStampLayout(595.28, 841.89, 90, metrics, { prefixWidth: 190 });
+
+    assert.equal(plain.prefix, null);
+    assert.equal(metrics.prefixFontSize, 10);
+    assert.equal(layout.prefix.fontSize, 10);
+    // 番号の位置は前置きがあっても変わらない
+    assert.equal(layout.textX, plain.textX);
+    assert.equal(layout.textY, plain.textY);
+    // 前置きは番号のすぐ左で、下端（ベースライン）をそろえる
+    assert.ok(Math.abs(layout.prefix.x + layout.prefix.width - layout.textX) < 0.001);
+    assert.equal(layout.prefix.y, layout.textY);
+    // 右上に収まる: 頁の右半分、上から 12pt + 20pt の帯（番号と同じ高さ）の中
+    assert.ok(layout.prefix.x > 595.28 / 2);
+    assert.ok(layout.prefix.y + 10 < 841.89 - 12);
+});
+
+test('getStampLayout: shrinks a long prefix so that the line fits 60% of the page width', () => {
+    const metrics = getStampMetricsForA4Print(595.28, 841.89, 20);
+    const layout = getStampLayout(595.28, 841.89, 90, metrics, { prefixWidth: 500 });
+
+    assert.ok(layout.prefix.width + 90 <= 595.28 * 0.6 + 0.001);
+    assert.ok(layout.prefix.fontSize < 10);
+    assert.ok(Math.abs(layout.prefix.x + layout.prefix.width - layout.textX) < 0.001);
+    assert.ok(layout.prefix.x > 0);
+});
+
+test('getStampLayout: with the tab the prefix follows the number down and stays left of the band', () => {
+    const metrics = getStampMetricsForA4Print(595.28, 841.89, 20);
+    const plain = getStampLayout(595.28, 841.89, 90, metrics, { tab: true, tabIndex: 2 });
+    const layout = getStampLayout(595.28, 841.89, 90, metrics, { tab: true, tabIndex: 2, prefixWidth: 190 });
+
+    assert.deepEqual(layout.tabRect, plain.tabRect);
+    assert.equal(layout.textY, plain.textY);
+    assert.equal(layout.prefix.y, layout.textY);
+    assert.ok(layout.prefix.x + layout.prefix.width < layout.tabRect.x);
+});
+
+test('getStampMetricsForA4Print: scales the prefix size like the number on an A3 page', () => {
+    const metrics = getStampMetricsForA4Print(841.89, 1190.55, 20);
+    assert.ok(Math.abs(metrics.prefixFontSize * metrics.printScale - 10) < 0.001);
+});
+
+/** 頁の内容ストリームを展開した文字列 */
+async function pageContentText(bytes, pageIndex = 0) {
+    const zlib = require('node:zlib');
+    const doc = await PDFDocument.load(bytes);
+    const contents = doc.getPage(pageIndex).node.Contents();
+    if (!contents) return '';
+    const streams = contents.asArray ? contents.asArray().map(ref => doc.context.lookup(ref)) : [contents];
+    return streams.map(stream => {
+        const raw = Buffer.from(stream.getContents());
+        try { return zlib.inflateSync(raw).toString('latin1'); } catch (_) { return raw.toString('latin1'); }
+    }).join('\n');
+}
+
+test('stampPdf: draws the prefix in half-size text before the number, and nothing more without it', async (t) => {
+    const fontPath = findJapaneseFont();
+    if (!fontPath) {
+        t.skip('Japanese font is not available');
+        return;
+    }
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-stamp-prefix-'));
+    const inputPath = path.join(tempDir, '参考資料1_test.pdf');
+    const sourceDoc = await PDFDocument.create();
+    sourceDoc.addPage([595.28, 841.89]);
+    sourceDoc.addPage([595.28, 841.89]);
+    fs.writeFileSync(inputPath, await sourceDoc.save());
+
+    const font = fs.readFileSync(fontPath);
+    const prefix = '令和8年（行情）諮問第1373号に対する';
+    const plain = await stampPdf(inputPath, path.join(tempDir, 'plain.pdf'), '参考資料1', font, {});
+    const empty = await stampPdf(inputPath, path.join(tempDir, 'empty.pdf'), '参考資料1', font, { prefix: '' });
+    const withPrefix = await stampPdf(inputPath, path.join(tempDir, 'prefix.pdf'), '参考資料1', font, { prefix });
+    const allPages = await stampPdf(inputPath, path.join(tempDir, 'all.pdf'), '参考資料1', font, { prefix, allPages: true });
+
+    const sizes = (text) => [...text.matchAll(/ ([\d.]+) Tf/g)].map(m => Number(m[1]));
+    const plainText = await pageContentText(plain);
+    // 前置きを付けなければ、内容は付けないときと同じ（白の縁取り8回と赤1回）
+    assert.equal(await pageContentText(empty), plainText);
+    assert.deepEqual(sizes(plainText), Array(9).fill(20));
+    // 前置きを付けると、10pt の前置き（縁取り8回と赤1回）が番号の前に足される
+    assert.deepEqual(sizes(await pageContentText(withPrefix)), [...Array(9).fill(10), ...Array(9).fill(20)]);
+    assert.deepEqual(sizes(await pageContentText(withPrefix, 1)), []);
+    assert.deepEqual(sizes(await pageContentText(allPages, 1)), [...Array(9).fill(10), ...Array(9).fill(20)]);
+});
+
+// ─── コマンドとしての実行 ───────────────────────────────────
+
+test('CLI: stamps 参考資料 in number order with a prefix and the given merged name', async (t) => {
+    const fontPath = findJapaneseFont();
+    if (!fontPath) {
+        t.skip('Japanese font is not available');
+        return;
+    }
+
+    const { execFileSync } = require('node:child_process');
+    const script = path.join(__dirname, '..', 'dist', 'src', 'stamp_evidence_number.js');
+    // 文書ごとに頁数と /Rotate を変え、結合PDFの頁の並びで順番を確かめる
+    const makeInputs = async (dir) => {
+        const specs = [['参考資料10_c.pdf', 3, 180], ['参考資料2_b.pdf', 2, 90], ['参考資料1_a.pdf', 1, 0]];
+        for (const [name, count, rotation] of specs) {
+            const doc = await PDFDocument.create();
+            for (let i = 0; i < count; i++) doc.addPage([595.28, 841.89]).setRotation(degrees(rotation));
+            fs.writeFileSync(path.join(dir, name), await doc.save());
+        }
+        return specs.map(([name]) => path.join(dir, name));
+    };
+
+    const named = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-stamp-cli-'));
+    const combined = '令和8年（行情）諮問第1373号に対する参考資料.pdf';
+    execFileSync(process.execPath, [
+        script, '--no-tab', '--no-blank-pages',
+        '--prefix', '令和8年（行情）諮問第1373号に対する',
+        '--combined-name', combined,
+        ...await makeInputs(named),
+    ], { encoding: 'utf8' });
+    const namedOut = path.join(named, 'stamped');
+    assert.deepEqual(fs.readdirSync(namedOut).sort(), [combined, '参考資料10_c.pdf', '参考資料1_a.pdf', '参考資料2_b.pdf'].sort());
+    const merged = await PDFDocument.load(fs.readFileSync(path.join(namedOut, combined)));
+    assert.deepEqual(merged.getPages().map(getPageRotation), [0, 90, 90, 180, 180, 180]);
+
+    // 名前を指定しなければ `_結合_参考資料一式.pdf`。空白頁も今までどおり補う
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-stamp-cli-'));
+    execFileSync(process.execPath, [script, '--no-tab', ...await makeInputs(plain)], { encoding: 'utf8' });
+    const plainMerged = await PDFDocument.load(fs.readFileSync(path.join(plain, 'stamped', '_結合_参考資料一式.pdf')));
+    assert.equal(plainMerged.getPageCount(), 7);
+
+    // 結合PDFの名前が個別のPDFと同じなら、何も作らずに止める
+    const clash = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-stamp-cli-'));
+    const clashInputs = await makeInputs(clash);
+    assert.throws(() => execFileSync(process.execPath, [script, '--combined-name', '参考資料1_a', ...clashInputs], { stdio: 'pipe' }));
+    assert.equal(fs.existsSync(path.join(clash, 'stamped')), false);
 });
