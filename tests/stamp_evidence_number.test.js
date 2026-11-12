@@ -248,7 +248,7 @@ test('buildCombinedName: names the merged PDF after the kind by default', () => 
 });
 
 test('buildCombinedName: uses --combined-name when given', () => {
-    const name = '令和8年（行情）諮問第1373号に対する参考資料.pdf';
+    const name = '令和○年（行情）諮問第○号_参考資料.pdf';
     assert.equal(buildCombinedName(['参考資料1', '参考資料2'], name), name);
     assert.equal(buildCombinedName(['甲1', '甲2'], '  甲号証一式  '), '甲号証一式.pdf');
     assert.equal(buildCombinedName(['甲1', '甲2'], ''), '_結合_号証一式.pdf');
@@ -498,52 +498,7 @@ test('stampPdf: keeps /Rotate when a non-A4 page is placed on A4', async (t) => 
     assert.equal(getPageRotation(stamped.getPage(0)), 90);
 });
 
-// ─── 前置き（--prefix） ─────────────────────────────────────
-
-test('getStampLayout: puts the prefix right before the number on the same baseline', () => {
-    const metrics = getStampMetricsForA4Print(595.28, 841.89, 20);
-    const plain = getStampLayout(595.28, 841.89, 90, metrics);
-    const layout = getStampLayout(595.28, 841.89, 90, metrics, { prefixWidth: 190 });
-
-    assert.equal(plain.prefix, null);
-    assert.equal(metrics.prefixFontSize, 10);
-    assert.equal(layout.prefix.fontSize, 10);
-    // 番号の位置は前置きがあっても変わらない
-    assert.equal(layout.textX, plain.textX);
-    assert.equal(layout.textY, plain.textY);
-    // 前置きは番号のすぐ左で、下端（ベースライン）をそろえる
-    assert.ok(Math.abs(layout.prefix.x + layout.prefix.width - layout.textX) < 0.001);
-    assert.equal(layout.prefix.y, layout.textY);
-    // 右上に収まる: 頁の右半分、上から 12pt + 20pt の帯（番号と同じ高さ）の中
-    assert.ok(layout.prefix.x > 595.28 / 2);
-    assert.ok(layout.prefix.y + 10 < 841.89 - 12);
-});
-
-test('getStampLayout: shrinks a long prefix so that the line fits 60% of the page width', () => {
-    const metrics = getStampMetricsForA4Print(595.28, 841.89, 20);
-    const layout = getStampLayout(595.28, 841.89, 90, metrics, { prefixWidth: 500 });
-
-    assert.ok(layout.prefix.width + 90 <= 595.28 * 0.6 + 0.001);
-    assert.ok(layout.prefix.fontSize < 10);
-    assert.ok(Math.abs(layout.prefix.x + layout.prefix.width - layout.textX) < 0.001);
-    assert.ok(layout.prefix.x > 0);
-});
-
-test('getStampLayout: with the tab the prefix follows the number down and stays left of the band', () => {
-    const metrics = getStampMetricsForA4Print(595.28, 841.89, 20);
-    const plain = getStampLayout(595.28, 841.89, 90, metrics, { tab: true, tabIndex: 2 });
-    const layout = getStampLayout(595.28, 841.89, 90, metrics, { tab: true, tabIndex: 2, prefixWidth: 190 });
-
-    assert.deepEqual(layout.tabRect, plain.tabRect);
-    assert.equal(layout.textY, plain.textY);
-    assert.equal(layout.prefix.y, layout.textY);
-    assert.ok(layout.prefix.x + layout.prefix.width < layout.tabRect.x);
-});
-
-test('getStampMetricsForA4Print: scales the prefix size like the number on an A3 page', () => {
-    const metrics = getStampMetricsForA4Print(841.89, 1190.55, 20);
-    assert.ok(Math.abs(metrics.prefixFontSize * metrics.printScale - 10) < 0.001);
-});
+// ─── 参考資料の刷り ─────────────────────────────────────────
 
 /** 頁の内容ストリームを展開した文字列 */
 async function pageContentText(bytes, pageIndex = 0) {
@@ -558,41 +513,36 @@ async function pageContentText(bytes, pageIndex = 0) {
     }).join('\n');
 }
 
-test('stampPdf: draws the prefix in half-size text before the number, and nothing more without it', async (t) => {
+/** 黒の塗り（0 0 0 rg）で閉じた経路を塗る（h f）ものを、境目の黒帯とみなす */
+const hasBand = (contentText) => /0 0 0 rg[\s\S]*?\nh\nf\n/.test(contentText);
+
+test('stampPdf: stamps 参考資料1 on the first page with the band', async (t) => {
     const fontPath = findJapaneseFont();
     if (!fontPath) {
         t.skip('Japanese font is not available');
         return;
     }
 
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-stamp-prefix-'));
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-stamp-sanko-'));
     const inputPath = path.join(tempDir, '参考資料1_test.pdf');
     const sourceDoc = await PDFDocument.create();
     sourceDoc.addPage([595.28, 841.89]);
     sourceDoc.addPage([595.28, 841.89]);
     fs.writeFileSync(inputPath, await sourceDoc.save());
 
-    const font = fs.readFileSync(fontPath);
-    const prefix = '令和8年（行情）諮問第1373号に対する';
-    const plain = await stampPdf(inputPath, path.join(tempDir, 'plain.pdf'), '参考資料1', font, {});
-    const empty = await stampPdf(inputPath, path.join(tempDir, 'empty.pdf'), '参考資料1', font, { prefix: '' });
-    const withPrefix = await stampPdf(inputPath, path.join(tempDir, 'prefix.pdf'), '参考資料1', font, { prefix });
-    const allPages = await stampPdf(inputPath, path.join(tempDir, 'all.pdf'), '参考資料1', font, { prefix, allPages: true });
-
+    const stamped = await stampPdf(inputPath, path.join(tempDir, 'out.pdf'), '参考資料1', fs.readFileSync(fontPath), { tab: true });
     const sizes = (text) => [...text.matchAll(/ ([\d.]+) Tf/g)].map(m => Number(m[1]));
-    const plainText = await pageContentText(plain);
-    // 前置きを付けなければ、内容は付けないときと同じ（白の縁取り8回と赤1回）
-    assert.equal(await pageContentText(empty), plainText);
-    assert.deepEqual(sizes(plainText), Array(9).fill(20));
-    // 前置きを付けると、10pt の前置き（縁取り8回と赤1回）が番号の前に足される
-    assert.deepEqual(sizes(await pageContentText(withPrefix)), [...Array(9).fill(10), ...Array(9).fill(20)]);
-    assert.deepEqual(sizes(await pageContentText(withPrefix, 1)), []);
-    assert.deepEqual(sizes(await pageContentText(allPages, 1)), [...Array(9).fill(10), ...Array(9).fill(20)]);
+    const first = await pageContentText(stamped, 0);
+
+    // 白の縁取り8回と赤1回の番号だけを 20pt で刷り、黒帯を付ける。2頁目には何も刷らない
+    assert.deepEqual(sizes(first), Array(9).fill(20));
+    assert.equal(hasBand(first), true);
+    assert.equal(await pageContentText(stamped, 1), '');
 });
 
 // ─── コマンドとしての実行 ───────────────────────────────────
 
-test('CLI: stamps 参考資料 in number order with a prefix and the given merged name', async (t) => {
+test('CLI: stamps 参考資料 in number order with the band and the given merged name', async (t) => {
     const fontPath = findJapaneseFont();
     if (!fontPath) {
         t.skip('Japanese font is not available');
@@ -601,9 +551,9 @@ test('CLI: stamps 参考資料 in number order with a prefix and the given merge
 
     const { execFileSync } = require('node:child_process');
     const script = path.join(__dirname, '..', 'dist', 'src', 'stamp_evidence_number.js');
-    // 文書ごとに頁数と /Rotate を変え、結合PDFの頁の並びで順番を確かめる
+    // 文書ごとに頁数と /Rotate（縦長のまま）を変え、結合PDFの頁の並びで順番を確かめる
     const makeInputs = async (dir) => {
-        const specs = [['参考資料10_c.pdf', 3, 180], ['参考資料2_b.pdf', 2, 90], ['参考資料1_a.pdf', 1, 0]];
+        const specs = [['参考資料10_c.pdf', 3, 0], ['参考資料2_b.pdf', 2, 180], ['参考資料1_a.pdf', 1, 0]];
         for (const [name, count, rotation] of specs) {
             const doc = await PDFDocument.create();
             for (let i = 0; i < count; i++) doc.addPage([595.28, 841.89]).setRotation(degrees(rotation));
@@ -613,17 +563,19 @@ test('CLI: stamps 参考資料 in number order with a prefix and the given merge
     };
 
     const named = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-stamp-cli-'));
-    const combined = '令和8年（行情）諮問第1373号に対する参考資料.pdf';
+    const combined = '令和○年（行情）諮問第○号_参考資料.pdf';
     execFileSync(process.execPath, [
-        script, '--no-tab', '--no-blank-pages',
-        '--prefix', '令和8年（行情）諮問第1373号に対する',
-        '--combined-name', combined,
-        ...await makeInputs(named),
+        script, '--no-blank-pages', '--combined-name', combined, ...await makeInputs(named),
     ], { encoding: 'utf8' });
     const namedOut = path.join(named, 'stamped');
     assert.deepEqual(fs.readdirSync(namedOut).sort(), [combined, '参考資料10_c.pdf', '参考資料1_a.pdf', '参考資料2_b.pdf'].sort());
-    const merged = await PDFDocument.load(fs.readFileSync(path.join(namedOut, combined)));
-    assert.deepEqual(merged.getPages().map(getPageRotation), [0, 90, 90, 180, 180, 180]);
+    const mergedBytes = fs.readFileSync(path.join(namedOut, combined));
+    const merged = await PDFDocument.load(mergedBytes);
+    assert.deepEqual(merged.getPages().map(getPageRotation), [0, 180, 180, 0, 0, 0]);
+    // 各文書の1頁目（結合PDFの1・2・4頁目）に黒帯が付く
+    for (const pageIndex of [0, 1, 3]) {
+        assert.equal(hasBand(await pageContentText(mergedBytes, pageIndex)), true);
+    }
 
     // 名前を指定しなければ `_結合_参考資料一式.pdf`。空白頁も今までどおり補う
     const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'houhi-stamp-cli-'));
