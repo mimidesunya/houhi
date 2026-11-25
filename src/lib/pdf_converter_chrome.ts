@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
 const { renderPreTags } = require('./markdown_renderer');
 const { getPagedTocBrowserScript } = require('./paged_toc');
+const { getPagedTablesBrowserScript } = require('./paged_tables');
 
 const A4_WIDTH_INCHES = 210 / 25.4;
 const A4_HEIGHT_INCHES = 297 / 25.4;
@@ -137,8 +138,10 @@ window.PagedConfig.auto = false;
             if (!window.PagedPolyfill || typeof window.PagedPolyfill.preview !== 'function') {
                 throw new Error('Paged.js polyfill was not loaded');
             }
+            registerPagedTableHandlers(window);
             await window.PagedPolyfill.preview();
             fillChromeTocPageNumbers();
+            showPagedOverflow(document);
             var pageNumberStyle = document.createElement('style');
             pageNumberStyle.setAttribute('data-houhi-pagedjs-page-numbers', 'manual');
             pageNumberStyle.textContent = 'html[data-houhi-pdf-engine="chrome"] body::before { content: none !important; display: none !important; } @page { size: A4; @bottom-center { content: none; } } .pagedjs_pages .pagedjs_margin-bottom .pagedjs_margin-bottom-center .pagedjs_margin-content::after { content: none !important; }';
@@ -159,6 +162,7 @@ window.PagedConfig.auto = false;
     }
 
     ${getPagedTocBrowserScript()}
+    ${getPagedTablesBrowserScript()}
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', runPaged, { once: true });
@@ -536,7 +540,14 @@ async function waitForDevToolsWebSocket(userDataDir, timeoutMs = 30000) {
 
     while (Date.now() - startedAt < timeoutMs) {
         if (fs.existsSync(activePortPath)) {
-            const [portLine, wsPathLine] = fs.readFileSync(activePortPath, 'utf-8').trim().split(/\r?\n/);
+            let text = '';
+            try {
+                text = fs.readFileSync(activePortPath, 'utf-8');
+            } catch (err) {
+                // Windows では Chrome が書いている最中のファイルを開くと EBUSY になる。待って読み直す
+                if (!err || !['EBUSY', 'EPERM', 'EACCES', 'ENOENT'].includes(err.code)) throw err;
+            }
+            const [portLine, wsPathLine] = text.trim().split(/\r?\n/);
             const port = Number(portLine);
             if (port && wsPathLine) {
                 return `ws://127.0.0.1:${port}${wsPathLine}`;

@@ -2,6 +2,7 @@ import { convertMarkdownToCourtHtml } from '../base/court_markdown';
 import { buildPdfDocumentTitle } from './document_title';
 import { normalizeEditableMarkdown } from './markdown_normalizer';
 import { applyManualPageNumbers, fillChromeTocPageNumbers, prepareChromeToc } from '../lib/paged_toc';
+import { registerPagedTableHandlers, showPagedOverflow } from '../lib/paged_tables';
 
 type DraftingTemplate = {
     id: string;
@@ -705,9 +706,11 @@ async function renderPreviewNow() {
         }
         await nextFrame(frameWindow);
         prepareChromeToc(frameDocument);
+        registerPagedTableHandlers(frameWindow);
         await (frameWindow as any).PagedPolyfill.preview();
         fillChromeTocPageNumbers(frameDocument);
         applyManualPageNumbers(frameDocument);
+        showPagedOverflow(frameDocument);
         updatePreviewSize(frameDocument);
         setStatus('プレビュー更新済み');
     } catch (err) {

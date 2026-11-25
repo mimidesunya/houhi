@@ -16,6 +16,7 @@ const virtualTeamArchiveSectionHeading = '## AIアーカイブで使う場合';
 const moduleFiles = {
   'src/base/court_markdown': path.join(projectRoot, 'src/base/court_markdown.ts'),
   'src/lib/paged_toc': path.join(projectRoot, 'src/lib/paged_toc.ts'),
+  'src/lib/paged_tables': path.join(projectRoot, 'src/lib/paged_tables.ts'),
   'src/lib/ai_archive/case_index_renderer': path.join(projectRoot, 'src/lib/ai_archive/case_index_renderer.ts'),
   'src/lib/ai_archive/constants': path.join(projectRoot, 'src/lib/ai_archive/constants.ts'),
   'src/lib/ai_archive/inference': path.join(projectRoot, 'src/lib/ai_archive/inference.ts'),
@@ -350,6 +351,7 @@ function readArchiveData() {
 fs.writeFileSync(path.join(webDir, 'app.js'), buildBundle(pdfEntryId, {
   'src/base/court_markdown': moduleFiles['src/base/court_markdown'],
   'src/lib/paged_toc': moduleFiles['src/lib/paged_toc'],
+  'src/lib/paged_tables': moduleFiles['src/lib/paged_tables'],
   'src/web/document_title': moduleFiles['src/web/document_title'],
   'src/web/markdown_normalizer': moduleFiles['src/web/markdown_normalizer'],
   [pdfEntryId]: moduleFiles[pdfEntryId]
