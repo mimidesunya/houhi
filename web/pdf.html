@@ -93,6 +93,14 @@
             <button id="printButton" type="button" class="print-button">印刷 / PDF保存</button>
           </div>
         </div>
+        <section id="courtCheckPanel" class="court-check" aria-label="提出前チェック">
+          <div class="court-check-head">
+            <h3>提出前チェック</h3>
+            <span id="courtCheckSummary" class="status" aria-live="polite">未確認</span>
+          </div>
+          <p class="court-check-note">【要確認】と〇〇の残り、証拠説明書の作成年月日の西暦、号証番号の飛びと重複、当事者欄と差出人欄の名前の食い違いを見ます。項目を押すと、入力欄のその行へ移ります。</p>
+          <ul id="courtCheckList" class="court-check-list"></ul>
+        </section>
         <div id="previewSurface" class="preview-surface">
           <div id="previewViewport" class="preview-viewport">
             <iframe id="previewFrame" title="裁判文書プレビュー"></iframe>

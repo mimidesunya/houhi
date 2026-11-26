@@ -1,4 +1,7 @@
 import { convertMarkdownToCourtHtml } from '../base/court_markdown';
+import { checkCourtMarkdown, formatCourtCheckIssue, getCourtCheckLabel } from '../base/court_check';
+import type { CourtCheckIssue } from '../base/court_check';
+import { appendTemplateOptions } from '../lib/template_catalog';
 import { buildPdfDocumentTitle } from './document_title';
 import { normalizeEditableMarkdown } from './markdown_normalizer';
 import { applyManualPageNumbers, fillChromeTocPageNumbers, prepareChromeToc } from '../lib/paged_toc';
@@ -61,8 +64,18 @@ const imageFolderButton = document.getElementById('imageFolderButton') as HTMLBu
 const imageFileInput = document.getElementById('imageFileInput') as HTMLInputElement;
 const imageDirectoryInput = document.getElementById('imageDirectoryInput') as HTMLInputElement;
 const imageAssetList = document.getElementById('imageAssetList') as HTMLElement;
+const courtCheckSummary = document.getElementById('courtCheckSummary') as HTMLElement | null;
+const courtCheckList = document.getElementById('courtCheckList') as HTMLElement | null;
 
 let renderSeq = 0;
+let courtCheckTimer = 0;
+let courtCheckIssues: CourtCheckIssue[] = [];
+
+// プレビューと印刷の字形を Windows・Mac で同じにするため、Noto Serif JP を Web フォントで読み込む。
+// 読み込めないとき（オフラインなど）は、端末の明朝体で組む
+const PREVIEW_FONT_FAMILY = '"Noto Serif JP", "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif';
+const PREVIEW_FONT_STYLESHEET = 'https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&display=block';
+const PREVIEW_FONT_TIMEOUT_MS = 15000;
 
 type LocalInputFile = {
     file: File;
@@ -462,14 +475,17 @@ function buildPreviewDocument(markdown: string) {
   <meta charset="utf-8">
   <title>${documentTitle}</title>
   <base href="${baseHref}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="${PREVIEW_FONT_STYLESHEET}">
   <link rel="stylesheet" href="court.css">
   <style>
     html, body { background: #fff; }
     body { padding: 0; }
     body, body * {
-      font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
+      font-family: ${PREVIEW_FONT_FAMILY};
     }
-    .content-container { background: #fff; font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif; }
+    .content-container { background: #fff; font-family: ${PREVIEW_FONT_FAMILY}; }
     @page { size: A4; }
     @media screen {
       html, body { overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; }
@@ -530,6 +546,7 @@ function buildPlainHtmlDocument(markdown: string) {
   <meta charset="utf-8">
   <base href="${baseHref}">
   <title>法匪 HTML表示</title>
+  <link rel="stylesheet" href="${PREVIEW_FONT_STYLESHEET}">
   <link rel="stylesheet" href="court.css">
   <style>
     html {
@@ -544,7 +561,7 @@ function buildPlainHtmlDocument(markdown: string) {
       content: none;
     }
     body, body * {
-      font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
+      font-family: ${PREVIEW_FONT_FAMILY};
     }
     @page { size: A4; }
     .content-container {
@@ -554,7 +571,7 @@ function buildPlainHtmlDocument(markdown: string) {
       margin: 0 auto;
       padding: 42px 54px 84px;
       background: #fff;
-      font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
+      font-family: ${PREVIEW_FONT_FAMILY};
     }
     .break {
       margin: 2.2em 0;
@@ -604,6 +621,40 @@ function waitForPaged(frameWindow: Window) {
         };
         check();
     });
+}
+
+/**
+ * 組む前に、本文に使う字の Noto Serif JP（標準・太字）を読み込む。Google Fonts は字の範囲ごとにファイルが分かれ、
+ * 使う字が画面に出たときに読み込むので、paged.js が頁を割る前に読み込んでおかないと、割った後で字幅が変わる。
+ * 読み込めたかどうかを html の data-houhi-web-font に書く（試験と、印刷前の確認に使う）。
+ */
+async function loadPreviewFonts(frameDocument: Document) {
+    const fonts = (frameDocument as any).fonts;
+    const root = frameDocument.documentElement;
+    if (!fonts || typeof fonts.load !== 'function') {
+        root.setAttribute('data-houhi-web-font', 'unsupported');
+        return false;
+    }
+
+    const text = `${frameDocument.body?.textContent || ''}- 0123456789`;
+    const chars = Array.from(new Set(Array.from(text.replace(/\s+/g, '')))).join('');
+    const timeout = new Promise<'timeout'>(resolve => (frameDocument.defaultView || window).setTimeout(() => resolve('timeout'), PREVIEW_FONT_TIMEOUT_MS));
+    try {
+        await Promise.race([
+            Promise.all([
+                fonts.load('400 16px "Noto Serif JP"', chars),
+                fonts.load('700 16px "Noto Serif JP"', chars),
+            ]),
+            timeout,
+        ]);
+        await Promise.race([fonts.ready, timeout]);
+    } catch (err) {
+        console.warn('Noto Serif JP を読み込めませんでした。', err);
+    }
+
+    const loaded = Array.from(fonts as Iterable<any>).some(face => /Noto Serif JP/.test(face.family) && face.status === 'loaded');
+    root.setAttribute('data-houhi-web-font', loaded ? 'loaded' : 'fallback');
+    return loaded;
 }
 
 function nextFrame(frameWindow: Window) {
@@ -681,6 +732,7 @@ function updatePreviewSize(frameDocument: Document) {
 async function renderPreviewNow() {
     const seq = ++renderSeq;
     normalizeEditorMarkdownForRender();
+    runCourtCheck();
     const markdown = editor.value.trim() ? editor.value : DEFAULT_MARKDOWN;
     setStatus('組版中...');
     renderButton.disabled = true;
@@ -701,6 +753,8 @@ async function renderPreviewNow() {
     try {
         await waitForPaged(frameWindow);
         await waitForImages(frameDocument);
+        const webFontLoaded = await loadPreviewFonts(frameDocument);
+        if (seq !== renderSeq) return;
         if (frameDocument.fonts && frameDocument.fonts.ready) {
             await frameDocument.fonts.ready;
         }
@@ -712,7 +766,7 @@ async function renderPreviewNow() {
         applyManualPageNumbers(frameDocument);
         showPagedOverflow(frameDocument);
         updatePreviewSize(frameDocument);
-        setStatus('プレビュー更新済み');
+        setStatus(webFontLoaded ? 'プレビュー更新済み' : 'プレビュー更新済み（Webフォントを読み込めず、端末の明朝体で組みました）');
     } catch (err) {
         console.error(err);
         setStatus(err instanceof Error ? err.message : 'プレビュー作成中にエラーが発生しました。');
@@ -723,6 +777,64 @@ async function renderPreviewNow() {
 
 function markPreviewDirty() {
     setStatus('未更新');
+    scheduleCourtCheck();
+}
+
+/**
+ * 入力欄の行へ移る（提出前チェックの項目を押したとき）
+ */
+function selectEditorLine(lineNumber: number) {
+    const lines = editor.value.split('\n');
+    const index = Math.max(0, Math.min(lines.length, lineNumber) - 1);
+    const start = lines.slice(0, index).join('\n').length + (index > 0 ? 1 : 0);
+    const end = start + (lines[index] || '').length;
+    editor.focus();
+    editor.setSelectionRange(start, end);
+    const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 22;
+    editor.scrollTop = Math.max(0, index * lineHeight - editor.clientHeight / 3);
+}
+
+/**
+ * 提出前チェックを走らせ、結果を入力欄とプレビューの間の欄に出す
+ */
+function runCourtCheck() {
+    window.clearTimeout(courtCheckTimer);
+    courtCheckIssues = editor.value.trim() ? checkCourtMarkdown(editor.value) : [];
+    if (!courtCheckSummary || !courtCheckList) {
+        return courtCheckIssues;
+    }
+
+    courtCheckList.textContent = '';
+    courtCheckSummary.textContent = courtCheckIssues.length === 0
+        ? '見つかった問題はありません。'
+        : `${courtCheckIssues.length}件の確認事項があります。`;
+    courtCheckSummary.closest('.court-check')?.classList.toggle('has-issues', courtCheckIssues.length > 0);
+
+    for (const issue of courtCheckIssues) {
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'court-check-item';
+        if (issue.line) {
+            button.dataset.line = String(issue.line);
+        } else {
+            button.disabled = true;
+        }
+        const label = document.createElement('span');
+        label.className = 'court-check-label';
+        label.textContent = getCourtCheckLabel(issue.kind);
+        const message = document.createElement('span');
+        message.textContent = formatCourtCheckIssue(issue);
+        button.append(label, message);
+        item.appendChild(button);
+        courtCheckList.appendChild(item);
+    }
+    return courtCheckIssues;
+}
+
+function scheduleCourtCheck() {
+    window.clearTimeout(courtCheckTimer);
+    courtCheckTimer = window.setTimeout(runCourtCheck, 400);
 }
 
 function normalizeEditorMarkdownForRender() {
@@ -765,12 +877,7 @@ function setupTemplateLoader() {
         return;
     }
 
-    for (const template of templates) {
-        const option = document.createElement('option');
-        option.value = template.id;
-        option.textContent = template.name;
-        templateSelect.appendChild(option);
-    }
+    appendTemplateOptions(document, templateSelect, templates);
 
     templateLoader.hidden = false;
     templateSelect.addEventListener('change', () => {
@@ -953,9 +1060,35 @@ renderButton.addEventListener('click', renderPreviewNow);
 
 htmlPreviewButton.addEventListener('click', openPlainHtmlPreview);
 
+courtCheckList?.addEventListener('click', event => {
+    const button = (event.target as HTMLElement).closest('button[data-line]') as HTMLButtonElement | null;
+    if (button) {
+        selectEditorLine(Number(button.dataset.line));
+    }
+});
+
+/**
+ * 印刷の前に提出前チェックをもう一度走らせ、問題があれば印刷してよいかを聞く
+ */
+function confirmPrintAfterCheck() {
+    const issues = runCourtCheck();
+    if (issues.length === 0) {
+        return true;
+    }
+    const shown = issues.slice(0, 8).map(issue => `・${formatCourtCheckIssue(issue)}`);
+    if (issues.length > shown.length) {
+        shown.push(`ほか${issues.length - shown.length}件`);
+    }
+    return window.confirm(`提出前チェックで${issues.length}件の確認事項が見つかりました。\n\n${shown.join('\n')}\n\nこのまま印刷・PDF保存しますか。`);
+}
+
 printButton.addEventListener('click', () => {
     const frameWindow = previewFrame.contentWindow;
     if (!frameWindow) return;
+    if (!confirmPrintAfterCheck()) {
+        setStatus('印刷を取りやめました。提出前チェックの項目を確かめてください。');
+        return;
+    }
 
     const title = getCurrentPdfDocumentTitle();
     const oldTitle = document.title;

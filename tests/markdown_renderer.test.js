@@ -133,10 +133,17 @@ test('src/base/court_doc_rules.md: gives unambiguous heading instructions to AI'
 });
 
 test('AI start guides: do not invite drafting related documents by default', () => {
+    // START_HERE と規則の組み立ては src/lib/drafting_kit.ts に1つにまとめ、setup.ts と scripts/build_web.js はそれを使う
     const setupSource = fs.readFileSync(path.resolve('setup.ts'), 'utf-8');
     const webBuildSource = fs.readFileSync(path.resolve('scripts/build_web.js'), 'utf-8');
+    assert.match(setupSource, /buildStartHere\(.*'zip'\)/);
+    assert.match(setupSource, /buildRuleInstructionFiles/);
+    assert.match(webBuildSource, /buildStartHere\(.*'archive'\)/);
+    assert.match(webBuildSource, /buildRuleInstructionFiles/);
 
-    for (const source of [setupSource, webBuildSource]) {
+    const kitSource = fs.readFileSync(path.resolve('src/lib/drafting_kit.ts'), 'utf-8');
+    const catalogSource = fs.readFileSync(path.resolve('src/lib/template_catalog.ts'), 'utf-8');
+    for (const source of [kitSource + catalogSource]) {
         assert.match(source, /<success_criteria>/);
         assert.match(source, /<workflow>/);
         assert.match(source, /根拠資料/);
@@ -351,5 +358,5 @@ test('renderPreTags: warns when an evidence table has a Western-calendar date', 
     ].join('\n');
     const result = renderPreTags(`<pre>${md}</pre>`);
     assert.ok(result.includes('<table class="evidence">'), 'conversion continues');
-    assert.deepEqual(warnings, ['警告: 証拠説明書の作成年月日が西暦です（1: 2024年2月6日）。和暦で書いてください。']);
+    assert.deepEqual(warnings, ['警告: 3行目: 証拠説明書の作成年月日が西暦です（1: 2024年2月6日）。和暦で書いてください。']);
 });

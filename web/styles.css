@@ -189,6 +189,29 @@ h2 {
   max-width: 780px;
 }
 
+.home-lead {
+  max-width: 820px;
+}
+
+.home-lead p {
+  margin-bottom: 12px;
+  font-size: 15px;
+  line-height: 1.9;
+}
+
+.home-lead a {
+  border-bottom: 1px solid currentColor;
+}
+
+.home-lead a:hover {
+  color: var(--accent);
+}
+
+.home-lead .home-desktop {
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .usage-lead h2 {
   margin-bottom: 18px;
   font-size: 28px;
@@ -755,6 +778,136 @@ input[type="checkbox"] {
 .stamp-log {
   min-height: 420px;
   border-top: 1px solid var(--line);
+}
+
+.stamp-options input[type="text"],
+.stamp-options input[type="number"] {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  font: inherit;
+}
+
+.stamp-options input:disabled,
+.check-row input:disabled + span {
+  color: var(--muted);
+}
+
+.field-row {
+  display: grid;
+  gap: 6px;
+}
+
+.option-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.court-check {
+  padding: 12px 16px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfbfa;
+}
+
+.court-check.has-issues {
+  background: #fff8ec;
+}
+
+.court-check-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.court-check-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: normal;
+}
+
+.court-check.has-issues .court-check-head .status {
+  color: #8a4b00;
+}
+
+.court-check-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.court-check-list {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.court-check-list li + li {
+  margin-top: 4px;
+}
+
+.court-check-item {
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--paper);
+}
+
+.court-check-label {
+  color: #8a4b00;
+  white-space: nowrap;
+}
+
+.ai-kits {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.ai-kits h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: normal;
+}
+
+.ai-kits p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.ai-kits a.download-link {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+
+.ai-kits a.download-link:hover {
+  border-color: var(--ink);
+}
+
+.ai-kits a.text-link {
+  text-decoration: underline;
 }
 
 .progress-block {
