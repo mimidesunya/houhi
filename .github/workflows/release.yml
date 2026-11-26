@@ -39,6 +39,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Web 版の PDF 画面を Chromium と WebKit で組み比べる試験（tests/web_cross_browser.test.js）に使う
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
       - name: Test
         run: npm test
 

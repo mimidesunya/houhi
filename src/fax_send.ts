@@ -26,7 +26,8 @@
  *   node src/fax_send.js --provider=byosoku <...>  ← 設定によらず秒速FAXで送る
  *
  * 動作:
- *   1. 送付書.mdをPDF化（送付書がある場合）
+ *   1. 送付書.mdをPDF化（送付書がある場合）。設定の PDF エンジン（`pdf.engine`）で組むので、Copper PDF にしていて
+ *      接続先が既定の公開サーバー（ctip://cti.li/）なら、送付書の HTML をそのサーバーへ送る（ログにも出る）
  *   2. 送付書PDF + 添付PDF全件を結合（送付書がある場合）
  *   3. 送付書.mdからFAX番号を抽出 (FAX XXXXXXXXXX)、または手入力
  *   4. メール送信（本文空、PDFを添付）

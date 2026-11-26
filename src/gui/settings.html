@@ -114,6 +114,14 @@
             grid-column: 1 / -1;
         }
 
+        .note {
+            grid-column: 1 / -1;
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.78rem;
+            line-height: 1.7;
+        }
+
         label {
             display: block;
             color: var(--muted);
@@ -256,6 +264,7 @@
             <section>
                 <h2>Copper PDF</h2>
                 <div class="grid">
+                    <p class="note">サーバーURIが公開サーバー（ctip://cti.li/）のままだと、Copper PDF で組むときに書類の HTML がそのサーバーへ送られます。宛名ラベルの既定は Copper で、PDF作成でエンジンに Copper PDF を選んだとき、FAX送付書を作るときもそうです。書類を外へ出したくない場合は、PDF作成のエンジンを Chrome にしてください。</p>
                     <div class="field">
                         <label for="copperServerUri">サーバーURI</label>
                         <input id="copperServerUri" autocomplete="off">
@@ -420,6 +429,7 @@
                         <label for="transcriptionGeminiApiKey">Gemini APIキー</label>
                         <input id="transcriptionGeminiApiKey" type="password" autocomplete="off" placeholder="空欄なら GEMINI_API_KEY">
                     </div>
+                    <p class="note">Gemini API の無料枠では、送った音声や文が Google の製品の改善に使われ、人が読むこともあります。裁判の書類や当事者の録音を扱うときは、Google AI Studio で課金（Cloud Billing）を有効にしたプロジェクトのキーを使ってください。課金を有効にしたキーの入力は、製品の改善には使われません。</p>
                 </div>
             </section>
         </main>

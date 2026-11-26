@@ -22,6 +22,15 @@ ${htmlContent}
 </html>`;
 }
 
+const PUBLIC_SERVER_NOTICE = '注意: 書類の HTML を Copper PDF の公開サーバー（cti.li）へ送って PDF にします。書類を外へ出したくない場合は、PDFエンジンを Chrome にしてください（宛名ラベルは --pdf-engine=chrome）。';
+
+/**
+ * Copper PDF の公開サーバー（ctip://cti.li/）かどうか。手元や事務所のサーバーなら false。
+ */
+function isPublicCopperServer(serverUri) {
+    return /^ctips?:\/\/cti\.li(?::\d+)?(?:\/|$)/i.test(String(serverUri || '').trim());
+}
+
 function injectA4PageSize(htmlContent) {
     if (htmlContent.includes('data-houhi-a4-page-size')) {
         return htmlContent;
@@ -45,6 +54,10 @@ async function convertHtmlToPdfWithCopper(htmlPath, outputPath, resourceDir, def
     const password = copperConfig.password || 'kappa';
     const properties = copperConfig.properties || {};
 
+    if (isPublicCopperServer(serverUri)) {
+        // 公開サーバーは手元のパソコンの外にある。書類の中身が外へ出ることを毎回知らせる
+        console.log(PUBLIC_SERVER_NOTICE);
+    }
     console.log(`${serverUri} に接続中...`);
 
     const session = get_session(serverUri, {
@@ -181,5 +194,7 @@ async function convertHtmlToPdfWithCopper(htmlPath, outputPath, resourceDir, def
 
 module.exports = {
     convertHtmlToPdfWithCopper,
-    injectA4PageSize
+    injectA4PageSize,
+    isPublicCopperServer,
+    PUBLIC_SERVER_NOTICE
 };

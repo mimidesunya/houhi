@@ -71,7 +71,7 @@ function fillForm(config: ConfigMap) {
     const byosokuFax = asObject(config.byosokuFax);
     const transcription = asObject(config.transcription);
 
-    setValue('pdfEngine', pdf.engine || 'copper');
+    setValue('pdfEngine', pdf.engine || 'chrome');
     setValue('chromePath', pdf.chromePath);
 
     setValue('copperServerUri', copper.serverUri);
@@ -123,7 +123,7 @@ function buildConfigFromForm() {
     const byosokuFax = { ...asObject(config.byosokuFax) };
     const transcription = { ...asObject(config.transcription) };
 
-    pdf.engine = input('pdfEngine').value.trim() || 'copper';
+    pdf.engine = input('pdfEngine').value.trim() || 'chrome';
     pdf.chromePath = input('chromePath').value.trim();
 
     copper.serverUri = input('copperServerUri').value.trim();
