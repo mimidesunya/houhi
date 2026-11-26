@@ -57,3 +57,6 @@ docs/*民事保全・非訟マニュアル*
 # AIエージェント用ローカルガイド（git管理外）
 AGENTS.md
 CLAUDE.md
+
+# Web で配る AI 向けキット（scripts/build_ai_kits.js が作る）
+!web/downloads/*.zip

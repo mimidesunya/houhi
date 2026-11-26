@@ -1,81 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
-
-const draftingTemplateOrder = [
-    '訴訟.訴状.md',
-    '訴訟.答弁書.md',
-    '訴訟.準備書面.md',
-    '訴訟.証拠説明書.md',
-    '訴訟.送付書.md',
-    '訴訟.期日請書.md',
-    '訴訟.事務連絡.md',
-    '訴訟.上申書.md',
-    '訴訟.発信者情報開示請求訴状.md',
-    '訴訟.発信者情報開示命令異議の訴え訴状.md',
-    '訴訟.秘匿決定申立書.md',
-    '訴訟.秘匿事項届出書面.md',
-    '訴訟.移送申立書.md',
-    '訴訟.控訴状.md',
-    '訴訟.控訴理由書.md',
-    '訴訟.上告状兼上告受理申立書.md',
-    '訴訟.上告理由書.md',
-    '訴訟.上告受理申立て理由書.md',
-    '訴訟.忌避申立書.md',
-    '保全.投稿記事削除仮処分命令申立書.md',
-    '保全.発信者情報開示仮処分命令申立書.md',
-    '保全.発信者情報消去禁止仮処分命令申立書.md',
-    '保全.投稿記事削除及び発信者情報開示仮処分命令申立書.md',
-    '保全.送達延期上申書.md',
-    '非訟.発信者情報開示命令申立書兼提供命令申立書.md',
-    '非訟.発信者情報開示命令申立書兼消去禁止命令申立書.md',
-    '非訟.発信者情報開示命令申立事件併合上申書.md',
-    '非訟.発信者情報開示命令申立て取下書.md',
-    '反訳書.md',
-    '行政.住民監査請求書.md',
-    '行政.審査請求書.md',
-    '行政.反論書.md',
-    '行政.上申書.md',
-    '行政.開示請求.md',
-    '行政.個人情報開示請求の取下書.md',
-    '行政.司法行政文書開示苦情申出書.md',
-    '行政.保有個人情報開示苦情申出書.md',
-    '刑事.告訴状.md'
-];
-
-const draftingTemplateRank = new Map(draftingTemplateOrder.map((name, index) => [name, index]));
-
-function compareTemplateNames(a, b) {
-    const rankA = draftingTemplateRank.has(a) ? draftingTemplateRank.get(a) : Number.MAX_SAFE_INTEGER;
-    const rankB = draftingTemplateRank.has(b) ? draftingTemplateRank.get(b) : Number.MAX_SAFE_INTEGER;
-    if (rankA !== rankB) return rankA - rankB;
-    return a.localeCompare(b, 'ja');
-}
-
-function splitTemplateAiNotes(markdown) {
-    const notes = [];
-    const content = String(markdown || '').replace(/<!--([\s\S]*?)-->/g, (_match, note) => {
-        const cleaned = note
-            .split(/\r?\n/)
-            .map(line => line.trim())
-            .join('\n')
-            .trim();
-        if (cleaned) {
-            notes.push(cleaned);
-        }
-        return '';
-    }).replace(/\n{3,}/g, '\n\n').trim();
-
-    return {
-        content,
-        aiNotes: notes.join('\n\n').trim(),
-    };
-}
-
-function buildTemplateNotesSection(aiNotes) {
-    const notes = String(aiNotes || '').trim();
-    return notes ? `Template-specific AI notes:\n\n${notes}\n\n` : '';
-}
+const { buildRuleInstructionFiles, buildStartHere } = require('./src/lib/drafting_kit');
 
 /**
  * src/base/court_doc_rules.md の中の空の Markdown ブロックに
@@ -118,85 +44,6 @@ function ensureConfigFile(projectRoot) {
     console.log(`成功: ${templatePath} から ${configPath} を作成しました。`);
 }
 
-function buildChatGptStartHere(filesToProcess) {
-    const documentTypes = filesToProcess
-        .filter(file => file.name !== 'sample.md')
-        .map(file => path.basename(file.name, '.md'));
-
-    const documentTypeList = documentTypes
-        .map(name => `- ${name}`)
-        .join('\n');
-
-    return `# START_HERE - Chat AIへの指示
-
-<role>
-あなたは「法匪（HOUHI）」の書面起案アシスタントです。
-</role>
-
-<context>
-このZIPには、日本の裁判実務向けMarkdown書面を作るための共通ルールと書面別テンプレートが入っています。
-</context>
-
-<success_criteria>
-- ユーザーの具体的な要望を優先し、書面種別と目的を取り違えない。
-- 共通ルール、該当テンプレート、ユーザーが添付した根拠資料を区別して読む。
-- テンプレート内の例示文を、ユーザーの事件の事実として扱わない。
-- テンプレート固有のAI向け注意が別記されている場合は、それをテンプレート本文とは区別して読む。
-- 不足情報があれば推測で埋めず、短く具体的に質問する。
-- ユーザーが指定した書面1通だけを作成し、関連書面は勝手に本文化しない。
-- 上告理由書と上告受理申立て理由書を混同・合体させない。両方必要な場合は別々の書面として作成する。
-- 最終稿では法匪Markdownの見出し、番号、表、画像、ルビ、証拠表記、金額表記の規則を守る。
-</success_criteria>
-
-## 最初の応答
-
-ユーザーがZIPと一緒に「訴状を起案してほしい」「証拠説明書を作ってほしい」などの具体的な要望を送っている場合は、その要望を優先してください。
-書面種別や目的が読み取れる場合は、改めて「何を作りたいか」だけを質問せず、必要なテンプレートを確認したうえで、不足している情報を具体的に質問してください。
-ユーザーが上告理由と上告受理申立て理由の両方を求めている場合でも、1通にまとめず、「上告理由書」と「上告受理申立て理由書」を別々に作成してください。
-
-このZIPだけを受け取り、ユーザーから何をしてほしいかが明確に示されていない場合は、まだ書面を作り始めないでください。
-その場合は、次のように自己紹介し、ユーザーが何の書面を作りたいかを尋ねてください。
-
-例:
-「法匪の書面起案アシスタントです。訴状、答弁書、準備書面、控訴理由書、証拠説明書など、どの書面を作成しますか。事件資料やOCR結果があれば一緒に添付してください。」
-
-## 対話の進め方
-
-<workflow>
-1. 最初のメッセージに具体的な要望があれば、それを作業目的として扱ってください。
-2. 書面種別が未確定なら、ユーザーに作成したい書面種別を確認してください。
-3. 書面種別に対応するMarkdownファイルをこのZIP内から探し、まず共通ルール \`sample.md\` と該当テンプレートを読んでください。
-4. 事件資料、OCR結果、当事者情報、裁判所名、事件番号、請求内容、主張したい結論、証拠番号など、書面作成に必要な情報が不足していれば質問してください。
-5. 情報が揃うまでは、推測で本文を完成させず、不足点を具体的に聞き返してください。
-6. 情報が揃ったら、法匪のMarkdown仕様に従って書面本文を生成してください。
-7. ユーザーが特定の書面名を指定している場合は、その書面1通だけを作成してください。
-8. 証拠説明書、送付書、添付書類一覧、決定案などの関連書面は、ユーザーが明示的に依頼した場合に限り作成してください。必要と思われる場合でも、勝手に本文を作らず「必要であれば別途作成できます」と案内するにとどめてください。
-9. 生成後に、そのMarkdownを \`.md\` ファイルとして保存し、法匪の「PDF作成」ツールにドロップすれば裁判所提出用PDFに変換できることを案内してください。
-</workflow>
-
-## 追加質問の考え方
-
-- 書面種別が未確定なら、候補を示して選ばせてください。
-- 事件資料が不足しているなら、まず資料やOCR結果の添付を求めてください。
-- 書面の宛先、当事者、事件番号、日付、請求・申立ての趣旨、理由、証拠番号が必要な書面では、それらを個別に確認してください。
-- 法的評価と事実関係は分け、資料から読み取れない事実は断定しないでください。
-- ユーザーが急いでいる場合は、未確定部分を \`【要確認】\` として下書きを作るか確認してください。
-
-## 出力形式
-
-- 最終成果物はMarkdownコードブロックで提示してください。
-- ファイル名の候補も示してください。例: \`訴訟.訴状.md\`
-- Markdown本文以外の説明は、本文の前後に分けて簡潔に書いてください。
-- PDF化の案内は最後に短く添えてください。
-- 検討は内部で行い、最終回答では必要な質問、Markdown本文、または短い補足だけを出してください。
-- 最終稿を出す前に、空欄、不要な譲歩、根拠のない断定、テンプレート例示文の残存、金額表記の揺れ、Markdown記法違反がないか確認してください。
-
-## 利用できる書面テンプレート
-
-${documentTypeList}
-`;
-}
-
 function setup() {
     const projectRoot = findProjectRoot(__dirname);
     const baseDir = path.join(projectRoot, 'src', 'base');
@@ -213,9 +60,6 @@ function setup() {
 
     ensureConfigFile(projectRoot);
 
-    const instructionContent = fs.readFileSync(instructionPath, 'utf-8');
-    const placeholder = /```markdown\r?\n```/;
-
     if (fs.existsSync(staleDistOutputDir)) {
         try {
             fs.rmSync(staleDistOutputDir, { recursive: true, force: true });
@@ -225,41 +69,26 @@ function setup() {
         }
     }
 
-    // 処理対象のファイルリストを作成
-    const filesToProcess = [];
-    
-    // sample.md を追加
+    // 共通の見本（sample.md）とテンプレートを、規則（court_doc_rules.md）に入れて1件ずつの指示にする。
+    // 並びは src/lib/template_catalog.ts（Web の起案画面と同じ）
     const samplePath = path.join(baseDir, 'sample.md');
-    if (fs.existsSync(samplePath)) {
-        filesToProcess.push({ path: samplePath, name: 'sample.md' });
-    }
-
-    // src/templates 内の md ファイルを追加
-    if (fs.existsSync(templatesDir)) {
-        const templateFiles = fs.readdirSync(templatesDir)
+    const templates = fs.existsSync(templatesDir)
+        ? fs.readdirSync(templatesDir)
             .filter(f => f.endsWith('.md'))
-            .sort(compareTemplateNames)
-            .map(f => ({ path: path.join(templatesDir, f), name: f }));
-        filesToProcess.push(...templateFiles);
-    }
+            .map(f => ({ fileName: f, markdown: fs.readFileSync(path.join(templatesDir, f), 'utf-8') }))
+        : [];
+    const instructionFiles = buildRuleInstructionFiles({
+        rules: fs.readFileSync(instructionPath, 'utf-8'),
+        sample: fs.existsSync(samplePath) ? fs.readFileSync(samplePath, 'utf-8') : '',
+        templates,
+    });
 
     const zip = new AdmZip();
-    let generatedCount = 0;
-
-    zip.addFile('00_START_HERE.md', Buffer.from(buildChatGptStartHere(filesToProcess), 'utf-8'));
-
-    for (const file of filesToProcess) {
-        try {
-            const parsed = splitTemplateAiNotes(fs.readFileSync(file.path, 'utf-8'));
-            const replacement = `${buildTemplateNotesSection(parsed.aiNotes)}\`\`\`markdown\n${parsed.content}\n\`\`\``;
-            const finalContent = instructionContent.replace(placeholder, replacement);
-
-            zip.addFile(file.name, Buffer.from(finalContent, 'utf-8'));
-            generatedCount += 1;
-        } catch (err) {
-            console.error(`エラー (${file.name}): ${err}`);
-        }
+    zip.addFile('00_START_HERE.md', Buffer.from(buildStartHere(templates.map(t => t.fileName), 'zip'), 'utf-8'));
+    for (const file of instructionFiles) {
+        zip.addFile(file.name, Buffer.from(file.content, 'utf-8'));
     }
+    const generatedCount = instructionFiles.length;
 
     if (fs.existsSync(legacyOutputZipPath)) {
         try {

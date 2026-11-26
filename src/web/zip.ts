@@ -126,10 +126,12 @@ function makeEndRecord(entryCount: number, centralDirectorySize: number, central
     return record;
 }
 
-export function buildStoredZip(entries: ZipEntryInput[]) {
+/**
+ * 圧縮しない ZIP を作る。date を渡すとすべての項目の日時をそれにする（同じ中身から同じ ZIP を作るとき）。
+ */
+export function buildStoredZip(entries: ZipEntryInput[], options: { date?: Date } = {}) {
     const encoder = new TextEncoder();
-    const now = new Date();
-    const { dosTime, dosDate } = getDosDateTime(now);
+    const { dosTime, dosDate } = getDosDateTime(options.date || new Date());
     const fileParts: Uint8Array[] = [];
     const centralEntries: CentralDirectoryEntry[] = [];
     let offset = 0;

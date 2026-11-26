@@ -1,3 +1,5 @@
+import { appendTemplateOptions } from '../lib/template_catalog';
+
 type DraftingTemplate = {
     id: string;
     name: string;
@@ -121,12 +123,7 @@ async function copyText(text: string) {
     document.execCommand('copy');
 }
 
-data.templates.forEach(template => {
-    const option = document.createElement('option');
-    option.value = template.id;
-    option.textContent = template.name;
-    templateSelect.appendChild(option);
-});
+appendTemplateOptions(document, templateSelect, data.templates);
 
 templateSelect.addEventListener('change', updateHandoff);
 
