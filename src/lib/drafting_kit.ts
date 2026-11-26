@@ -48,6 +48,16 @@ function normalizeNewlines(value: string) {
     return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
+// 作業フォルダの改行（CRLF・LF・混在）に左右されず、同じ元から同じ ZIP ができるようにする。
+function normalizeKitSources(sources: KitSources): KitSources {
+    return {
+        ...sources,
+        rules: normalizeNewlines(sources.rules),
+        sample: normalizeNewlines(sources.sample),
+        templates: sources.templates.map(template => ({ ...template, markdown: normalizeNewlines(template.markdown) })),
+    };
+}
+
 /**
  * テンプレート固有の AI 向けの注意の節（英語の見出し。court_doc_rules.md の書き方に合わせる）
  */
@@ -213,7 +223,8 @@ function buildRulesReference(sources: KitSources) {
 /**
  * Claude の Skill のファイル（`houhi-court-docs/` の下）。SKILL.md、規則1つ、テンプレート。
  */
-export function buildClaudeSkillFiles(sources: KitSources): KitFile[] {
+export function buildClaudeSkillFiles(rawSources: KitSources): KitFile[] {
+    const sources = normalizeKitSources(rawSources);
     const root = CLAUDE_SKILL_NAME;
     const fileNames = sortTemplateNames(sources.templates.map(template => template.fileName));
     const byName = new Map(sources.templates.map(template => [template.fileName, template] as [string, TemplateSource]));
@@ -266,7 +277,8 @@ export function buildClaudeSkillDescription() {
 /**
  * ChatGPT のプロジェクト（又は GPT）用。指示文1つと知識ファイル2つ（規則、テンプレート集）と、人が読む設定手順。
  */
-export function buildChatGptKitFiles(sources: KitSources): KitFile[] {
+export function buildChatGptKitFiles(rawSources: KitSources): KitFile[] {
+    const sources = normalizeKitSources(rawSources);
     const fileNames = sortTemplateNames(sources.templates.map(template => template.fileName));
     const byName = new Map(sources.templates.map(template => [template.fileName, template] as [string, TemplateSource]));
     const rulesFile = '01_法匪Markdown規則.md';
