@@ -31,8 +31,9 @@ try {
     playwright = null;
 }
 
-// 改頁の位置のずれとして許す字数（1行は37字ほど。3行分）
-const MAX_PAGE_BREAK_SHIFT_CHARS = 120;
+// 改頁の位置のずれとして許す字数（1行は37字ほど。5行分）。手元（Windows 125% 表示）では最大87字だったが、
+// GitHub Actions の windows-latest では丸めの刻みが違い、160字（4行余り）までずれた（2026-11-26、v0.2.0 のビルド）。
+const MAX_PAGE_BREAK_SHIFT_CHARS = 200;
 
 function freePort() {
     return new Promise((resolve, reject) => {
