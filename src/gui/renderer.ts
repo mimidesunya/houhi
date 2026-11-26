@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const optPdfEngine = document.getElementById('optPdfEngine') as HTMLSelectElement;
     const optNoBlankPages = document.getElementById('optNoBlankPages') as HTMLInputElement;
     const optNoTab = document.getElementById('optNoTab') as HTMLInputElement;
+    const optMints = document.getElementById('optMints') as HTMLInputElement;
     const optNoDither = document.getElementById('optNoDither') as HTMLInputElement;
     const audioTargetOption = document.getElementById('audioTargetOption') as HTMLElement;
     const audioModelOption = document.getElementById('audioModelOption') as HTMLElement;
@@ -27,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pdfEngine?: string;
         noBlankPages?: boolean;
         noTab?: boolean;
+        mints?: boolean;
         noDither?: boolean;
         audioTarget?: string;
         audioModel?: string;
@@ -39,13 +41,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const DEFAULT_PDF_ENGINE = 'chrome';
 
     const toolDescriptions: Record<ToolCardKey, string> = {
-        pdf: 'Markdown/HTMLをPDFへ変換',
+        pdf: 'Markdown/HTMLをPDFへ変換（Copper PDF を選ぶと書類を公開サーバー cti.li へ送る）',
         word: 'Markdownを編集可能なWord（.docx）へ変換',
         ai_archive: 'AI分析用データをZIP化',
-        stamp: 'PDFに号証番号を赤字でスタンプ',
-        fax_send: 'メールFAX（mfax／秒速FAX）で送信',
+        stamp: 'PDFに号証番号を赤字でスタンプ（mints 提出用も選べる）',
+        fax_send: 'メールFAX（mfax／秒速FAX）で送信（設定のエンジンが Copper PDF なら送付書を cti.li で組む）',
         transcribe_audio: '音声をMarkdownへ変換',
-        address_label: 'vCardから宛名ラベルPDFを作成（レターパック・定形封筒兼用）',
+        address_label: 'vCardから宛名ラベルPDFを作成（レターパック・定形封筒兼用。Copper PDF の公開サーバー cti.li で組む）',
         drafting: 'ChatGPT用の起案キットを開く',
         settings: 'config.jsonを編集'
     };
@@ -85,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pdfEngine: optPdfEngine.value || DEFAULT_PDF_ENGINE,
             noBlankPages: optNoBlankPages.checked,
             noTab: optNoTab.checked,
+            mints: optMints.checked,
             noDither: optNoDither.checked,
             audioTarget: optAudioTarget.value || 'houhi',
             audioModel: optAudioModel.value || 'openai:gpt-4o-transcribe-diarize',
@@ -100,6 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pdfEngineOption.style.display = scriptKey === 'pdf' ? '' : 'none';
         optNoBlankPages.parentElement!.style.display = scriptKey === 'stamp' ? '' : 'none';
         optNoTab.parentElement!.style.display = scriptKey === 'stamp' ? '' : 'none';
+        optMints.parentElement!.style.display = scriptKey === 'stamp' ? '' : 'none';
         optNoDither.parentElement!.style.display = scriptKey === 'fax_send' ? '' : 'none';
         audioTargetOption.style.display = scriptKey === 'transcribe_audio' ? '' : 'none';
         audioModelOption.style.display = scriptKey === 'transcribe_audio' ? '' : 'none';
@@ -121,6 +125,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (currentScript === 'stamp' && optNoTab.checked) {
             opts.push('--no-tab');
+        }
+        if (currentScript === 'stamp' && optMints.checked) {
+            opts.push('--mints');
         }
         if (currentScript === 'fax_send' && optNoDither.checked) {
             opts.push('--no-dither');
@@ -442,6 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     optNoBlankPages.checked = Boolean(savedState.noBlankPages);
     optNoTab.checked = Boolean(savedState.noTab);
+    optMints.checked = Boolean(savedState.mints);
     optNoDither.checked = Boolean(savedState.noDither);
     optAudioTarget.value = isAudioTarget(savedState.audioTarget) ? savedState.audioTarget : 'houhi';
     optAudioModel.value = isAudioModel(savedState.audioModel) ? savedState.audioModel : 'openai:gpt-4o-transcribe-diarize';
@@ -460,6 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
     optPdfEngine.addEventListener('change', saveGuiState);
     optNoBlankPages.addEventListener('change', saveGuiState);
     optNoTab.addEventListener('change', saveGuiState);
+    optMints.addEventListener('change', saveGuiState);
     optNoDither.addEventListener('change', saveGuiState);
     optAudioTarget.addEventListener('change', saveGuiState);
     optAudioModel.addEventListener('change', saveGuiState);
