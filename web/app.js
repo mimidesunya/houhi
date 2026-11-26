@@ -1138,6 +1138,731 @@ else {
 }
 
 },
+"src/base/court_check": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getCourtCheckLabel = getCourtCheckLabel;
+exports.checkCourtMarkdown = checkCourtMarkdown;
+exports.formatCourtCheckIssue = formatCourtCheckIssue;
+/**
+ * 提出前チェック。法匪 Markdown の書面に、出す前に直すべき所が残っていないかを見る（fs を使わない。Web にも入る）。
+ *
+ * - 【要確認】と、テンプレートの「〇〇」の残り
+ * - 証拠説明書の作成年月日が西暦（和暦で書く）
+ * - 証拠説明書の号証番号の飛び・重複（番号の列は「1」「2-1」だけで、甲・乙は見出しの「乙号証」にある）
+ * - 当事者欄（`### --左` の `- 原告:〇〇`）と差出人欄（`### --右`）の名前の食い違い
+ *
+ * AI 向けの注意（`<!-- -->`）の中は見ない。行番号は 1 から数える。
+ */
+const court_markdown_1 = require("./court_markdown");
+const inference_1 = require("../lib/ai_archive/inference");
+const CHECK_LABELS = {
+    'needs-confirmation': '【要確認】の残り',
+    placeholder: '〇〇の残り',
+    'western-date': '作成年月日が西暦',
+    'evidence-gap': '号証番号の飛び',
+    'evidence-duplicate': '号証番号の重複',
+    'evidence-order': '号証番号の順番',
+    'party-mismatch': '当事者名の食い違い',
+};
+function getCourtCheckLabel(kind) {
+    return CHECK_LABELS[kind] || kind;
+}
+/**
+ * HTML コメントを、行の数を変えずに空白へ置き換える（行番号を保つ）
+ */
+function blankComments(markdown) {
+    return String(markdown || '').replace(/<!--[\s\S]*?-->/g, comment => comment.replace(/[^\n]/g, ' '));
+}
+function toHalfWidth(value) {
+    return String(value)
+        .replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+        .replace(/[Ａ-Ｚａ-ｚ]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
+}
+function excerpt(line, index, length) {
+    const start = Math.max(0, index - 8);
+    const end = Math.min(line.length, index + length + 8);
+    return `${start > 0 ? '…' : ''}${line.slice(start, end).trim()}${end < line.length ? '…' : ''}`;
+}
+// 〇〇・○○（2字以上）と、「令和〇年」「〇月〇日」「第〇号」のような1字の〇。
+// 「金一〇〇万円」「二〇二四年」のような漢数字の中の〇は除く（前が漢数字の〇は拾わない）
+const PLACEHOLDER_PATTERN = /(?<![一二三四五六七八九十百千〇○])(?:[〇○]{2,}|[〇○](?=[年月日号部条項]))/g;
+function findPlaceholders(lines) {
+    const issues = [];
+    lines.forEach((line, index) => {
+        const confirm = line.indexOf('【要確認】');
+        if (confirm >= 0) {
+            issues.push({
+                kind: 'needs-confirmation',
+                line: index + 1,
+                message: `【要確認】が残っています（${excerpt(line, confirm, 5)}）。確かめて書き直してください。`,
+            });
+        }
+        const placeholders = [...line.matchAll(PLACEHOLDER_PATTERN)];
+        if (placeholders.length > 0) {
+            issues.push({
+                kind: 'placeholder',
+                line: index + 1,
+                message: `テンプレートの「〇〇」が残っています（${excerpt(line, placeholders[0].index || 0, placeholders[0][0].length)}）。`,
+            });
+        }
+    });
+    return issues;
+}
+/**
+ * Markdown の表の行をセルに分ける。表の行でなければ null。
+ */
+function splitTableRow(line) {
+    const m = line.trim().match(/^\|(.*)\|$/);
+    return m ? m[1].split('|').map(cell => cell.trim()) : null;
+}
+/**
+ * 号証番号の見出し（「乙号証」「甲A号証」「乙第号証」）から、甲・乙などの記号を取る
+ */
+function evidencePrefixFromHeader(header) {
+    const m = toHalfWidth(header).replace(/\s+/g, '').match(/^([甲乙丙丁戊疎証][A-Z]?)(?:第)?号証/);
+    return m ? m[1] : '';
+}
+/**
+ * 番号の列の値を、見出しの記号と合わせて「乙2-1」の形に直し、主番号と枝番に分ける
+ */
+function parseEvidenceCell(prefix, cell) {
+    let value = toHalfWidth(cell).replace(/\s+/g, '').replace(/[ー－‐−]/g, '-');
+    if (!value)
+        return null;
+    if (!/^[甲乙丙丁戊疎証]/.test(value)) {
+        value = `${prefix}${value}`;
+    }
+    const normalized = (0, inference_1.normalizeEvidenceNumber)(value).replace(/号証$|号$/, '');
+    const m = normalized.match(/^([甲乙丙丁戊疎証][A-Z]?)(?:第)?(\d+)(?:[-の](\d+))?$/);
+    if (!m)
+        return null;
+    return {
+        prefix: m[1],
+        main: parseInt(m[2], 10),
+        branch: m[3] ? parseInt(m[3], 10) : null,
+        label: `${m[1]}${m[2]}${m[3] ? `-${m[3]}` : ''}`,
+    };
+}
+function collectEvidenceEntries(lines) {
+    const entries = [];
+    let numberCol = -1;
+    let prefix = '';
+    lines.forEach((line, index) => {
+        const cells = splitTableRow(line);
+        if (!cells) {
+            numberCol = -1;
+            return;
+        }
+        if (cells.some(c => c.includes('号証')) && cells.some(c => c.includes('標目') || c.includes('立証趣旨'))) {
+            numberCol = cells.findIndex(c => c.includes('号証'));
+            prefix = evidencePrefixFromHeader(cells[numberCol]);
+            return;
+        }
+        if (numberCol < 0 || /^[\s|:-]+$/.test(cells.join('|')))
+            return;
+        const parsed = parseEvidenceCell(prefix, cells[numberCol] || '');
+        if (parsed) {
+            entries.push({ ...parsed, line: index + 1 });
+        }
+    });
+    return entries;
+}
+/**
+ * 号証番号の飛び・重複・順番を見る。記号（甲・乙・乙A など）ごとに、書面に出てくる順で見る。
+ * 最初の番号は 1 でなくてよい（続きの証拠説明書は途中の番号から始まる）。
+ */
+function findEvidenceNumberIssues(lines) {
+    const issues = [];
+    const byPrefix = new Map();
+    for (const entry of collectEvidenceEntries(lines)) {
+        if (!byPrefix.has(entry.prefix))
+            byPrefix.set(entry.prefix, []);
+        byPrefix.get(entry.prefix).push(entry);
+    }
+    for (const [prefix, entries] of byPrefix) {
+        const seen = new Map();
+        for (const entry of entries) {
+            const first = seen.get(entry.label);
+            if (first) {
+                issues.push({
+                    kind: 'evidence-duplicate',
+                    line: entry.line,
+                    message: `号証番号 ${entry.label} が2回出てきます（${first.line}行目と${entry.line}行目）。`,
+                });
+            }
+            else {
+                seen.set(entry.label, entry);
+            }
+        }
+        // 枝番のある号証と、同じ主番号の枝番のない号証が両方あるのは食い違い
+        const mains = new Set(entries.map(entry => entry.main));
+        for (const main of mains) {
+            const sameMain = entries.filter(entry => entry.main === main);
+            const plain = sameMain.find(entry => entry.branch === null);
+            const branched = sameMain.find(entry => entry.branch !== null);
+            if (plain && branched) {
+                issues.push({
+                    kind: 'evidence-duplicate',
+                    line: branched.line,
+                    message: `${prefix}${main} と ${branched.label} が両方あります。枝番を付けるなら ${prefix}${main} にも付けてください。`,
+                });
+            }
+        }
+        let previous = null;
+        for (const entry of entries) {
+            if (previous && entry.label !== previous.label) {
+                if (entry.main === previous.main) {
+                    const expected = (previous.branch ?? 0) + 1;
+                    if (entry.branch !== null && entry.branch > expected) {
+                        issues.push({
+                            kind: 'evidence-gap',
+                            line: entry.line,
+                            message: `${previous.label} の次が ${entry.label} で、${prefix}${entry.main}-${expected} が抜けています。`,
+                        });
+                    }
+                    else if (entry.branch !== null && previous.branch !== null && entry.branch < previous.branch) {
+                        issues.push({
+                            kind: 'evidence-order',
+                            line: entry.line,
+                            message: `${previous.label} の後に ${entry.label} があり、枝番の順番が前後しています。`,
+                        });
+                    }
+                }
+                else if (entry.main > previous.main + 1) {
+                    const missing = entry.main - previous.main === 2
+                        ? `${prefix}${previous.main + 1}`
+                        : `${prefix}${previous.main + 1}〜${prefix}${entry.main - 1}`;
+                    issues.push({
+                        kind: 'evidence-gap',
+                        line: entry.line,
+                        message: `${previous.label} の次が ${entry.label} で、${missing} が抜けています。`,
+                    });
+                }
+                else if (entry.main < previous.main) {
+                    issues.push({
+                        kind: 'evidence-order',
+                        line: entry.line,
+                        message: `${previous.label} の後に ${entry.label} があり、号証番号の順番が前後しています。`,
+                    });
+                }
+                if (entry.main !== previous.main && entry.branch !== null && entry.branch > 1) {
+                    issues.push({
+                        kind: 'evidence-gap',
+                        line: entry.line,
+                        message: `${entry.label} の前に ${prefix}${entry.main}-1 がありません。`,
+                    });
+                }
+            }
+            if (!previous && entry.branch !== null && entry.branch > 1) {
+                issues.push({
+                    kind: 'evidence-gap',
+                    line: entry.line,
+                    message: `${entry.label} の前に ${prefix}${entry.main}-1 がありません。`,
+                });
+            }
+            previous = entry;
+        }
+    }
+    return issues.sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
+}
+/**
+ * 役割（「被告」「被控訴人（1審原告）」）を比べる形にする。括弧の中と空白を除く。
+ */
+function normalizeRole(role) {
+    return role.replace(/[（(][^）)]*[）)]/g, '').replace(/[\s　]+/g, '');
+}
+function normalizeName(name) {
+    return toHalfWidth(name).normalize('NFKC').replace(/[\s　]+/g, '');
+}
+/**
+ * `### --左` と `### --右` の囲みの中の `- 役割:名前` を集める
+ */
+function collectBlockItems(lines) {
+    const left = [];
+    const right = [];
+    let block = null;
+    lines.forEach((line, index) => {
+        const trimmed = line.trim();
+        if (trimmed === '### --左') {
+            block = 'left';
+            return;
+        }
+        if (trimmed === '### --右') {
+            block = 'right';
+            return;
+        }
+        if (/^###\s*--/.test(trimmed) || /^#{1,2}\s/.test(trimmed)) {
+            block = null;
+            return;
+        }
+        if (!block)
+            return;
+        const m = trimmed.match(/^[-*]\s+(.+?)[：:](.*)$/);
+        if (!m)
+            return;
+        const role = normalizeRole(m[1]);
+        const rawName = m[2].trim();
+        if (!role || !rawName)
+            return;
+        const names = rawName.split(/[、，,]|及び/).map(normalizeName).filter(Boolean);
+        (block === 'left' ? left : right).push({ role, names, rawName, line: index + 1 });
+    });
+    return { left, right };
+}
+/**
+ * 当事者欄と差出人欄で、同じ役割（原告・被告・申立人など）の名前が違わないかを見る。
+ * どちらかの名前が「〇〇」のままなら比べない（〇〇の残りとして別に出る）。
+ */
+function findPartyMismatches(lines) {
+    const issues = [];
+    const { left, right } = collectBlockItems(lines);
+    const partiesByRole = new Map();
+    for (const item of left) {
+        if (!partiesByRole.has(item.role))
+            partiesByRole.set(item.role, []);
+        partiesByRole.get(item.role).push(item);
+    }
+    for (const sender of right) {
+        const parties = partiesByRole.get(sender.role);
+        if (!parties || /[〇○]/.test(sender.rawName))
+            continue;
+        const partyNames = parties.flatMap(item => item.names);
+        if (partyNames.some(name => /[〇○]/.test(name)))
+            continue;
+        const unknown = sender.names.filter(name => !partyNames.includes(name));
+        if (unknown.length > 0) {
+            const partyText = parties.map(item => item.rawName).join('、');
+            issues.push({
+                kind: 'party-mismatch',
+                line: sender.line,
+                message: `差出人欄の${sender.role}「${sender.rawName}」が、当事者欄の${sender.role}「${partyText}」（${parties[0].line}行目）と違います。`,
+            });
+        }
+    }
+    return issues;
+}
+/**
+ * 提出前チェック。見つかった問題を行の順に返す（問題がなければ空の配列）。
+ */
+function checkCourtMarkdown(markdown) {
+    const text = blankComments(markdown);
+    const lines = text.split(/\r?\n/);
+    const westernDates = [];
+    const westernFound = (0, court_markdown_1.findWesternDatesInEvidenceTables)(text);
+    if (westernFound.length > 0) {
+        // 行番号を付けるため、作成年月日の文字列で行を探す（同じ日付が何行もあれば順に当てる）
+        let searchFrom = 0;
+        for (const { exhibit, date } of westernFound) {
+            let lineIndex = lines.findIndex((line, index) => index >= searchFrom && line.includes(date) && /^\s*\|/.test(line));
+            if (lineIndex >= 0)
+                searchFrom = lineIndex + 1;
+            westernDates.push({
+                kind: 'western-date',
+                line: lineIndex >= 0 ? lineIndex + 1 : null,
+                message: `証拠説明書の作成年月日が西暦です（${exhibit}: ${date}）。和暦で書いてください。`,
+            });
+        }
+    }
+    return [
+        ...findPlaceholders(lines),
+        ...westernDates,
+        ...findEvidenceNumberIssues(lines),
+        ...findPartyMismatches(lines),
+    ].sort((a, b) => (a.line ?? Number.MAX_SAFE_INTEGER) - (b.line ?? Number.MAX_SAFE_INTEGER));
+}
+/**
+ * 問題を1行ずつの文にする（CLI の警告、印刷前の確認に使う）
+ */
+function formatCourtCheckIssue(issue) {
+    return issue.line ? `${issue.line}行目: ${issue.message}` : issue.message;
+}
+
+},
+"src/lib/ai_archive/inference": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.normalizeEvidenceNumber = normalizeEvidenceNumber;
+exports.extractEvidenceNumber = extractEvidenceNumber;
+exports.extractDateCandidates = extractDateCandidates;
+exports.inferDocumentKind = inferDocumentKind;
+exports.buildFileWarnings = buildFileWarnings;
+const constants_1 = require("./constants");
+const utils_1 = require("./utils");
+function toHalfWidthDigits(value) {
+    return value.replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
+}
+function normalizeEvidenceNumber(value) {
+    const compact = toHalfWidthDigits(value.replace(/\s+/g, ''));
+    const match = compact.match(/^([甲乙丙丁戊疎証])(?:第)?([0-9]+(?:[-ー－の][0-9]+)?)(?:号証|号)?$/);
+    if (!match) {
+        return compact;
+    }
+    return `${match[1]}${match[2].replace(/[ー－]/g, '-')}`;
+}
+function extractEvidenceNumber(relativePath, text) {
+    const searchText = `${relativePath}\n${text.slice(0, 2000)}`;
+    const match = searchText.match(/(?:^|[\/\s_\-（(])([甲乙丙丁戊疎証]\s*(?:第\s*)?[0-9０-９]+(?:\s*(?:-|ー|－|の)\s*[0-9０-９]+)?\s*(?:号証|号)?)/);
+    if (!match) {
+        return null;
+    }
+    return normalizeEvidenceNumber(match[1]);
+}
+function extractDateCandidates(relativePath, text) {
+    const searchText = `${relativePath}\n${text.slice(0, 4000)}`;
+    const patterns = [
+        /\b\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}\b/g,
+        /\b\d{4}年\s*\d{1,2}月\s*\d{1,2}日/g,
+        /(?:令和|平成|昭和)\s*\d{1,2}年\s*\d{1,2}月\s*\d{1,2}日/g,
+    ];
+    const candidates = [];
+    for (const pattern of patterns) {
+        for (const match of searchText.matchAll(pattern)) {
+            candidates.push(match[0]);
+        }
+    }
+    return (0, utils_1.uniqueLimited)(candidates, constants_1.MAX_DATE_CANDIDATES);
+}
+function inferDocumentKind(relativePath, text) {
+    const searchText = `${relativePath}\n${text.slice(0, 1200)}`;
+    const patterns = [
+        ['訴状', /訴状/],
+        ['答弁書', /答弁書/],
+        ['準備書面', /準備書面/],
+        ['証拠説明書', /証拠説明書|証拠目録/],
+        ['反訳書', /反訳書|反訳|文字起こし/],
+        ['告訴状', /告訴状/],
+        ['送付書', /送付書/],
+        ['期日請書', /期日請書/],
+        ['控訴理由書', /控訴理由書/],
+        ['控訴状', /控訴状/],
+        ['上告理由書', /上告理由書/],
+        ['上告状', /上告状|上告受理申立/],
+        ['移送申立書', /移送申立/],
+        ['忌避申立書', /忌避申立/],
+        ['行政手続書面', /開示請求|審査請求|反論書/],
+        ['メモ', /メモ|memo|note/i],
+    ];
+    for (const [kind, pattern] of patterns) {
+        if (pattern.test(searchText)) {
+            return kind;
+        }
+    }
+    if (extractEvidenceNumber(relativePath, text)) {
+        return '証拠資料';
+    }
+    return (0, utils_1.getPathExtname)(relativePath).toLowerCase() === '.md' ? 'Markdown資料' : 'テキスト資料';
+}
+function buildFileWarnings(relativePath, content, text) {
+    const warnings = [];
+    const trimmedText = text.trim();
+    if (content.length === 0 || trimmedText.length === 0) {
+        warnings.push('空ファイル、または本文が空白のみです。AI が内容を把握できません。');
+    }
+    else if (trimmedText.length < constants_1.VERY_SHORT_TEXT_CHARS) {
+        warnings.push('本文が非常に短いため、OCR漏れや未完成ファイルの可能性があります。');
+    }
+    if (content.length > constants_1.LARGE_TEXT_FILE_BYTES) {
+        warnings.push('長大なテキストです。AI が一度に読み切れない場合は、このファイルを分割して確認してください。');
+    }
+    if (text.includes('\uFFFD')) {
+        warnings.push('文字化けの可能性があります。UTF-8として読めない文字が含まれているようです。');
+    }
+    if ((0, utils_1.getPathBasename)(relativePath).trim().length === 0) {
+        warnings.push('ファイル名が空白に見えます。参照時に取り違えないよう注意してください。');
+    }
+    return warnings;
+}
+
+},
+"src/lib/ai_archive/constants": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MAX_SKIPPED_FILES_IN_WARNING = exports.MAX_DATE_CANDIDATES = exports.VERY_SHORT_TEXT_CHARS = exports.LARGE_TEXT_FILE_BYTES = exports.CASE_DOCUMENTS_ROOT = void 0;
+exports.CASE_DOCUMENTS_ROOT = 'case';
+exports.LARGE_TEXT_FILE_BYTES = 250 * 1024;
+exports.VERY_SHORT_TEXT_CHARS = 20;
+exports.MAX_DATE_CANDIDATES = 5;
+exports.MAX_SKIPPED_FILES_IN_WARNING = 20;
+
+},
+"src/lib/ai_archive/utils": function(require, module, exports) {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.isTargetTextFile = isTargetTextFile;
+exports.compareInstructionNames = compareInstructionNames;
+exports.compareInstructionPaths = compareInstructionPaths;
+exports.normalizeArchivePath = normalizeArchivePath;
+exports.getPathBasename = getPathBasename;
+exports.getPathExtname = getPathExtname;
+exports.getUtf8Text = getUtf8Text;
+exports.countLines = countLines;
+exports.uniqueLimited = uniqueLimited;
+exports.formatBytes = formatBytes;
+exports.escapeMarkdownTableCell = escapeMarkdownTableCell;
+/**
+ * AI に渡す資料として収録する対象ファイルか判定する。
+ * 画像や PDF などの重いバイナリは除外し、本文を直接読める Markdown / text に限定する。
+ */
+function isTargetTextFile(filePath) {
+    const ext = getPathExtname(filePath).toLowerCase();
+    return ext === '.md' || ext === '.txt';
+}
+/**
+ * 指示書や資料名を並べるための比較関数。
+ * `sample.md` は共通ルールなので、常に先頭に出して AI が最初に参照しやすくする。
+ */
+function compareInstructionNames(a, b) {
+    if (a === 'sample.md')
+        return -1;
+    if (b === 'sample.md')
+        return 1;
+    return a.localeCompare(b, 'ja');
+}
+/**
+ * `dir/file.md` のようなパスを階層ごとに比較する。
+ * 単純な文字列比較だと親子関係や `sample.md` の優先順位が崩れやすいため、
+ * パスを `/` で分解して、各階層で同じ並び規則を適用する。
+ */
+function compareInstructionPaths(a, b) {
+    const aParts = a.split('/');
+    const bParts = b.split('/');
+    const maxLength = Math.max(aParts.length, bParts.length);
+    for (let i = 0; i < maxLength; i++) {
+        const aPart = aParts[i];
+        const bPart = bParts[i];
+        if (aPart == null)
+            return -1;
+        if (bPart == null)
+            return 1;
+        if (aPart === bPart)
+            continue;
+        return compareInstructionNames(aPart, bPart);
+    }
+    return 0;
+}
+function normalizeArchivePath(filePath) {
+    return filePath.replace(/\\/g, '/');
+}
+function getPathBasename(filePath) {
+    const normalizedPath = normalizeArchivePath(filePath);
+    const parts = normalizedPath.split('/').filter(part => part.length > 0);
+    return parts[parts.length - 1] || '';
+}
+function getPathExtname(filePath) {
+    const basename = getPathBasename(filePath);
+    const dotIndex = basename.lastIndexOf('.');
+    if (dotIndex <= 0) {
+        return '';
+    }
+    return basename.slice(dotIndex);
+}
+function getUtf8Text(content) {
+    return content.toString('utf-8');
+}
+function countLines(text) {
+    if (text.length === 0) {
+        return 0;
+    }
+    return text.split(/\r\n|\r|\n/).length;
+}
+function uniqueLimited(values, limit) {
+    const result = [];
+    const seen = new Set();
+    for (const value of values) {
+        const normalizedValue = value.replace(/\s+/g, '');
+        if (seen.has(normalizedValue))
+            continue;
+        seen.add(normalizedValue);
+        result.push(value.trim());
+        if (result.length >= limit)
+            break;
+    }
+    return result;
+}
+function formatBytes(sizeBytes) {
+    if (sizeBytes < 1024) {
+        return `${sizeBytes} B`;
+    }
+    if (sizeBytes < 1024 * 1024) {
+        return `${(sizeBytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`;
+}
+function escapeMarkdownTableCell(value) {
+    if (value == null || value === '') {
+        return '-';
+    }
+    return String(value).replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
+}
+
+},
+"src/lib/template_catalog": function(require, module, exports) {
+"use strict";
+/**
+ * 書面テンプレート（src/templates/*.md）の並びと群。
+ *
+ * Web の起案画面・PDF 画面のテンプレート選択、Web の drafting-data.js・archive-data.js、
+ * デスクトップの起案キット（setup.ts）、AI 向けのキット（scripts/build_ai_kits.js）がこの並びを使う。
+ * fs を使わないので、ブラウザの bundle にも入る。
+ *
+ * テンプレートを足したら、TEMPLATE_ORDER の然るべき位置に名前を足す（足さないと、群「その他」の末尾に名前順で並ぶ）。
+ * tests/template_catalog.test.js が、ここに載っている名前と src/templates の中身が一致するかを確かめる。
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TEMPLATE_ORDER = exports.FREQUENT_TEMPLATES = exports.OTHER_GROUP_LABEL = exports.FREQUENT_GROUP_LABEL = void 0;
+exports.getTemplateGroup = getTemplateGroup;
+exports.compareTemplateNames = compareTemplateNames;
+exports.sortTemplateNames = sortTemplateNames;
+exports.groupTemplates = groupTemplates;
+exports.splitTemplateAiNotes = splitTemplateAiNotes;
+exports.templateDisplayName = templateDisplayName;
+exports.appendTemplateOptions = appendTemplateOptions;
+exports.FREQUENT_GROUP_LABEL = 'よく使う';
+exports.OTHER_GROUP_LABEL = 'その他';
+/**
+ * 群「よく使う」に入れるテンプレート（この順に並べる）
+ */
+exports.FREQUENT_TEMPLATES = [
+    '訴訟.答弁書.md',
+    '訴訟.準備書面.md',
+    '訴訟.証拠説明書.md',
+    '訴訟.送付書.md',
+    '訴訟.期日請書.md',
+    '行政.開示請求.md',
+];
+/**
+ * 全テンプレートの並び。群「よく使う」のものもここに載せる（群の中ではこの並びではなく FREQUENT_TEMPLATES の順）。
+ */
+exports.TEMPLATE_ORDER = [
+    '訴訟.訴状.md',
+    '訴訟.答弁書.md',
+    '訴訟.準備書面.md',
+    '訴訟.証拠説明書.md',
+    '訴訟.送付書.md',
+    '訴訟.期日請書.md',
+    '訴訟.事務連絡.md',
+    '訴訟.上申書.md',
+    '訴訟.発信者情報開示請求訴状.md',
+    '訴訟.発信者情報開示命令異議の訴え訴状.md',
+    '訴訟.移送申立書.md',
+    '訴訟.控訴状.md',
+    '訴訟.控訴理由書.md',
+    '訴訟.上告状兼上告受理申立書.md',
+    '訴訟.上告理由書.md',
+    '訴訟.上告受理申立て理由書.md',
+    '訴訟.忌避申立書.md',
+    '保全.発信者情報開示仮処分命令申立書.md',
+    '保全.発信者情報消去禁止仮処分命令申立書.md',
+    '保全.送達延期上申書.md',
+    '非訟.発信者情報開示命令申立書兼提供命令申立書.md',
+    '非訟.発信者情報開示命令申立書兼消去禁止命令申立書.md',
+    '非訟.発信者情報開示命令申立事件併合上申書.md',
+    '非訟.発信者情報開示命令申立て取下書.md',
+    '反訳書.md',
+    '行政.開示請求.md',
+    '行政.個人情報開示請求の取下書.md',
+    '行政.保有個人情報利用停止請求書.md',
+    '行政.審査請求書.md',
+    '行政.反論書.md',
+    '行政.上申書.md',
+    '行政.司法行政文書開示苦情申出書.md',
+    '行政.保有個人情報開示苦情申出書.md',
+    '行政.苦情申出の意見書.md',
+    '行政.住民監査請求書.md',
+    '刑事.告訴状.md',
+];
+const frequentRank = new Map(exports.FREQUENT_TEMPLATES.map((name, index) => [name, index]));
+const orderRank = new Map(exports.TEMPLATE_ORDER.map((name, index) => [name, index]));
+/**
+ * ファイル名（`訴訟.答弁書.md`）でも書面名（`訴訟.答弁書`）でもよいように、末尾の .md をそろえる
+ */
+function toFileName(name) {
+    const text = String(name || '');
+    return /\.md$/i.test(text) ? text : `${text}.md`;
+}
+/**
+ * テンプレートの群（「よく使う」か「その他」）
+ */
+function getTemplateGroup(name) {
+    return frequentRank.has(toFileName(name)) ? exports.FREQUENT_GROUP_LABEL : exports.OTHER_GROUP_LABEL;
+}
+/**
+ * 並べ替えの比較。「よく使う」を先に FREQUENT_TEMPLATES の順で、残りを TEMPLATE_ORDER の順で並べ、
+ * どちらにも載っていないものは最後に名前順で並べる。
+ */
+function compareTemplateNames(a, b) {
+    const fileA = toFileName(a);
+    const fileB = toFileName(b);
+    const groupA = frequentRank.has(fileA) ? 0 : 1;
+    const groupB = frequentRank.has(fileB) ? 0 : 1;
+    if (groupA !== groupB)
+        return groupA - groupB;
+    const rankA = groupA === 0 ? frequentRank.get(fileA) : (orderRank.has(fileA) ? orderRank.get(fileA) : Number.MAX_SAFE_INTEGER);
+    const rankB = groupB === 0 ? frequentRank.get(fileB) : (orderRank.has(fileB) ? orderRank.get(fileB) : Number.MAX_SAFE_INTEGER);
+    if (rankA !== rankB)
+        return rankA - rankB;
+    return fileA.localeCompare(fileB, 'ja');
+}
+function sortTemplateNames(names) {
+    return [...names].sort(compareTemplateNames);
+}
+/**
+ * テンプレートを群ごとにまとめる（群の順は「よく使う」「その他」。空の群は返さない）。
+ * getName は各要素のファイル名か書面名を返す。
+ */
+function groupTemplates(templates, getName) {
+    const sorted = [...templates].sort((a, b) => compareTemplateNames(getName(a), getName(b)));
+    return [exports.FREQUENT_GROUP_LABEL, exports.OTHER_GROUP_LABEL]
+        .map(label => ({ label, templates: sorted.filter(template => getTemplateGroup(getName(template)) === label) }))
+        .filter(group => group.templates.length > 0);
+}
+/**
+ * テンプレートの中の AI 向けの注意（`<!-- ... -->`）を本文から外す。
+ * content は注意を除いたテンプレート、aiNotes は注意を空行でつないだもの。
+ */
+function splitTemplateAiNotes(markdown) {
+    const notes = [];
+    const content = String(markdown || '').replace(/<!--([\s\S]*?)-->/g, (_match, note) => {
+        const cleaned = String(note)
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .join('\n')
+            .trim();
+        if (cleaned) {
+            notes.push(cleaned);
+        }
+        return '';
+    }).replace(/\n{3,}/g, '\n\n').trim();
+    return {
+        content,
+        aiNotes: notes.join('\n\n').trim(),
+    };
+}
+/**
+ * 書面名（拡張子なし）
+ */
+function templateDisplayName(fileName) {
+    return String(fileName || '').replace(/\.md$/i, '');
+}
+/**
+ * `<select>` にテンプレートを群ごとの `<optgroup>` で入れる（Web の起案画面と PDF 画面で使う）
+ */
+function appendTemplateOptions(doc, select, templates) {
+    for (const group of groupTemplates(templates, template => template.id)) {
+        const optgroup = doc.createElement('optgroup');
+        optgroup.label = group.label;
+        for (const template of group.templates) {
+            const option = doc.createElement('option');
+            option.value = template.id;
+            option.textContent = template.name;
+            optgroup.appendChild(option);
+        }
+        select.appendChild(optgroup);
+    }
+}
+
+},
 "src/lib/paged_toc": function(require, module, exports) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -1482,6 +2207,8 @@ function normalizeEditableMarkdown(markdown) {
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const court_markdown_1 = require("../base/court_markdown");
+const court_check_1 = require("../base/court_check");
+const template_catalog_1 = require("../lib/template_catalog");
 const document_title_1 = require("./document_title");
 const markdown_normalizer_1 = require("./markdown_normalizer");
 const paged_toc_1 = require("../lib/paged_toc");
@@ -1531,7 +2258,16 @@ const imageFolderButton = document.getElementById('imageFolderButton');
 const imageFileInput = document.getElementById('imageFileInput');
 const imageDirectoryInput = document.getElementById('imageDirectoryInput');
 const imageAssetList = document.getElementById('imageAssetList');
+const courtCheckSummary = document.getElementById('courtCheckSummary');
+const courtCheckList = document.getElementById('courtCheckList');
 let renderSeq = 0;
+let courtCheckTimer = 0;
+let courtCheckIssues = [];
+// プレビューと印刷の字形を Windows・Mac で同じにするため、Noto Serif JP を Web フォントで読み込む。
+// 読み込めないとき（オフラインなど）は、端末の明朝体で組む
+const PREVIEW_FONT_FAMILY = '"Noto Serif JP", "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif';
+const PREVIEW_FONT_STYLESHEET = 'https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&display=block';
+const PREVIEW_FONT_TIMEOUT_MS = 15000;
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 const imageAssets = new Map();
 let currentMarkdownPath = '';
@@ -1854,14 +2590,17 @@ function buildPreviewDocument(markdown) {
   <meta charset="utf-8">
   <title>${documentTitle}</title>
   <base href="${baseHref}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="${PREVIEW_FONT_STYLESHEET}">
   <link rel="stylesheet" href="court.css">
   <style>
     html, body { background: #fff; }
     body { padding: 0; }
     body, body * {
-      font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
+      font-family: ${PREVIEW_FONT_FAMILY};
     }
-    .content-container { background: #fff; font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif; }
+    .content-container { background: #fff; font-family: ${PREVIEW_FONT_FAMILY}; }
     @page { size: A4; }
     @media screen {
       html, body { overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; }
@@ -1916,6 +2655,7 @@ function buildPlainHtmlDocument(markdown) {
   <meta charset="utf-8">
   <base href="${baseHref}">
   <title>法匪 HTML表示</title>
+  <link rel="stylesheet" href="${PREVIEW_FONT_STYLESHEET}">
   <link rel="stylesheet" href="court.css">
   <style>
     html {
@@ -1930,7 +2670,7 @@ function buildPlainHtmlDocument(markdown) {
       content: none;
     }
     body, body * {
-      font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
+      font-family: ${PREVIEW_FONT_FAMILY};
     }
     @page { size: A4; }
     .content-container {
@@ -1940,7 +2680,7 @@ function buildPlainHtmlDocument(markdown) {
       margin: 0 auto;
       padding: 42px 54px 84px;
       background: #fff;
-      font-family: "NotoSerifJP-Regular", "MS Mincho", "Hiragino Mincho ProN", serif;
+      font-family: ${PREVIEW_FONT_FAMILY};
     }
     .break {
       margin: 2.2em 0;
@@ -1988,6 +2728,38 @@ function waitForPaged(frameWindow) {
         };
         check();
     });
+}
+/**
+ * 組む前に、本文に使う字の Noto Serif JP（標準・太字）を読み込む。Google Fonts は字の範囲ごとにファイルが分かれ、
+ * 使う字が画面に出たときに読み込むので、paged.js が頁を割る前に読み込んでおかないと、割った後で字幅が変わる。
+ * 読み込めたかどうかを html の data-houhi-web-font に書く（試験と、印刷前の確認に使う）。
+ */
+async function loadPreviewFonts(frameDocument) {
+    const fonts = frameDocument.fonts;
+    const root = frameDocument.documentElement;
+    if (!fonts || typeof fonts.load !== 'function') {
+        root.setAttribute('data-houhi-web-font', 'unsupported');
+        return false;
+    }
+    const text = `${frameDocument.body?.textContent || ''}- 0123456789`;
+    const chars = Array.from(new Set(Array.from(text.replace(/\s+/g, '')))).join('');
+    const timeout = new Promise(resolve => (frameDocument.defaultView || window).setTimeout(() => resolve('timeout'), PREVIEW_FONT_TIMEOUT_MS));
+    try {
+        await Promise.race([
+            Promise.all([
+                fonts.load('400 16px "Noto Serif JP"', chars),
+                fonts.load('700 16px "Noto Serif JP"', chars),
+            ]),
+            timeout,
+        ]);
+        await Promise.race([fonts.ready, timeout]);
+    }
+    catch (err) {
+        console.warn('Noto Serif JP を読み込めませんでした。', err);
+    }
+    const loaded = Array.from(fonts).some(face => /Noto Serif JP/.test(face.family) && face.status === 'loaded');
+    root.setAttribute('data-houhi-web-font', loaded ? 'loaded' : 'fallback');
+    return loaded;
 }
 function nextFrame(frameWindow) {
     return new Promise(resolve => {
@@ -2043,6 +2815,7 @@ function updatePreviewSize(frameDocument) {
 async function renderPreviewNow() {
     const seq = ++renderSeq;
     normalizeEditorMarkdownForRender();
+    runCourtCheck();
     const markdown = editor.value.trim() ? editor.value : DEFAULT_MARKDOWN;
     setStatus('組版中...');
     renderButton.disabled = true;
@@ -2061,6 +2834,9 @@ async function renderPreviewNow() {
     try {
         await waitForPaged(frameWindow);
         await waitForImages(frameDocument);
+        const webFontLoaded = await loadPreviewFonts(frameDocument);
+        if (seq !== renderSeq)
+            return;
         if (frameDocument.fonts && frameDocument.fonts.ready) {
             await frameDocument.fonts.ready;
         }
@@ -2072,7 +2848,7 @@ async function renderPreviewNow() {
         (0, paged_toc_1.applyManualPageNumbers)(frameDocument);
         (0, paged_tables_1.showPagedOverflow)(frameDocument);
         updatePreviewSize(frameDocument);
-        setStatus('プレビュー更新済み');
+        setStatus(webFontLoaded ? 'プレビュー更新済み' : 'プレビュー更新済み（Webフォントを読み込めず、端末の明朝体で組みました）');
     }
     catch (err) {
         console.error(err);
@@ -2084,6 +2860,60 @@ async function renderPreviewNow() {
 }
 function markPreviewDirty() {
     setStatus('未更新');
+    scheduleCourtCheck();
+}
+/**
+ * 入力欄の行へ移る（提出前チェックの項目を押したとき）
+ */
+function selectEditorLine(lineNumber) {
+    const lines = editor.value.split('\n');
+    const index = Math.max(0, Math.min(lines.length, lineNumber) - 1);
+    const start = lines.slice(0, index).join('\n').length + (index > 0 ? 1 : 0);
+    const end = start + (lines[index] || '').length;
+    editor.focus();
+    editor.setSelectionRange(start, end);
+    const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 22;
+    editor.scrollTop = Math.max(0, index * lineHeight - editor.clientHeight / 3);
+}
+/**
+ * 提出前チェックを走らせ、結果を入力欄とプレビューの間の欄に出す
+ */
+function runCourtCheck() {
+    window.clearTimeout(courtCheckTimer);
+    courtCheckIssues = editor.value.trim() ? (0, court_check_1.checkCourtMarkdown)(editor.value) : [];
+    if (!courtCheckSummary || !courtCheckList) {
+        return courtCheckIssues;
+    }
+    courtCheckList.textContent = '';
+    courtCheckSummary.textContent = courtCheckIssues.length === 0
+        ? '見つかった問題はありません。'
+        : `${courtCheckIssues.length}件の確認事項があります。`;
+    courtCheckSummary.closest('.court-check')?.classList.toggle('has-issues', courtCheckIssues.length > 0);
+    for (const issue of courtCheckIssues) {
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'court-check-item';
+        if (issue.line) {
+            button.dataset.line = String(issue.line);
+        }
+        else {
+            button.disabled = true;
+        }
+        const label = document.createElement('span');
+        label.className = 'court-check-label';
+        label.textContent = (0, court_check_1.getCourtCheckLabel)(issue.kind);
+        const message = document.createElement('span');
+        message.textContent = (0, court_check_1.formatCourtCheckIssue)(issue);
+        button.append(label, message);
+        item.appendChild(button);
+        courtCheckList.appendChild(item);
+    }
+    return courtCheckIssues;
+}
+function scheduleCourtCheck() {
+    window.clearTimeout(courtCheckTimer);
+    courtCheckTimer = window.setTimeout(runCourtCheck, 400);
 }
 function normalizeEditorMarkdownForRender() {
     const original = editor.value;
@@ -2119,12 +2949,7 @@ function setupTemplateLoader() {
     if (!templates.length) {
         return;
     }
-    for (const template of templates) {
-        const option = document.createElement('option');
-        option.value = template.id;
-        option.textContent = template.name;
-        templateSelect.appendChild(option);
-    }
+    (0, template_catalog_1.appendTemplateOptions)(document, templateSelect, templates);
     templateLoader.hidden = false;
     templateSelect.addEventListener('change', () => {
         const selected = templates.find(template => template.id === templateSelect.value);
@@ -2279,10 +3104,34 @@ imageAssetList.addEventListener('click', event => {
 pasteButton.addEventListener('click', pasteFromClipboard);
 renderButton.addEventListener('click', renderPreviewNow);
 htmlPreviewButton.addEventListener('click', openPlainHtmlPreview);
+courtCheckList?.addEventListener('click', event => {
+    const button = event.target.closest('button[data-line]');
+    if (button) {
+        selectEditorLine(Number(button.dataset.line));
+    }
+});
+/**
+ * 印刷の前に提出前チェックをもう一度走らせ、問題があれば印刷してよいかを聞く
+ */
+function confirmPrintAfterCheck() {
+    const issues = runCourtCheck();
+    if (issues.length === 0) {
+        return true;
+    }
+    const shown = issues.slice(0, 8).map(issue => `・${(0, court_check_1.formatCourtCheckIssue)(issue)}`);
+    if (issues.length > shown.length) {
+        shown.push(`ほか${issues.length - shown.length}件`);
+    }
+    return window.confirm(`提出前チェックで${issues.length}件の確認事項が見つかりました。\n\n${shown.join('\n')}\n\nこのまま印刷・PDF保存しますか。`);
+}
 printButton.addEventListener('click', () => {
     const frameWindow = previewFrame.contentWindow;
     if (!frameWindow)
         return;
+    if (!confirmPrintAfterCheck()) {
+        setStatus('印刷を取りやめました。提出前チェックの項目を確かめてください。');
+        return;
+    }
     const title = getCurrentPdfDocumentTitle();
     const oldTitle = document.title;
     document.title = title;

@@ -744,10 +744,12 @@ function makeEndRecord(entryCount, centralDirectorySize, centralDirectoryOffset)
     writeUint16(view, 20, 0);
     return record;
 }
-function buildStoredZip(entries) {
+/**
+ * 圧縮しない ZIP を作る。date を渡すとすべての項目の日時をそれにする（同じ中身から同じ ZIP を作るとき）。
+ */
+function buildStoredZip(entries, options = {}) {
     const encoder = new TextEncoder();
-    const now = new Date();
-    const { dosTime, dosDate } = getDosDateTime(now);
+    const { dosTime, dosDate } = getDosDateTime(options.date || new Date());
     const fileParts = [];
     const centralEntries = [];
     let offset = 0;
